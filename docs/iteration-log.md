@@ -139,7 +139,7 @@ Proposed for the next cycle, none of them applied here:
 
 Commit SHAs: `b56a5c8` (documentation standard v1), `615ae36` (technique plan), `7cfc6e5` (pre-session
 plan), `0f2bf2c` (rubric v1), `2c70a2e` (skill), `4b2900f` (context boundary policy), `311b7b7` (agent
-definition). This entry's own commit: pending — filled by the follow-up commit.
+definition). This entry's own commit: `312e5eb`.
 
 Note on line numbers: this entry was prepended to the top of the log, which shifted every citation into
 `docs/iteration-log.md` by +126 lines (the docker-build record moved from `:161-162` to `:287-288`).
