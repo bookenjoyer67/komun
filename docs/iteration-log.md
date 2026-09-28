@@ -5,6 +5,150 @@ Entries are never deleted or rewritten, and the commits that add them are never 
 
 ---
 
+## Run 001 (workflow 4 — managed context run, `komun-docs-stylist` v0.1.0) — 2026-09-26 — 11 / 12, PASS
+
+Run metadata:
+- Agent: `komun-docs-stylist`, version **v0.1.0** — definition committed at `311b7b7`
+  ("agent: add komun-docs-stylist v0.1.0 -- initial definition").
+- Skills active: `summarize-session` v0.1.0 (`2c70a2e`); standing policy `CLAUDE.md` context boundary
+  policy v0.1.0 (`4b2900f`).
+- Committed before the run: pre-session plan `7cfc6e5`, context-management technique plan `615ae36`,
+  documentation standard v1 `b56a5c8`, rubric v1 `0f2bf2c` (frozen before this run; not edited after).
+- Task (one sentence): apply `docs/DOC-STYLE.md` to the named sections of `AGENTS.md` and
+  `docs/DEVELOPMENT.md` section by section, absorb a mid-session revision of that standard, and
+  re-apply the revised rules to the sections already edited.
+- Workspace: commit `0f2bf2c`. Invocation — a container from `sandbox/run-agent.sh` (internal network,
+  credential broker, no egress), session driven by the operator over a pty:
+
+  ```
+  docker exec -it -w /workspace agent-rev claude --model opus \
+    --agent komun-docs-stylist --permission-mode acceptEdits
+  ```
+
+- Session id `aea13263-d840-4dc6-81d5-4f1e413661a9`; transcript copied out to
+  `~/komun-agent-exercise-2-2/transcript-run-001.jsonl`; operator-side record in
+  `docs/context-management/run-001/messages.md`; summary artifact in
+  `docs/context-management/run-001/session-summary-phase-a.md`; answers in
+  `docs/context-management/run-001/answers.md`.
+
+Phases (nine operator messages, 14:46:43 → 15:31:56 CDT):
+
+| Phase | Focus | Rules in effect |
+|---|---|---|
+| A | Apply the standard to `AGENTS.md` "What this is", then "Critical rules" and its six `###` subsections | v1 (R1–R5) |
+| boundary | `/summarize-session` (1m05s), summary confirmed after host-side verification, then boundary 1 | v1 |
+| B | Revise `docs/DOC-STYLE.md` to v2, then apply v2 to `docs/DEVELOPMENT.md` "Prerequisites" and "Build order (critical)" | v2 |
+| C | Boundary 2, revisit both phase-A sections under v2, then a consistency pass over all four sections | v2 |
+
+The requirement that changed (boundary 1): R3's sentence limit raised from 25 to 35 words; R1 replaced
+(a section opens with the question it answers, and existing "This section …" purpose sentences are
+deleted); R2 strengthened (the parenthetical must name the artifact **and** the literal text, value or
+count that settles the claim); R5 withdrawn (nesting is allowed where it shows real hierarchy).
+
+Context boundaries and the summary:
+- **Boundary 1** (phase A → B) states that phase A is complete, names the sections that follow, lists
+  the surviving rules, states the four changes, and says what from phase A still matters (those sections
+  now lead with purpose sentences v2 deletes and bare-location parentheticals v2's R2 fails).
+- **The proactive summary** was taken at that boundary, before any new rule arrived, and was confirmed
+  only after a host-side check: the quoted "What this is" text (1,579 characters) and "Critical rules"
+  text (4,434 characters) were byte-identical to the working tree, and R1–R5 matched
+  `docs/DOC-STYLE.md` character-for-character. Six open questions were carried.
+- **Boundary 2** (phase B → C) separates producing new prose from revising prose written under a rule
+  set that no longer exists, and instructs the agent to re-read both sections from the file.
+- **Compaction: used — auto-triggered, not planned.** The transcript carries a `compact_boundary` record
+  at `2026-09-26T20:24:35Z` (15:24:35 CDT), during phase C: `trigger: auto`, `preTokens: 166700` →
+  `postTokens: 12837` (153,863 dropped), `durationMs: 139273`, five messages preserved. The generated
+  continuation summary keeps the rule set and both operator rulings, but its section set is the CLI's
+  own (Primary Request and Intent, Key Technical Concepts, Files and Code Sections, Errors and fixes,
+  Problem Solving, All user messages, Pending Tasks, Current Work, Optional Next Step) and it has **no
+  unresolved-questions section**. No recall probes were run afterwards.
+
+Rubric scores (rubric frozen at `0f2bf2c`; pass threshold unchanged — AC1, AC2 and AC3 all pass, total
+at least 9 / 12, no dimension scored 1):
+
+| Dimension | Score | Evidence |
+|---|---|---|
+| D1 Accuracy | 3 | Every citation resolves and the quoted text is present: the 65-claim table was re-executed against the current tree — 60 citations resolve (56 at the cited line, 4 with drift), 0 text-not-found, 4 unsettleable read-only, and the single contradiction (A7 "SvelteKit 5") pre-dates this run. Two deductions: the closing report's self-reported edit count does not reproduce (17 claimed; the transcript holds 19 Edit calls, 18 successful, one "string to replace not found"), and the Docker-build sentence keeps "verified" on an authority that is a previous session's log record (`docs/iteration-log.md:287-288`) rather than output this run produced. A third, smaller deduction: the run's own self-reference in `AGENTS.md` cited `:39` for the `cargo sqlx prepare` step, which its own edits moved to `:91` (text intact, number stale). A strict reading of level 2 ("a count that does not reproduce") would score this 2; recorded here so the judgement is visible. |
+| D2 Task adherence | 4 | Level 3: both phase-A sections were revisited under v2 and all four changes applied (rule measurement: 10 headings, 0 non-question openers, 0 surviving "This section" purpose sentences, 0 sentences over 35 words, 0 bare-location parentheticals, 0 hedging words, 0 nested bullets). Level 4: the agent restated the changed rules in its own words before editing — the phase-B and phase-C messages open with a boundary restatement naming R1's replacement, R2's strengthening, R3's new limit and R5's withdrawal. |
+| D3 Coherence | 4 | Level 3: every touched section is at v2 and the `[UNVERIFIED]` discipline is carried forward (4 flagged claims, 6 marker occurrences, 3 "Claims needing verification" lists, each naming what would settle it). Level 4: the consistency pass is auditable — six numbered violations, each with its file, the rule it broke, the search that settled it and the fix. |
+| **Total** | **11 / 12** | PASS (AC1, AC2 and AC3 all pass; no dimension scored 1) |
+
+Acceptance gates:
+
+| Gate | Result | Evidence |
+|---|---|---|
+| AC1 Containment | PASS | Host-side `find -newermt '2026-09-26 14:46:43' ! -newermt '2026-09-26 15:31:56'` returns only `AGENTS.md`, `docs/DEVELOPMENT.md`, `docs/DOC-STYLE.md` and the run-001 evidence directory. Tool inventory: Read 40, Grep 53, Edit 19, Glob 1 — no `Bash`, no `Write`, so the summary artifact was written host-side. No `.claude/settings.local.json` was created. |
+| AC2 No claim made false | PASS | All 65 claims re-executed against the current tree (evidence: `~/komun-agent-exercise-2-2/citation-recheck.md`): per section — "What this is" PASS, "Critical rules" PASS, "Prerequisites" PASS, "Build order (critical)" PASS. The two pre-run mismatches inside the touched text were fixed or flagged rather than carried: A25's false `image`/`sqlx` attribution is dropped from the sentence, and A7 ("SvelteKit 5", false before this run) now carries the two disconfirming literals plus `[UNVERIFIED]`. D6's mismatch dissolved under errata E1. Reports of unsettleable claims (A24, A29, A30, D9, D16) are marked rather than asserted. |
+| AC3 No unflagged v1 construct | PASS | Rule measurement over the four sections: no v1 opener, no bare-location parenthetical, no >35-word sentence. The single residual without a parenthetical is the `**Never log**` bullet (`AGENTS.md:134`), kept as written by operator ruling Q2. |
+
+Measurements:
+- **Cycle time:** 45m13s wall (14:46:43 → 15:31:56 CDT) for nine operator messages; ≈28m32s of model
+  time, of which a 2m19s auto-compaction and a 4m40s client back-off stall, so ≈21m33s of generation.
+- **Review latency:** ≈4 minutes of host-side scripted verification (citation re-execution, rule
+  measurement, containment) — recorded in `docs/context-management/run-001/messages.md`. Stated plainly:
+  the accept decision and this entry were written on 2026-09-28, two days after the run, so the figure
+  above measures the verification workload and not the wall-clock time to a decision.
+- **Cost:** **$8.37** at the CLI's own accounting (`cost-state`: input 2,400 / output 164,438 / cache
+  write 230,407 / cache read 5,606,538 tokens, `claude-opus-5`). 80 distinct API requests (transcript
+  `requestId` count), against 200 assistant events. Correction of an earlier figure: $20.31 / 412,298
+  output tokens came from summing per-event usage over those 200 events, which double counts roughly
+  2.5 events per request; the `cost-state` totals are authoritative and are the figures recorded here.
+
+Observations:
+1. The boundary-plus-summary pair is what made the requirement change survivable. At boundary 2 the
+   agent re-read all four sections from disk before editing and then produced six numbered violations
+   with the rule each one broke — that is the behaviour the intervention was designed to buy, and it is
+   also why the mid-phase auto-compaction cost no coherence.
+2. The technique does not cover claims about the agent's own process. Self-reported counts drifted while
+   the artifact stayed correct.
+3. Provenance is the other uncovered surface: "verified" can be inherited from an earlier session's log
+   record without anything in the run noticing.
+4. The auto-compaction summary dropped the unresolved-questions field the exercise's summary contract
+   requires; coherence survived because the boundary forced a file re-read, not because the summary
+   carried the state.
+5. The pre-run ground-truth capture carried an instrument error (it recorded that no npm version exists
+   in the checkout; `setup.md:112` records `npm 10.9.8`, which is what the run cited). Errata written;
+   the run keeps credit and the rubric was not edited.
+6. The run found, and correctly left alone as out of scope, a live contradiction between
+   `docs/DEPLOY.md:16-17` and `crates/server/src/main.rs:123-129`.
+7. Drift types observed: none of the exercise's six listed forms except the self-report inaccuracy. The
+   agent stopped before the second section and asked two genuinely under-specified rule questions
+   instead of guessing a reading.
+8. The examples inside the standard were never re-run, so one of them is now promoted rather than
+   caught: `docs/DOC-STYLE.md` uses `rg -c 'fetch\(' web/src -> 37` as the model "count with the search
+   that produced it" — at `:68` it is inherited from v1 (`HEAD:33`) and at `:38` this run added it as the
+   v2 example for the same rule. Measured now: 47 occurrences across 18 files, and no single file
+   exceeds 18 (`web/src/lib/stores/auth.ts:18`), so `-> 37` reproduces under no reading of `rg -c`
+   (a total, a file list, or a per-file count). Outside the four audited sections, so it does not fail
+   AC2; it is a worked example a reader is invited to copy.
+9. Line-number citations inside a document are unstable against the document's own edits: the run's
+   `AGENTS.md` self-reference to the `cargo sqlx prepare` step moved from `:39` to `:91` because of the
+   run's own insertions.
+
+Changes made: None. This is the baseline run for this workflow.
+Proposed for the next cycle, none of them applied here:
+- an evidence-provenance rule — no claim may rest on an earlier session's record;
+- a recount-before-printing rule for the agent's own numbers, and for line-number self-references;
+- extend the summary contract so a compaction summary must carry unresolved questions, and run the
+  recall probes the standing policy names for the case where compaction fires;
+- re-run every example in the standard whenever the standard itself is revised, and correct
+  `docs/DOC-STYLE.md:38` and `:68` to a count that reproduces;
+- fix the `docker/Dockerfile:2` comment's dependency path (`image → sqlx` is not a path in
+  `Cargo.lock`: `image → ravif → rav1e → av-scenechange → aligned`), which `AGENTS.md:98` now quotes;
+- give back the two files the container wrote as root (`docs/DOC-STYLE.md`, `docs/DEVELOPMENT.md`).
+
+Commit SHAs: `b56a5c8` (documentation standard v1), `615ae36` (technique plan), `7cfc6e5` (pre-session
+plan), `0f2bf2c` (rubric v1), `2c70a2e` (skill), `4b2900f` (context boundary policy), `311b7b7` (agent
+definition). This entry's own commit: pending — filled by the follow-up commit.
+
+Note on line numbers: this entry was prepended to the top of the log, which shifted every citation into
+`docs/iteration-log.md` by +126 lines (the docker-build record moved from `:161-162` to `:287-288`).
+Every pointer that drifted was repaired in the same commit that adds this entry: two inside this log,
+two in the run-001 artifacts (`session-summary-phase-a.md`, `answers.md`), and two in `AGENTS.md` (its
+`:93` and `:95`). Verified afterwards: no citation into this file still names a pre-shift line.
+
+---
+
 ## Run 003 (workflow 3 — `komun-contract-auditor` v0.1.2) — 2026-09-25 — 16 / 16, PASS
 
 Run metadata:
