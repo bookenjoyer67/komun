@@ -7,30 +7,47 @@ and self-hosting in `docs/DEPLOY.md`.
 
 ## Prerequisites
 
+What must already be installed before anything else in this guide works?
+
 | Tool | Version used here | Notes |
 |---|---|---|
-| Rust | 1.95.0 (`rustc`/`cargo`) | one Cargo workspace: `komun-core`, `komun-server`, `komun-wasm` |
-| `wasm-pack` | present | builds `crates/wasm` to `crates/wasm/pkg/` (browser target) |
-| Node.js | 22.x (v22.23.2) | |
-| npm | 10.x (10.9.8) | |
-| PostgreSQL | 16 | the server runs migrations itself at startup |
-| `psql` / `sha384sum` | 16 / coreutils | provisioning a database (below) |
+| Rust | 1.95.0, `rustc` and `cargo` (`setup.md:111` `rustc 1.95.0 (59807616e 2026-04-14)`; `setup.md:112` `cargo 1.95.0 (f2d3ce0bd 2026-03-21)`) | one Cargo workspace: `komun-core`, `komun-server`, `komun-wasm` (`Cargo.toml:2` `members = ["crates/server", "crates/core", "crates/wasm"]`) |
+| `wasm-pack` | present (`setup.md:113` `wasm-pack 0.15.0`) | builds `crates/wasm` to `crates/wasm/pkg/`, browser target (`crates/wasm/Cargo.toml:8` `crate-type = ["cdylib", "rlib"]`; `web/package.json:33` `"komun-wasm": "file:../crates/wasm/pkg"`) |
+| Node.js | 22.x (`setup.md:111` `node v22.23.2`) | |
+| npm | 10.x (`setup.md:112` `npm 10.9.8`) | |
+| PostgreSQL | 16 (`docker-compose.yml:3` `image: postgres:16-alpine`) | the server runs migrations itself at startup (`crates/server/src/main.rs:78` `sqlx::migrate!("../../migrations")`) |
+| `psql` / `sha384sum` | 16 / coreutils **[UNVERIFIED]** | both are used for provisioning below (`docs/DEVELOPMENT.md:77` `psql "postgres://komun:change-me@localhost:5432/komun" -f migrations/001_schema.sql`; `docs/DEVELOPMENT.md:80` `CHECKSUM=$(sha384sum migrations/001_schema.sql \| cut -d' ' -f1)`) |
 
-`config.toml` is **gitignored** and therefore absent from a fresh checkout. The server
-loads it from `config.toml` in the working directory (or `KOMUN_CONFIG=/path/to/other`).
-Copy the template and edit it:
+`config.toml` is **gitignored** and therefore absent from a fresh checkout (`.gitignore:8`
+`config.toml`). The server reads `config.toml` in the working directory unless `KOMUN_CONFIG`
+overrides the path (`crates/server/src/config.rs:291-292` `std::env::var("KOMUN_CONFIG")` /
+`.unwrap_or_else(|_| "config.toml".into())`). Copy the template and edit it:
 
 ```bash
 cp config.example.toml config.toml
 # minimum: point [database] url at your Postgres
 ```
 
-Everything else in the template has a working default: `[registration]` runs without SMTP
-(`require_email_verification = false`), `[discovery]` mounts no directory routes, and the
-optional `[market]` `default_currency` is unset, which is the intended default — see the
-currency precedence below.
+Everything else in the template has a working default (`crates/server/src/config.rs:5`
+`#[serde(default)]`, on `Config` and on each of its 13 section structs; `rg -c 'serde\(default'
+crates/server/src/config.rs` -> `14`). `[registration]` runs without SMTP
+(`config.example.toml:98` `require_email_verification = false`). `[discovery]` mounts no directory
+routes (`config.example.toml:34` `directory_enabled = false`; `crates/server/src/api/mod.rs:64`
+`if state.config.discovery.directory_enabled {`). The optional `[market]` `default_currency` is
+unset, which is the intended default (`config.example.toml:129` `# default_currency = "USD"`). See
+the currency precedence below.
 
-The example config must boot as shipped; see the boot check below.
+Keep the example config bootable as shipped: verification turned on without an `[email]` section is
+a startup failure (`crates/server/src/config.rs:316` `if self.registration.require_email_verification
+&& !self.email.is_configured() {`). See the boot check below.
+
+**Claims needing verification**
+
+- `psql` at version `16` **[UNVERIFIED]**. The only recorded `psql` version in the repository says
+  otherwise (`rg 'psql \(|psql --version|psql 1[0-9]' .` -> one source hit, `setup.md:113`
+  `wasm-pack 0.15.0                         psql (PostgreSQL) 15.19`). That line records a client one
+  major version behind the server. Running `psql --version` in the environment this guide targets
+  would settle which number belongs in the table.
 
 ## Provisioning a database (the exact order, and why)
 
@@ -103,7 +120,10 @@ psql "$DATABASE_URL" -tAc "select scope, count(*) from categories group by scope
 
 ## Build order (critical)
 
-The wasm package must exist before the frontend is installed:
+In what order do the three builds have to run, and which of them is independent of the others?
+
+The wasm package must exist before the frontend is installed (`web/package.json:33`
+`"komun-wasm": "file:../crates/wasm/pkg"`):
 
 ```
 1. wasm-pack build crates/wasm --target web      # produces crates/wasm/pkg/
@@ -111,17 +131,32 @@ The wasm package must exist before the frontend is installed:
 3. cargo build --release --bin komun-server      # backend; serves the API and media only
 ```
 
-The backend does **not** serve the SPA: its router mounts `/api`, `/avatars`, `/post-images` and
-nothing else (`crates/server/src/main.rs`), and `web/build/` is served by the reverse proxy
-(`deploy/nginx-komun.conf`, "SvelteKit static build (adapter-static) with an SPA fallback"). Step 3
-does not depend on step 2.
+The backend does **not** serve the SPA: its router mounts `/api`, `/avatars` and `/post-images`, and
+nothing else (`crates/server/src/main.rs:124-126` `.nest("/api", api::router(state.clone()))` /
+`.nest_service("/avatars", ServeDir::new(&avatar_dir))` / `.nest_service("/post-images",
+ServeDir::new(&post_img_dir))`). The reverse proxy serves the static build from its own root, with
+an SPA fallback (`deploy/nginx-komun.conf:32` `root /opt/komun/frontend;`; `:33` `try_files $uri
+$uri/ /index.html;`). That root holds what `npm run build` emits **[UNVERIFIED]**
+(`docs/DEVELOPMENT.md:188` `npm run build                                # adapter-static -> web/build/`). Step 3 does not depend on step 2
+(`crates/server/Cargo.toml:8` `komun-core = { path = "../core" }`; the file names no `komun-wasm`
+dependency).
 
-**The trap:** `web/package.json` depends on `"komun-wasm": "file:../crates/wasm/pkg"`.
-`npm install` resolves that local path, so if `crates/wasm/pkg/` does not exist yet the
-install fails. Build the wasm package **before** installing, and whenever `crates/wasm`
-changes rebuild both the package and the frontend.
+**The trap:** `web/package.json` carries the wasm package as a local path dependency
+(`web/package.json:33` `"komun-wasm": "file:../crates/wasm/pkg"`). `npm install` resolves that local
+path, so a missing `crates/wasm/pkg/` fails the install (`Dockerfile:59` `# so the frontend cannot
+build until the WASM crate is packed.`). Build the wasm package **before** installing, and whenever
+`crates/wasm` changes rebuild both the package and the frontend.
 
-If you changed nothing in `crates/wasm`, you do not need steps 1–2 to work on the backend.
+Skip steps 1 and 2 when nothing in `crates/wasm` changed and the work is backend-only
+(`crates/server/Cargo.toml:8` `komun-core = { path = "../core" }`).
+
+**Claims needing verification**
+
+- The proxy root and the frontend build output are never connected in this repository
+  **[UNVERIFIED]**. `deploy/nginx-komun.conf:32` reads `root /opt/komun/frontend;`, and no file
+  under `deploy/` mentions `web/build/` (`rg 'web/build|/opt/komun/frontend' deploy` -> one hit,
+  `deploy/nginx-komun.conf:32`). A deploy step copying `web/build/` to `/opt/komun/frontend`, or an
+  operator confirming the path, would settle it.
 
 ## Commands
 

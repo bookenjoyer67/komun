@@ -5,26 +5,74 @@ disagree, fix one of them.
 
 ## What this is
 
-A **single-server** mutual-aid web app. People post needs/offers/resources and marketplace
-listings/wants, search them, negotiate over end-to-end-encrypted conversations, and — for a
-completed deal — leave a star review. Rust backend (Axum + sqlx, PostgreSQL 16), SvelteKit 5
-SPA frontend, client crypto in WASM, AGPL-3.0. There is no multi-tenant community layer, no
-federation, and no relay — those were removed in the reshape. There are no payment rails.
+What is Komun, what is it built from, and what has been deliberately left out of it?
+
+Komun is a **single-server** mutual-aid web app (`docs/ARCHITECTURE.md:5` `A single-server
+mutual-aid web app.`). People post needs, offers and resources, plus marketplace listings and wants
+(`crates/core/src/models/post.rs:8-12` `Resource => "resource",` through `Want => "want",`). They
+search those posts (`crates/server/src/api/mod.rs:44` `.merge(search::router(state.clone()))`). They
+negotiate over conversations whose `messages` rows hold `ciphertext` and `nonce` only
+(`migrations/001_schema.sql:232-233` `ciphertext BYTEA NOT NULL,` / `nonce BYTEA,`; `:227`
+`-- Message content is never readable by the server: ciphertext only, no plaintext body.`). That
+ciphertext is produced in the browser, in WASM (`crates/wasm/src/lib.rs:49` `pub fn
+encrypt_message(plaintext: &[u8], recipient_x25519_pk: &[u8])`). For a completed deal a participant
+leaves a star review, and completion is checked inside the insert transaction
+(`crates/server/src/api/reviews.rs:95` `// Whether the deal is completed is decided inside the
+transaction, with the row locked —`). A rating is one to five stars
+(`migrations/001_schema.sql:264` `CONSTRAINT chk_deal_reviews_rating CHECK (rating BETWEEN 1 AND
+5),`).
+
+The backend is Rust with Axum (`crates/server/Cargo.toml:9` `axum = { version = "0.8", features =
+["ws", "multipart"] }`). Queries go through sqlx (`crates/server/Cargo.toml:21` `sqlx = { version =
+"0.8"`). The database is PostgreSQL 16 (`docker-compose.yml:3` `image: postgres:16-alpine`). The
+frontend is a SvelteKit 5 SPA built by the static adapter **[UNVERIFIED]** (`web/package.json:20`
+`"svelte": "^5.0.0",`; `web/package.json:13` `"@sveltejs/kit": "^2.0.0",`; `web/package.json:12`
+`"@sveltejs/adapter-static": "^3.0.0",`). The licence is
+AGPL-3.0-or-later (`Cargo.toml:8` `license = "AGPL-3.0-or-later"`).
+
+There is no multi-tenant community layer and no federation (`crates/server/src/db/mod.rs:1`
+`` // Merged: `communities/` (A) and `alliances/`, `federation/` (B) are all deleted. ``). There is
+no relay crate in the workspace (`Cargo.toml:2` `members = ["crates/server", "crates/core",
+"crates/wasm"]`). Nginx proxies no WebSocket route (`deploy/nginx-komun.conf:6` `# There is no relay
+and no WebSocket route to proxy — the server is plain HTTP + JSON.`). Those parts were deleted in
+the reshape (`docs/ARCHITECTURE.md:45` `` `komun-relay` and the `federation/` module were deleted in
+the reshape ``). There are no payment rails (`rg -i 'stripe|paypal|payment|escrow|billing' crates
+migrations` -> one hit, `crates/wasm/src/lib.rs:1585` `"payment",`, a recovery-code wordlist entry).
+
+**Claims needing verification**
+
+- The frontend is a **SvelteKit 5** SPA **[UNVERIFIED]**. The manifest records SvelteKit at major 2
+  and Svelte at major 5 (`web/package.json:13` `"@sveltejs/kit": "^2.0.0",`; `web/package.json:20`
+  `"svelte": "^5.0.0",`), so no line in it settles "SvelteKit 5". A ruling on whether the intended
+  term is "Svelte 5" or "SvelteKit 2" would settle it.
 
 ## Critical rules
 
+Which constraints must an agent respect before changing anything in this repository?
+
 ### Never commit these
-- `config.toml` — gitignored, holds the DB URL and optional SMTP credentials
-- `.env` / `.env.local` — gitignored
-- `crates/wasm/pkg/` — build artifact, gitignored
-- `web/build/` — build artifact, gitignored
-- `data/avatars/`, `data/post-images/` — runtime uploads, gitignored
+Which paths must never enter a commit, and why is each one kept out?
+
+- `config.toml` — gitignored (`.gitignore:8` `config.toml`), holds the DB URL
+  (`config.example.toml:12` `url = "postgres://komun:komun@localhost:5432/komun"`) and optional SMTP
+  credentials (`config.example.toml:84` `# smtp_host = "smtp.example.org"`)
+- `.env` / `.env.local` — gitignored (`.gitignore:6-7` `.env` / `.env.local`)
+- `crates/wasm/pkg/` — build artifact, gitignored (`.gitignore:5` `crates/wasm/pkg/`)
+- `web/build/` — build artifact, gitignored (`.gitignore:3` `web/build/`)
+- `data/avatars/`, `data/post-images/` — runtime uploads, gitignored (`.gitignore:12-13`
+  `data/avatars/` / `data/post-images/`)
 
 ### Build order
-The wasm package must exist before the frontend is installed. The server does **not** serve the
-SPA — nginx does (`deploy/nginx-komun.conf`, "SvelteKit static build … with an SPA fallback"),
-and the router mounts only `/api`, `/avatars`, `/post-images` — so step 3 depends on neither of
-the first two:
+In what order do the three builds run, and which step stands alone?
+
+The wasm package must exist before the frontend is installed (`web/package.json:33` `"komun-wasm":
+"file:../crates/wasm/pkg"`). The server does **not** serve the SPA; nginx does
+(`deploy/nginx-komun.conf:30` `# SvelteKit static build (adapter-static) with an SPA fallback.`;
+`:33` `try_files $uri $uri/ /index.html;`). The router mounts only `/api`, `/avatars` and
+`/post-images` (`crates/server/src/main.rs:124-126` `.nest("/api", api::router(state.clone()))`,
+`.nest_service("/avatars", ServeDir::new(&avatar_dir))`, `.nest_service("/post-images",
+ServeDir::new(&post_img_dir))`). Step 3 therefore depends on neither of the first two
+(`crates/server/Cargo.toml:8` `komun-core = { path = "../core" }`):
 
 ```bash
 wasm-pack build crates/wasm --target web     # 1. -> crates/wasm/pkg/
@@ -32,33 +80,62 @@ cd web && npm install && npm run build       # 2. package.json needs pkg/ to exi
 cargo build --release --bin komun-server     # 3. independent of 1 and 2
 ```
 
-If you change crypto in `crates/wasm/`, rebuild the wasm package **and** the frontend.
+Rebuild the wasm package **and** the frontend after any crypto change in `crates/wasm/`
+(`web/package.json:33` `"komun-wasm": "file:../crates/wasm/pkg"`).
 
 ### sqlx uses runtime queries
-All queries use `sqlx::query()` / `sqlx::query_as()`, not the compile-time macros. No
-`cargo sqlx prepare` step and no offline query cache. Docker builds work as-is, and that is
-verified rather than assumed: `docker build -f docker/Dockerfile .` builds in ~2 min and the image
-provisions a fresh database (`001` → `003`) and answers `/api/health` on the example config. The
-builder stage is pinned to the workspace toolchain (`rust:1.95-slim-bookworm` vs the old `1.82`,
-which could not even parse the locked `image`/`sqlx` dependency's manifest).
+How are the queries written here, and what does that mean for the Docker build?
+
+All queries use `sqlx::query()` / `sqlx::query_as()`, not the compile-time macros
+(`rg 'sqlx::query!|query_as!|query_scalar!|query_file!' crates` -> No matches found). There is no
+`cargo sqlx prepare` step and no offline query cache (`Glob {.sqlx/**,migrations/*.sql,docker/*}`
+-> 4 paths, none under `.sqlx/`). Docker builds work as-is, and that is verified rather than
+assumed: `docker build -f docker/Dockerfile .` finished in 1m51s (`docs/iteration-log.md:287`
+`` `docker build` → success in 1m51s ``). That image provisioned a fresh database from `001` to
+`003` and answered `/api/health` (`docs/iteration-log.md:288` `` → migrations `001`→`003`,
+`/api/health` 200, media directories writable. ``). The builder stage is pinned to the workspace
+toolchain (`docker/Dockerfile:5` `FROM rust:1.95-slim-bookworm AS builder`). The old `1.82` cannot
+parse the `edition2024` manifest of `aligned 0.4.3` (`docker/Dockerfile:3` `` # needs the
+`edition2024` Cargo feature, which Cargo 1.82 cannot parse. ``).
 
 ### Frontend is Svelte 5 runes only
-No `$:`, no `export let`, no `on:click`. Use `$state`, `$derived`, `$effect`, `$props`, and
-`onclick={handler}`.
+Which Svelte dialect does the frontend use, and which constructs are absent from it?
+
+The frontend has no `$:`, no `export let` and no `on:click`
+(`rg 'export let|on:click|^\s*\$:' web/src` -> No matches found). Use `$state`, `$derived`,
+`$effect`, `$props` and `onclick={handler}` (`web/package.json:20` `"svelte": "^5.0.0",`).
 
 ### Migrations are frozen at 001
-`migrations/001_schema.sql` is checksum-bookmarked in every provisioned database — editing one
-byte makes every existing server refuse to boot. Schema changes are additive files
-(`002_*.sql`, `003_*.sql`, …). See `docs/DEVELOPMENT.md`.
+What may change in `migrations/`, and what must never change?
+
+`migrations/001_schema.sql` is checksum-bookmarked in every provisioned database
+(`docs/DEVELOPMENT.md:115` `It is checksum-bookmarked in every existing`). Editing one byte makes
+every existing server refuse to boot (`docs/DEVELOPMENT.md:116` `changing one byte makes every server
+refuse to boot with a checksum mismatch.`). The migrator runs the whole directory at boot
+(`crates/server/src/main.rs:78` `sqlx::migrate!("../../migrations")`). Schema changes are additive
+files (`Glob {.sqlx/**,migrations/*.sql,docker/*}` -> `001_schema.sql`,
+`002_directory_open_registration.sql`, `003_drop_matches_message.sql`). See `docs/DEVELOPMENT.md`.
 
 ### Crypto boundaries
-- The **x25519 secret key, the password-derived key and the recovery code never leave the client**; the
-  server stores public keys and wrapped bundles only. (A password-derived *verifier* is sent — see
-  `docs/CRYPTO.md`; the password itself never is.)
-- The schema has **no plaintext message column**: `messages` carries `ciphertext` + `nonce` only,
-  and the plaintext `matches.message` column was dropped by `003_drop_matches_message.sql`.
+Which boundaries does client-side encryption rest on, and where is each one written down?
+
+- The **x25519 secret key, the password-derived key and the recovery code never leave the client**
+  (`docs/CONVENTIONS.md:80` `Keys never leave the client; the server returns no key material or
+  recovery code.`). The server stores public keys and wrapped bundles only
+  (`docs/CONVENTIONS.md:81` `Only public keys and wrapped key bundles are server-visible`;
+  `migrations/001_schema.sql:25-26` `encryption_public_key BYTEA,` / `encrypted_key_bundle BYTEA,`).
+  A password-derived *verifier* is sent, but never the password itself
+  (`crates/wasm/src/lib.rs:191` `Argon2id over the account password, used for both halves of Part
+  1.5's split`; more in `docs/CRYPTO.md`).
+- The schema has **no plaintext message column**: `messages` carries `ciphertext` + `nonce` only
+  (`migrations/001_schema.sql:227` `-- Message content is never readable by the server: ciphertext
+  only, no plaintext body.`). The plaintext `matches.message` column was dropped
+  (`migrations/003_drop_matches_message.sql:22` `ALTER TABLE matches DROP COLUMN message;`).
 - **Never log** keys, bundles, passwords, derived keys, or message plaintext.
-- There is no ed25519 key and no JWT; sessions are opaque database rows.
+- There is no ed25519 key and no JWT (`rg -i 'ed25519|jwt|jsonwebtoken' crates` -> 5 hits, all
+  removal notes, e.g. `crates/server/src/config.rs:59` `the signing-key setting is gone with the
+  JWTs`). Sessions are opaque database rows (`migrations/001_schema.sql:38` `token_hash BYTEA NOT
+  NULL UNIQUE,`).
 
 ## Code layout
 
