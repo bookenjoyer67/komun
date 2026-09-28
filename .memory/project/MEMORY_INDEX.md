@@ -11,6 +11,7 @@ Last updated: 2026-09-28
 - `../knowledge/coding-standards.md` — Coding standards for this project: the eight rules every
   change must satisfy. Human-maintained, read-only. Last reviewed 2026-09-28.
 
+- `decisions/decision-bad.md` — API connection approach using service account. Recorded 2026-09-28. Review by 2026-12-27.
 
 ## Archived entries
 
