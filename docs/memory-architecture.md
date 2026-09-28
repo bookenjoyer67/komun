@@ -135,6 +135,67 @@ session. The agent queries this layer by keyword and reads one or two hits.
 | Past contract-audit reports and the migration rationale for `003` | Layer 3, indexed reference | Too many and too large to load every session; retrieved by keyword on demand |
 | A superseded design, e.g. the plaintext `matches.message` column | Layer 1 as current state ("dropped in 003"), Layer 3 for the old rationale | The agent must not act on the superseded design, but the reason it was dropped stays auditable |
 | Key material, key bundles, passwords, recovery codes, message plaintext | Nowhere | Standing rule: never logged, never stored, in any layer |
+| The memory scope declaration (`SCOPE.md`) | Layer 1, project memory — read-only to the agent | Identifies which project owns the mounted memory directory. Added after failure-mode testing: without it, memory mounted from another project looks identical to the right memory |
+| Where the credential lives (`KOMUN_DATA_API_KEY`, the infra team's secret store) | Layer 1, project memory — the pointer only, never the value | Records how the credential is obtained without storing it. Added after failure-mode testing: the first version of this entry held the key itself |
+
+## Data Classification
+
+Before writing anything to a memory file, classify it:
+
+- **Public** — Safe to commit to the repo and share broadly. Most project decisions and coding standards fall here.
+
+- **Internal** — Safe within the team but not for public repos. Store in a non-committed volume or .gitignore the containing folder.
+
+- **Confidential** — Sensitive business data. Do not store in agent memory. Retrieve from secure systems on demand.
+
+- **Secret** — Credentials, tokens, API keys, PII. Must never appear in any memory file. If the agent encounters a secret during a run, use it for the immediate task only and explicitly do not write it to any memory layer. Reference the environment variable name instead.
+
+### Guardrails
+
+A pre-commit hook at `scripts/hooks/pre-commit` scans `.memory/` for common credential patterns (`sk-`, `password=`, `secret=`, `token=`, `api_key=`, `apikey=`) before each commit. If a pattern is found, the commit is blocked and nothing is written to history. The hook is versioned with the code, and `core.hooksPath` points at `scripts/hooks/` so Git runs it from there: a fresh clone arms it with one command, `git config core.hooksPath scripts/hooks`. That indirection is deliberate — a hook inside `.git/` cannot be reviewed in a diff and dies with the clone — but it is also not self-arming, which is exactly why the classification policy in `CLAUDE.md` does not depend on this hook being present.
+
+## Enforcement
+
+- Scope: each `.memory/` root carries a `SCOPE.md` declaring its owning repo. The agent reads it on startup and halts on a mismatch. **Soft guard** — a policy in `CLAUDE.md`, executed only if the agent obeys.
+- Write permissions: `knowledge/` and `reference/` are read-only to the agent; `project/` is read-write; credentials are never written, and a pointer to the environment variable name is stored instead. **Soft guard** in `CLAUDE.md`, backed by a **hard stop**: a `PreToolUse` hook (`.claude/hooks/guard-readonly-memory.sh`) denies any write to the read-only layers, which matters because the container's agent runs as root and root ignores file permissions outright.
+- Stale entries: review dates are checked before use; an entry whose review date has passed is flagged and acted on only after human confirmation. **Soft guard** — nothing executes it but the agent's compliance, so it depends on the entry being in view, which the startup hook guarantees.
+- Secrets at commit: the pre-commit hook blocks commits matching common credential patterns. **Hard stop** — it runs at a defined point, after staging and before the commit object exists, independently of anything the agent decided or believed.
+
+Soft guards depend on the model obeying the instruction; hard stops are executed by something other than the model. The distinction was not theoretical here: file permissions were the intended hard stop for the read-only layers, and they did not bind the agent at all.
+
+## Why these safeguards exist
+
+### Scope verification
+
+**Problem:** memory mounted from another project is indistinguishable from the correct memory — same directory layout, same file names, same entry numbering. Nothing about the content announces that it belongs to a different codebase.
+
+**Observed during testing:** with a second project's memory mounted over `.memory/`, the agent summarised that project's decisions as if they applied to this repository, and the mounted decision contradicted the migration rule this repo actually follows. With `SCOPE.md` present and the check in `CLAUDE.md`, a fresh session halted and reported the mismatch instead of answering from the wrong memory.
+
+**Change made:** `SCOPE.md` at each memory root, a halt-on-mismatch rule in `CLAUDE.md`, and the memory-loading hook printing the scope declaration into every fresh session — so the check cannot be skipped by simply not reading the file.
+
+### Stale memory
+
+**Problem:** an entry whose review date has passed reads exactly like a current one. The index can also disagree with the entry about the date, which hides the staleness further.
+
+**Observed during testing:** a decision entry backdated 58 days, containing a claim about a vector index that was never built, was flagged on the next session. The agent cited the entry's own review date, proved the claim false (no such file existed anywhere in the image), and asked for confirmation before acting — it did not silently apply the stale content.
+
+**Change made:** the stale-memory policy in `CLAUDE.md` requires flagging any entry past its review date and human confirmation before acting on it. The startup hook injects the entries themselves, so the review date is always in front of the agent rather than sitting in a file it might not open.
+
+### Write policy and data classification
+
+**Problem:** anything that writes memory — agent or human — can put a credential into a file whose whole purpose is to be committed and to outlive the session.
+
+**Observed during testing:** asked to record a decision containing a fake API key, the agent refused and wrote a redaction note in its place, citing the write policy and the coding standard on secret material. When the value was planted by hand instead, the pre-commit hook blocked the commit.
+
+**Change made:** an explicit four-level classification check placed first in the write policy (above the existing write rules), plus the Git hook as the enforcement point for content that reaches staging anyway.
+
+### Pre-commit hard stop
+
+**Problem:** a soft guard is exactly as reliable as the model's willingness to comply, and permissions are not a hard stop when the agent runs as root.
+
+**Observed during testing:** the read-only permission bits on the knowledge layer were set as prescribed and did not stop a root write; the `PreToolUse` hook did, on a run where the rule had been withdrawn and the edit pre-authorised, leaving only the hook to stop it.
+
+**Change made:** both the Git hook and the `PreToolUse` hook act at defined points outside the model's decision, which is what makes them hard stops rather than stronger wording.
 
 ## Alternatives considered
 

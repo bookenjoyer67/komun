@@ -61,6 +61,11 @@ duplicates.
 
 ### Write policy
 
+Before writing any content to a memory file, classify it:
+- If it is Public or Internal: proceed with writing
+- If it is Confidential: do not write it to memory. Note in your response that the information was not stored and explain where it should be retrieved from instead.
+- If it is Secret (credential, token, API key, PII): do not write it anywhere. Use it for the immediate task only. If you find a secret already written in a memory file, flag it immediately and do not proceed until a human removes it.
+
 Before writing a new memory entry, check MEMORY_INDEX.md for an
 existing entry on the same topic. Update existing entries rather
 than creating new ones. Never write anything classified as
