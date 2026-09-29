@@ -12,3 +12,18 @@ dist/
 data/avatars/
 data/post-images/
 .hermes/
+
+# Module 3.2 — MCP runtime state. The curated corpus under .memory/reference/ IS committed; the
+# storage database and its audit log are run output and are never committed.
+.memory/storage.db
+.memory/storage.db-wal
+.memory/storage.db-shm
+.memory/storage-audit.log
+
+# Build and test caches — local run output, never committed.
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Claude Code's per-machine settings file; the shared .claude/settings.json is committed.
+.claude/settings.local.json

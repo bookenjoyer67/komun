@@ -1,0 +1,198 @@
+Integration test prompt — Komun, Agentic Engineer Module 3 (lesson 3.2, Step 4).
+Paste everything below the line into a Claude Code session started inside the Module 3 container.
+Source prompt structure: /tmp/lcae/module_3 lesson 3.2 blocks 227-232, adapted from proj-csv to
+proj-komun. Keep the csv_export/limits.py path verbatim; that is the lesson's task, not a Komun path.
+
+-----------------------------------------------------------------------------------------------
+
+You are running a full end-to-end integration test of three MCP servers registered in this repo:
+`coursetools` (the dummy tool server that Claude Code spawns over stdio from /workspace/mcp/
+coursetools_server.py), `storage` (streamable HTTP on port 8001, mcp/storage/server.py) and
+`retrieval` (streamable HTTP on port 8002, mcp/retrieval/server.py).
+
+Before you start, confirm all three are listed and connected:
+
+  claude mcp list
+
+Then call the servers by their full tool identifiers in the form mcp__<server>__<tool>, for example
+mcp__storage__write_entry. Execute every step in order, report the result of each tool call, and stop
+immediately on an unexpected failure.
+
+Repo facts to hold constant across the whole run: project id "proj-komun" for every storage entry and
+every retrieval query, data classification "internal" for every storage write, and the memory
+directory /workspace/.memory (host ~/rev/.memory) for storage.db, storage-audit.log and reference/.
+
+Do not weaken a pass criterion to make a step pass, and do not edit mcp/roles.allowlist.json to make a
+denial disappear.
+
+=== PART 1 — coursetools: tool-scope and denial checks ===
+
+Step T1 — allowed call.
+Call mcp__coursetools__file_read with role "planner" and path "mcp/roles.allowlist.json".
+Pass: the file content is returned. That confirms the allow-list file the server loaded is the one in
+the repo.
+
+Step T2 — denied call (mandatory). This is the denial verification for the orchestration exercise.
+Call mcp__coursetools__task_tracker with role "implementer" and ticket_id "KOMUN-1".
+Pass: the call fails with the exact authorization error, naming the role, the tool and the allowed
+roles: "Authorization error: role 'implementer' is not on the allow-list for task_tracker. Allowed
+roles: ['project-manager']." A denial that is not enforced is not a denial — quote the error text.
+
+Step T3 — denied call on an empty allow-list.
+Call mcp__coursetools__shell with role "implementer" and command "cargo test --workspace".
+Pass: the call fails with an authorization error ending "Allowed roles: none.". Confirm nothing was
+executed by the server.
+
+Step T4 — allowed call on an owned tool.
+Call mcp__coursetools__test_runner with role "tester" and suite "cargo test --workspace".
+Pass: a recorded baseline is returned (the server reports a result, it does not run the suite).
+Then call the same tool with role "reviewer" and confirm it is denied, because test_runner belongs to
+tester alone.
+
+Step T5 — researcher isolation.
+Call mcp__coursetools__web_search with role "researcher" and question "How does Komun apply a SQLx
+migration?". Pass: a deterministic answer naming migrations/ and sqlx::migrate! is returned.
+Then call it with role "planner" and confirm the denial, then with role "orchestrator" and confirm the
+denial. web_search belongs to the researcher role only.
+
+=== PART 2 — storage server ===
+
+Step 1 — write_entry (create).
+Call mcp__storage__write_entry with:
+  project_id: "proj-komun"
+  entry_type: "note"
+  title: "E2E Test Entry"
+  content: "Automated end-to-end test entry to verify write_entry against proj-komun."
+  classification: "internal"
+  calling_role: "tester"
+Save the returned entry_id for every later step.
+
+Step 2 — list_entries (verify it appears).
+Call mcp__storage__list_entries with project_id "proj-komun". Confirm the Step 1 entry appears.
+Pass: the entry_id, title, entry_type "note" and classification "internal" are present.
+
+Step 3 — read_entry (read it back).
+Call mcp__storage__read_entry with project_id "proj-komun" and the Step 1 entry_id.
+Pass: the title and content match what was written, and classification reads as "internal".
+
+Step 4 — update_entry (modify the content).
+Call mcp__storage__update_entry with project_id "proj-komun", the Step 1 entry_id, new content
+"Updated content: end-to-end test update confirmed.", calling_role "tester".
+Pass: the call reports success.
+
+Step 5 — read_entry (verify the update).
+Read the entry again. Pass: the content is the updated text.
+
+Step 6 — delete_entry (soft delete).
+Call mcp__storage__delete_entry with project_id "proj-komun" and the Step 1 entry_id.
+Pass: the call reports success.
+
+Step 7 — read_entry (verify the deletion).
+Attempt to read the deleted entry. Pass: an error (not found) is returned, proving the soft delete and
+the project-scoped query both work.
+
+Step 8 — classification rejection and audit check.
+Attempt mcp__storage__write_entry with everything as in Step 1 except classification "secret".
+Pass: the server rejects the write with an error stating that confidential or secret writes are not
+accepted.
+Then run, from inside the container:
+
+  tail -n 3 /workspace/.memory/storage-audit.log
+
+Pass: the log's last write-class line is the Step 1/4/6 activity for proj-komun and the rejected
+secret write added no line at all. Each audit line must be JSON naming the operation, project_id,
+entry_id, classification and calling_role.
+
+=== PART 3 — retrieval server ===
+
+Step 9 — vector retrieval with a citation.
+Call mcp__retrieval__retrieve with:
+  query: "How does Komun apply a SQLx migration at server startup?"
+  project_id: "proj-komun"
+  top_k: 3
+  classification_ceiling: "internal"
+Pass: at least one result comes back with retrieval_method "vector", a similarity_score at or above
+0.65, and a citation naming the source_document and chunk_index. Report the top result's
+source_document, score and excerpt.
+
+Step 10 — keyword fallback.
+Call mcp__retrieval__retrieve with a literal token that semantic search will not match well:
+  query: "002_directory_open_registration error code meaning"
+  project_id: "proj-komun"
+  top_k: 3
+  classification_ceiling: "internal"
+Pass: the result carries retrieval_method "keyword" and similarity_score null. Report which method
+served the query.
+
+Step 11 — classification ceiling enforcement.
+Call mcp__retrieval__retrieve with query "security visibility rules", project_id "proj-komun", top_k
+3, classification_ceiling "public". Then repeat the identical query with classification_ceiling
+"internal".
+Pass: the internal ceiling returns equal or more results than the public ceiling, and no document
+above the ceiling appears in either response. Confirm the confidential document in the corpus is
+absent from both.
+
+Step 12 — metadata filter.
+Call mcp__retrieval__retrieve with:
+  query: "migration decision"
+  project_id: "proj-komun"
+  top_k: 3
+  classification_ceiling: "internal"
+  metadata_filters: {"doc_type": "decision"}
+Pass: every returned source_document carries doc_type "decision".
+
+=== PART 4 — implementer agent task (writes csv_export/limits.py) ===
+
+Use the implementer agent to complete the following task. It must call the servers above; report the
+tool calls it made, not just the result.
+
+  Project: proj-komun
+  Task: Add a new helper function `get_export_row_limit()` to the CSV export module that returns the
+  configured max row limit, raising an `ExportLimitExceeded` error if the dataset exceeds it.
+  Handoff brief:
+  - project_id: proj-komun
+  - Scope: one new helper function and its error raise; no other changes
+  - Acceptance criteria:
+    1. Look up the correct error code for an export limit violation using the retrieval server —
+       call mcp__retrieval__retrieve with project_id "proj-komun" and
+       classification_ceiling "internal"; the answer is already in the reference corpus
+    2. Look up the CSV export batch size and memory constraints the same way
+    3. Write the function to `csv_export/limits.py`, creating the file if it does not exist
+    4. Record the implementation decision — including which error code you used and why — as a
+       storage entry via mcp__storage__write_entry with entry_type "decision" and
+       classification "internal" for project_id "proj-komun"
+    5. Report the entry_id of the stored decision and cite the source documents you retrieved
+
+Pass: the file exists and parses, the decision entry is stored under proj-komun at classification
+"internal", and the response names the entry_id plus at least one cited source_document.
+Fail: the agent reports a decision it never stored, or stores it at a classification other than
+"internal".
+
+=== SUMMARY ===
+
+After completing all steps, print this table with a result and one line of evidence per row:
+
+| Step | Description                    | Result |
+|------|--------------------------------|--------|
+| T1   | file_read allowed (planner)    |        |
+| T2   | task_tracker denied            |        |
+| T3   | shell denied (empty list)      |        |
+| T4   | test_runner tester only        |        |
+| T5   | web_search researcher only     |        |
+| 1    | write_entry                    |        |
+| 2    | list_entries                   |        |
+| 3    | read_entry                     |        |
+| 4    | update_entry                   |        |
+| 5    | read after update              |        |
+| 6    | delete_entry                   |        |
+| 7    | read after delete              |        |
+| 8    | classification rejection       |        |
+| 9    | vector retrieval               |        |
+| 10   | keyword fallback               |        |
+| 11   | ceiling enforcement            |        |
+| 12   | metadata filter                |        |
+| 13   | implementer task + decision    |        |
+
+Then state the overall verdict in one line. Your MCP servers should pass every test. Record the run
+in docs/iteration-log.md, naming any step that failed, the cause you can actually support, and the
+fix you applied.

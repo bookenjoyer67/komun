@@ -46,7 +46,7 @@ startup and writes entries when state changes.
   moves. Reason: memory is for what cannot be re-derived cheaply.
 - Per-task notes once the task is finished ("edited line 42 of `post.rs`") — the lesson's own
   distinction holds: an audit log is not a memory system.
-- Anything from `config.toml` or `.env*` (`AGENTS.md:56-59`). Reason: secrets must never enter a layer
+- Anything from `config.toml` or the environment files (`.env`, `.env.local`) (`AGENTS.md:59` `.env` / `.env.local`). Reason: secrets must never enter a layer
   that is designed to outlive the session and is designed to be committed.
 
 - **Scope:** Project-scoped. This memory belongs to this repository only, and `.memory/SCOPE.md` names
@@ -74,7 +74,7 @@ startup and writes entries when state changes.
   `export let`, no `on:click` and no `$:` (`AGENTS.md:104-106`).
 - The crypto boundary rule: no key material, key bundle, password, derived key or message plaintext is
   ever logged or written to any memory layer (`AGENTS.md:134`, `docs/CONVENTIONS.md:80-81`).
-- The change-control rule: never edit `migrations/001_schema.sql`; add `002+` (`AGENTS.md:111-117`).
+- The change-control rule: never edit `migrations/001_schema.sql`; add `002+` (`AGENTS.md:148`).
 
 **Does not belong here**
 
@@ -209,7 +209,7 @@ in a file that is read deliberately.
 
 **2. Put `.memory/` outside the repository, in a mounted volume.** Rejected for this system, and the
 repository's own history argues against it: the 2.2 run's evidence is citable only because the
-artifacts sit in the working tree with commit SHAs behind them (`docs/iteration-log.md:111-251`). Memory
+artifacts sit in the working tree with commit SHAs behind them (`docs/iteration-log.md:435`). Memory
 kept outside version control cannot be diffed against the code whose behaviour it explains, and a mount
 set up wrongly is exactly the scope-leak failure mode the next lesson drills. The cost of this choice
 is real and accepted: entries must be reviewed before every commit, which is why the write policy in
