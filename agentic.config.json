@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "_purpose": [
+    "The single seam table for this agentic quality gate. Every value here is a place where a fork",
+    "must depart from Komun. The consumers are: mcp/gate/server.py, scripts/run-agent.sh,",
+    "scripts/classify-change.py, scripts/validate_doc_conformance_deterministic.py and",
+    "eval/test_policy.py. Each consumer reads this file and exposes what it consumed through",
+    "`--print-config`, so scripts/port-self-test.sh can prove the wiring instead of trusting it.",
+    "Absent or unreadable, every consumer falls back to the values below, which are this repository's.",
+    "See PORTING.md for the fork checklist."
+  ],
+  "project": {
+    "name": "komun",
+    "language": "rust",
+    "repo_marker": "Cargo.toml"
+  },
+  "toolchain": {
+    "commands": {
+      "test": {
+        "argv": [
+          "cargo",
+          "test",
+          "--workspace"
+        ],
+        "description": "unit-test gate: the workspace test suites",
+        "guard": null
+      },
+      "clippy": {
+        "argv": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "description": "lint gate: release clippy over all targets, warnings are errors",
+        "guard": {
+          "marker": "Checking komun-server",
+          "marker_regex": "\\bChecking\\b\\s+(?P<marker>komun-server)\\b",
+          "touch_file": "crates/server/src/main.rs",
+          "reason": "a cached clippy run prints nothing and exits 0, which is indistinguishable from a clean lint; the touched file forces a real check"
+        }
+      },
+      "fmt": {
+        "argv": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "description": "formatting gate: check mode, no files are written",
+        "guard": null
+      }
+    },
+    "cache_dirs": [
+      "target"
+    ]
+  },
+  "containers": {
+    "base_image": "agent-sandbox:komun",
+    "tools_image": "agent-sandbox:komun-m3",
+    "workspace": "/workspace",
+    "memory_subpath": ".memory",
+    "memory_dir": "/workspace/.memory",
+    "registry_volume": "komun-cargo-registry",
+    "networks": {
+      "internal": "agent-internal",
+      "broker": "agent-net"
+    },
+    "broker": {
+      "name": "rev-broker",
+      "port": 4000
+    },
+    "read_only_overlays": [
+      "mcp/storage/allow-list.json",
+      "mcp/retrieval/allow-list.json",
+      "docs/routing-and-tool-grant-map.json",
+      "docs/routing-and-tool-grant-map.md"
+    ],
+    "journals": [
+      ".memory/storage-audit.log",
+      ".memory/retrieval-audit.log",
+      ".memory/gate-audit.log"
+    ],
+    "cargo_target_cache": "cargo-target",
+    "cargo_registry_cache": "cargo-registry"
+  },
+  "roles": {
+    "valid": [
+      "orchestrator",
+      "planner",
+      "implementer",
+      "tester",
+      "reviewer",
+      "project-manager",
+      "researcher"
+    ],
+    "mounts": {
+      "orchestrator": {
+        "workspace": "rw",
+        "memory": "ro",
+        "build_cache": "ro"
+      },
+      "planner": {
+        "workspace": "ro",
+        "memory": "rw",
+        "build_cache": "ro"
+      },
+      "implementer": {
+        "workspace": "rw",
+        "memory": "rw",
+        "build_cache": "ro"
+      },
+      "tester": {
+        "workspace": "ro",
+        "memory": "rw",
+        "build_cache": "rw"
+      },
+      "reviewer": {
+        "workspace": "ro",
+        "memory": "rw",
+        "build_cache": "ro"
+      },
+      "project-manager": {
+        "workspace": "ro",
+        "memory": "none",
+        "build_cache": "ro"
+      },
+      "researcher": {
+        "workspace": "ro",
+        "memory": "rw",
+        "build_cache": "ro"
+      }
+    }
+  },
+  "artifacts": {
+    "definitions_dir": ".claude/agents",
+    "skills_dir": ".claude/skills",
+    "settings": ".claude/settings.json",
+    "policy_document": "docs/governance-policy.md",
+    "grant_map_md": "docs/routing-and-tool-grant-map.md",
+    "grant_map_json": "docs/routing-and-tool-grant-map.json",
+    "calibration_log": "docs/calibration-log.md",
+    "step_classification": "docs/step-classification.md",
+    "style_rules": "docs/DOC-STYLE.md",
+    "storage_allow_list": "mcp/storage/allow-list.json",
+    "retrieval_allow_list": "mcp/retrieval/allow-list.json",
+    "storage_server": "mcp/storage/server.py",
+    "retrieval_server": "mcp/retrieval/server.py",
+    "gate_server": "mcp/gate/server.py",
+    "policy_suite": "eval/test_policy.py",
+    "launcher": "scripts/run-agent.sh",
+    "pipeline": ".github/workflows/ci.yml",
+    "project_key": "proj-komun",
+    "coursetools_server": "mcp/coursetools_server.py"
+  },
+  "classification": {
+    "governed_globs": [
+      ".claude/agents/*",
+      ".claude/agents/**",
+      ".claude/skills/*",
+      ".claude/skills/**",
+      "mcp/*",
+      "mcp/**",
+      "eval/*",
+      "eval/**",
+      "docs/governance-policy.md",
+      "docs/routing-and-tool-grant-map.md",
+      "docs/routing-and-tool-grant-map.json",
+      "docs/calibration-log.md",
+      "scripts/run-agent.sh",
+      ".github/workflows/*",
+      ".github/workflows/**",
+      "scripts/classify-change.py",
+      "scripts/run-reviewer.py",
+      "scripts/build-audit-trail.py"
+    ],
+    "policy_globs": [
+      "docs/governance-policy.md",
+      "mcp/*/allow-list.json",
+      "docs/routing-and-tool-grant-map.json",
+      "docs/routing-and-tool-grant-map.md",
+      "mcp/*/server.py",
+      "scripts/run-agent.sh",
+      ".github/workflows/*",
+      ".github/workflows/**"
+    ]
+  },
+  "port": {
+    "komun_defaults": {
+      "project.name": "komun",
+      "toolchain.commands.clippy.guard.marker": "Checking komun-server",
+      "toolchain.commands.clippy.guard.marker_regex": "\\bChecking\\b\\s+(?P<marker>komun-server)\\b",
+      "toolchain.commands.clippy.guard.touch_file": "crates/server/src/main.rs",
+      "containers.base_image": "agent-sandbox:komun",
+      "containers.tools_image": "agent-sandbox:komun-m3",
+      "containers.registry_volume": "komun-cargo-registry",
+      "containers.networks.internal": "agent-internal",
+      "containers.networks.broker": "agent-net",
+      "containers.broker.name": "rev-broker",
+      "artifacts.project_key": "proj-komun",
+      "artifacts.style_rules": "docs/DOC-STYLE.md"
+    },
+    "language_specific_note": [
+      "The three toolchain commands, the clippy cache guard and the build cache are Rust and cargo",
+      "specific. A Node or Python fork replaces the whole `toolchain` block and drops the guard, or",
+      "writes a guard of its own: the guard exists only because a cached linter prints nothing."
+    ]
+  }
+}
