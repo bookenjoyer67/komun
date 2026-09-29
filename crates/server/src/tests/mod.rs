@@ -206,7 +206,10 @@ mod session_token_tests {
         // SPEC Part 1.5: verification 24h, reset 30 minutes.
         assert_eq!(EMAIL_VERIFY_TTL_MINUTES, 24 * 60);
         assert_eq!(PASSWORD_RESET_TTL_MINUTES, 30);
-        assert!(
+        // Both operands are `const`, so a runtime `assert!` is `clippy::assertions_on_constants`.
+        // A `const` item keeps the same comparison and the same message and moves the failure from
+        // test time to build time, where a wrong TTL pair cannot be compiled at all.
+        const _: () = assert!(
             PASSWORD_RESET_TTL_MINUTES < EMAIL_VERIFY_TTL_MINUTES,
             "a reset link is more dangerous than a verification link and must live shorter"
         );

@@ -1,5 +1,8 @@
+// This file is already the crate's `tests` module (`crates/core/src/lib.rs:3` `mod tests;`), so an
+// inner `mod tests` would be `clippy::module_inception`. The name says what the module pins:
+// the Rust enums, the seeded categories and the wire format against `migrations/001_schema.sql`.
 #[cfg(test)]
-mod tests {
+mod schema_contract {
     use crate::models::*;
     use std::collections::{BTreeMap, BTreeSet};
 
