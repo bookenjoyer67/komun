@@ -6,9 +6,9 @@ Which agentic step does this record convert, and what does the record show about
 
 What is this decision's current status?
 
-**Proposed.** It stays Proposed until the script is wired into the running workflow, the governance
-artifacts are in sync, and the end-to-end regression check passes. Lesson 4.3, block [44] (VERBATIM):
-"It stays Proposed while the replacement is drafted, tested, measured, and integrated."
+**Accepted.** The script runs in the workflow through the `conformance` gate, the governance artifacts
+are in sync, and the integrated end-to-end regression passed on 2026-09-29 across four runs
+(`docs/calibration-log.md`). Lesson 4.3, block [44] (VERBATIM):
 
 ## Context
 
@@ -131,8 +131,8 @@ What does the conversion change, and what does it leave open?
   `git revert` of that commit undoes the conversion, as Lesson 4.3, block [52] (VERBATIM) requires.
 - The CI job stays open, because `.github/workflows/ci.yml` is held by another workstream in this
   session, and it runs no conformance job yet.
-- Acceptance is open. Status stays Proposed until the end-to-end regression check passes, and that
-  regression is a separate task from this integration.
+- Acceptance is settled. The regression passed on 2026-09-29, and its four runs are recorded in
+  `docs/calibration-log.md` with per-run wall clock, gate evidence and verdicts.
 
 ## Evidence
 
@@ -161,6 +161,12 @@ Which artifacts settle this decision?
   (`docs/iteration-log.md:191` `pieces = chunker(section)`), a literal absent from its file
   (`docs/memory-architecture.md:49` `.env*`), and a bare location
   (`docs/DOC-STYLE.md:40` `A bare location is a v1 form`).
-- Integrated end-to-end regression check: not run. It is a separate task, and the status stays Proposed
-  until it passes.
+- Integrated end-to-end regression check: PASSED on 2026-09-29. Four runs - D1 and D2 development, H1 and
+  H2 holdout - each reached a reviewer verdict, with the `conformance` gate run by the tester in every run.
+- Runnable in the workflow: the deterministic step runs inside the gate workflow through the
+  `conformance` gate. Its name is `toolchain.commands.conformance`, and the config entry
+  (`agentic.config.json:61` `"argv": ["python3", "scripts/run-conformance-gate.py"],`) is its argv.
+  The gate's prose file set is the config key `gates.conformance.files`.
+  The wrapper fails only on new drift against `HEAD`, so the repository's pre-existing findings never
+  make it red (`scripts/run-conformance-gate.py:2` `fail on NEW drift only.`).
 

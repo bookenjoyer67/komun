@@ -9,13 +9,13 @@ Which events does this log turn into governance?
 
 Record every near-miss beside the iteration-log line that evidences it, so a Module 4 denial traces to an observed event (`docs/iteration-log.md:3` `Every run of a workflow in this repo gets an entry below`).
 Draw the patterns below from the log's top five entries, Run 001 to Run 005, and the Module 3 work (`docs/iteration-log.md:8` `Run 005 (workflow 6`).
-Name each pattern, so the governance policy can cite the denial it argues for (`docs/calibration-log.md` this section's `NM-1` to `NM-9`).
+Name each pattern, so the governance policy can cite the denial it argues for (`docs/calibration-log.md` this section's `NM-1` to `NM-10`).
 
 ## Near-miss patterns for Module 4 governance
 
 Which near-misses does Module 4 calibrate against, and what does each one risk?
 
-Nine patterns follow, each named and each cited to the line that evidences it (`docs/iteration-log.md:1` `Iteration Log`).
+Ten patterns follow, each named and each cited to the line that evidences it (`docs/iteration-log.md:1` `Iteration Log`).
 
 ### NM-1 — Inert grant
 
@@ -70,6 +70,12 @@ Risk: a role's self-reported count can drift while the artifact stays correct (`
 Which near-miss showed a permission bit stopping nothing?
 
 Risk: a filesystem permission is not a guardrail when the writing process runs as root (`docs/iteration-log.md:293` `root ignores those bits`).
+
+### NM-10 — Wrapped-pointer false positive
+
+Which near-miss made the checker report drift on a correct citation?
+
+Risk: a pointer whose quoted literal wraps to the next line pairs with a neighbouring literal, so a correct citation reads as drift (`eval/test_deterministic_step.py:222` `def test_limitation_wrapped_literal_pairs_with_a_neighbour`).
 
 ## Governance controls these near-misses argue for
 
@@ -128,3 +134,42 @@ What does the script cost, and does it repeat byte for byte?
 
 The ten inputs, in the order the command names them: `AGENTS.md`, `CLAUDE.md`, `docs/DOC-STYLE.md`, `docs/governance-policy.md`, `docs/routing-and-tool-grant-map.md`, `docs/policy-reconciliation.md`, `docs/step-classification.md`, `docs/iteration-log.md`, `docs/memory-architecture.md`, `docs/orchestration-diagram.md`. The three reports live outside the repository, so the digest above is the record.
 
+## Which four runs closed the module 4.3 end-to-end regression?
+
+What did each run cost, and what did its gate report?
+
+| Run | Task id | Wall clock | Invocations, in seconds |
+| --- | --- | --- | --- |
+| D1 | `run-2026-09-29-calibration-nm` | `2323` s | `run2-d1-1` 634, `run2-d1-2` 900, `run3-d1-3` 474, `run3-d1-4` 315 |
+| D2 | `run-2026-09-29-coursetools-path` | `1592` s | `run3-d2-1` 495, `run3-d2-2` 968, `run3-d2-3` 129 |
+| H1 | `RUN-2026-09-29-schema-r1` | `1698` s | `run3-h1-1` 570, `run3-h1-2` 958, `run3-h1-3` 170 |
+| H2 | `run-2026-09-29-untested-invariant` | `1438` s | `run3-h2-1` 531, `run3-h2-2` 762, `run3-h2-3` 145 |
+
+- Read every wall-clock figure from the `wall_clock_s` field of the harness metadata block in the file that names it.
+- Record one invocation that hit the old cap: `run2-d1-2.txt` exited 124 at the 900 s cap, before the harness moved to 1800 s with an in-container terminator.
+- Record no cost figure. The broker reports no usage for these invocations, so cost is unmeasurable here and no estimate is offered.
+
+### Did the converted step run in place of the retired subagent?
+
+Which gate carried the step, and which role called it?
+
+- Carry the step as the `conformance` gate, whose argv is the repository's own config entry (`agentic.config.json:61` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
+- Call that gate from the `tester` alone, the one role the map grants `mcp__gate__run_gate`, with the converted step's own MCP access empty (`docs/routing-and-tool-grant-map.json:71` `"mcp_access": []`).
+- Read four journal rows in `.memory/gate-audit.log` as `"gate": "conformance"`, `"exit_code": 0` and `"calling_role": "tester"`, at `17:48:56`, `18:35:29`, `21:07:44` and `21:35:22` on 2026-09-29.
+- Spawn no `komun-docs-stylist` in any of the four runs. The four session transcripts list their subagent spawns in order, and that name is absent from every one.
+- Draw that name's retirement from the map's converted-steps section, which routes the step to the gate instead of a subagent (`docs/routing-and-tool-grant-map.md:99` `- Run that step inside the workflow through the `conformance` gate`).
+
+### What did the suites report after each run?
+
+Which gates were green, and which ones stayed red or absent?
+
+- **D1.** `policy` exit 0 (`90 passed`), `conformance` exit 0 (totals 155 to 148), `clippy` exit 0 with its guard satisfied, `test` exit 101 (156 passed, 2 failed), `fmt` exit 1.
+- **D2.** `policy` exit 0 (`90 passed in 1.93s`) and `conformance` exit 0; `clippy` barred by design, because its cache-hit guard writes `crates/server/src/main.rs`.
+- **H1.** `test` exit 0 (158 passed), `clippy` exit 0 with the guard applied and satisfied, `policy` exit 0, `conformance` exit 0, `fmt` exit 1.
+- **H2.** `test` exit 0 (`komun-core` 21 passed, `komun-server` 138 passed), `clippy` exit 0 with the guard applied and satisfied, `policy` exit 0, `conformance` exit 0, `fmt` exit 1.
+- Keep `fmt` red in all four runs, unattributed to either change and pre-existing at `HEAD`.
+- Settle H1's rule through the gate's per-file row, which moved from base `{CIT 6, R1 8}` to current `{CIT 0, R1 0}` with `new_findings: []`.
+- Leave two criteria unsettleable in-workflow, because no gate and no role holds a shell or a diff: H1's per-suite pytest split, and the changed-file scope of both new runs.
+- Measure those open questions through the harness, which is not the run. The citation counts re-measured at 82 checked and 82 resolved (`python3 scripts/validate_doc_conformance_deterministic.py --input mcp/gate/SCHEMA.md` -> `0 violation(s), 82 citation(s) checked, 82 resolved at the cited line`).
+- Measure the `fmt` question the same way. H2's `fmt` body named `crates/core/src/tests.rs` in four hunks byte-identical to `HEAD` (`rustfmt --check` on both -> `4` hunks, same line numbers, none touching the new test).
+- Change exactly one content file per new run: `mcp/gate/SCHEMA.md` for H1 and `crates/core/src/tests.rs` for H2, measured on the host with `git status`.

@@ -14,12 +14,12 @@ Runtime file inside the sandbox container:
 
 | File | Default path | Authority |
 | --- | --- | --- |
-| Audit journal | `/workspace/.memory/gate-audit.log` | `mcp/gate/gate_vocabulary.py:60` `str(Path(MEMORY_DIR) / "gate-audit.log")` |
+| Audit journal | `/workspace/.memory/gate-audit.log` | `mcp/gate/gate_vocabulary.py:65` `str(Path(MEMORY_DIR) / "gate-audit.log")` |
 
 The path follows `MEMORY_DIR`, which defaults to `/workspace/.memory`, the config's `containers.memory_dir`
-(`mcp/gate/gate_vocabulary.py:59` `MEMORY_DIR = os.getenv("MEMORY_DIR", str(agentic_config.get("containers.memory_dir")))`).
+(`mcp/gate/gate_vocabulary.py:64` `MEMORY_DIR = os.getenv("MEMORY_DIR", str(agentic_config.get("containers.memory_dir")))`).
 Override `GATE_AUDIT_PATH` and `GATE_WORKSPACE` for a local run
-(`mcp/gate/gate_vocabulary.py:58` `WORKSPACE = os.getenv("GATE_WORKSPACE", str(agentic_config.get("containers.workspace")))`).
+(`mcp/gate/gate_vocabulary.py:63` `WORKSPACE = os.getenv("GATE_WORKSPACE", str(agentic_config.get("containers.workspace")))`).
 
 Which command starts the server, and how is it registered?
 
@@ -35,18 +35,30 @@ claude mcp add --transport http gate http://localhost:8003/mcp
 and `--host` defaults to `0.0.0.0` (`mcp/gate/server.py:408` `default="0.0.0.0"`). The help output
 confirms both (`python3 mcp/gate/server.py --help` -> `--port PORT           HTTP port (default 8003)`).
 
-## Which three gates exist, and which command does each one run?
+## Which five gates exist, and which command does each one run?
 
-Three gates exist, and the argv of each is a module constant in the `GATES` table
-(`mcp/gate/gate_vocabulary.py:94` `GATES: dict[str, dict[str, Any]] = {`).
+Where do the five gate names come from?
+
+Five gates exist. The gate names are the `toolchain.commands` keys in `agentic.config.json`, and
+`gate_vocabulary.py` builds the `GATES` table from them
+(`mcp/gate/gate_vocabulary.py:121` `GATES: dict[str, dict[str, Any]] = {name: _gate(name) for name in GATE_NAMES}`).
 
 | Gate | Exact argv | Authority |
 | --- | --- | --- |
 | `test` | `cargo test --workspace` | `agentic.config.json:20-24` `"argv": [ "cargo", "test", "--workspace" ],` |
 | `clippy` | `cargo clippy --release --all-targets -- -D warnings` | `agentic.config.json:29-37` `"argv": [ "cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings" ],` |
 | `fmt` | `cargo fmt --check` | `agentic.config.json:47-51` `"argv": [ "cargo", "fmt", "--check" ],` |
+| `policy` | `python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q` | `agentic.config.json:56` `"argv": ["python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "-q"],` |
+| `conformance` | `python3 scripts/run-conformance-gate.py` | `agentic.config.json:61` `"argv": ["python3", "scripts/run-conformance-gate.py"],` |
 
-These are the project's documented gates (`AGENTS.md:196` `cargo test --workspace`,
+Two of the five gates are new, and both are name-only like the cargo gates. The `policy` gate runs the
+eval suites. The `conformance` gate runs `scripts/run-conformance-gate.py`, whose verdict is new drift
+only (`scripts/run-conformance-gate.py:2` `fail on NEW drift only.`), and whose prose file set is the
+config key `gates.conformance.files` (`agentic.config.json:223` `"files": [`). It checks each file
+against the same file at `HEAD` and fails only when a rule's finding count rises, so the repository's
+pre-existing findings never make it red.
+
+The three cargo gates are the project's documented gates (`AGENTS.md:196` `cargo test --workspace`,
 `AGENTS.md:197` `cargo clippy --release -- -D warnings`, `.memory/knowledge/coding-standards.md:10`
 `` `cargo clippy --release -- -D warnings` must exit clean on every change. ``, and rule 1's cache-hit
 note `.memory/knowledge/coding-standards.md:11` `a silent second run is a cache hit, not a clean lint`).
@@ -54,14 +66,16 @@ note `.memory/knowledge/coding-standards.md:11` `a silent second run is a cache 
 The clippy argv is deliberately stricter than the documented form: it adds `--all-targets`, so test
 and example targets are linted too.
 
-`list_gates` publishes the same three tuples (`mcp/gate/server.py:344` `"argv": list(definition["argv"]),`).
+`list_gates` publishes the same five tuples (`mcp/gate/server.py:344` `"argv": list(definition["argv"]),`).
 A live call returned them verbatim, so the allowlist a caller sees is the allowlist that runs:
 
 ```json
-{"clippy": ["cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings"], "fmt": ["cargo", "fmt", "--check"], "test": ["cargo", "test", "--workspace"]}
+{"clippy": ["cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings"], "conformance": ["python3", "scripts/run-conformance-gate.py"], "fmt": ["cargo", "fmt", "--check"], "policy": ["python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "-q"], "test": ["cargo", "test", "--workspace"]}
 ```
 
 ## Why can a caller not run an arbitrary command?
+
+What does the tool accept in place of a command string?
 
 Because the only thing `run_gate` accepts is a key into `GATES`, and the argv it executes is that
 table's tuple (`mcp/gate/server.py:120` `if gate not in GATES:` and
@@ -72,7 +86,7 @@ The refusal is raised before anything is executed
 free-form command gets this text, captured from a live call:
 
 ```
-Error calling tool 'run_gate': refused: 'cargo test --workspace' is not an allowlisted gate. This server runs only ['clippy', 'fmt', 'test'] by name; it accepts no command string, no extra arguments and no shell.
+Error calling tool 'run_gate': refused: 'cargo test --workspace' is not an allowlisted gate. This server runs only ['clippy', 'conformance', 'fmt', 'policy', 'test'] by name; it accepts no command string, no extra arguments and no shell.
 ```
 
 An argument-passthrough attempt and a shell-injection attempt were refused with the same message:
@@ -94,9 +108,11 @@ Which properties make that airtight?
 
 ## What does `run_gate` accept, and what does it return?
 
+Which artifact settles the parameter list?
+
 The tool signature is the parameter authority (`mcp/gate/server.py:360` `def run_gate(`).
 
-- Pass `gate` (`str`, required) as one of `test`, `clippy`, `fmt` (`mcp/gate/server.py:360` `gate: str,`).
+- Pass `gate` (`str`, required) as one of `test`, `clippy`, `fmt`, `policy`, `conformance` (`mcp/gate/server.py:360` `gate: str,`).
 - Pass `calling_role` (`str`, optional, default `unknown`) so the journal names the caller (`mcp/gate/server.py:360` `calling_role: str = "unknown"`).
 - Pass `timeout_seconds` (`int`, optional, default `null` -> 900) as the per-run cap, clamped to 60..3600 (`mcp/gate/server.py:360` `timeout_seconds: int | None = None`).
 
@@ -118,6 +134,8 @@ The returned object carries one key per required fact (`mcp/gate/server.py:310` 
 | `output_ansi_stripped` | `bool` | Always `true`, so a caller knows colour codes were removed (`mcp/gate/server.py:324` `"output_ansi_stripped": True,`) |
 
 ## How does the clippy cache-hit guard work?
+
+Which two steps make up the guard?
 
 The gate touches a file under test, then requires cargo's status line for that crate in the output.
 
@@ -160,6 +178,8 @@ exit codes alone would call that a clean lint; the guard makes it unrepresentabl
 
 ## What does the per-run timeout do?
 
+What is the default cap, and which bounds clamp it?
+
 Default 900 s (`mcp/gate/server.py:81` `DEFAULT_TIMEOUT_SECONDS = int(os.getenv("GATE_TIMEOUT_SECONDS", "900"))`),
 clamped into 60..3600 s (`mcp/gate/server.py:135` `return max(MIN_TIMEOUT_SECONDS, min(MAX_TIMEOUT_SECONDS, timeout_seconds))`).
 
@@ -173,6 +193,8 @@ itself is not exercised by the self-test: no gate in this repository runs longer
 so there is no honest way to reach it without changing the gates.
 
 ## What shape does one audit-journal record have?
+
+How is each record written to the journal?
 
 Write one JSON object per line, with keys in sorted order
 (`mcp/gate/server.py:142` `line = json.dumps(record, sort_keys=True) + "\n"`).
@@ -214,16 +236,22 @@ No tool edits or erases the journal; it is opened append-only
 read is bounded (`mcp/gate/server.py:382` `if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 200:`
 with `mcp/gate/server.py:383` `raise ValueError("limit must be an integer between 1 and 200")`).
 
-## Which exit codes did the three gates produce?
+## Which exit codes did the five gates produce?
 
-Captured through the server on 2026-09-28 in the agent sandbox container
-(`cargo 1.95.0 (f2d3ce0bd 2026-03-21)`, `rustfmt 1.9.0-stable (59807616e1 2026-04-14)`):
+When and where were these exit codes captured?
+
+Captured through the server in the agent sandbox container
+(`cargo 1.95.0 (f2d3ce0bd 2026-03-21)`, `rustfmt 1.9.0-stable (59807616e1 2026-04-14)`). The three
+cargo rows are the 2026-09-28 capture, and the two Python rows were captured on 2026-09-29 after the
+vocabulary grew to five names:
 
 | Gate | Exit code | `passed` | Guard | Duration | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | `test` | `0` | `true` | not applicable | 5.7 s | `test result: ok. 20 passed; 0 failed` and `ok. 138 passed; 0 failed` — 158 passed, 0 failed, the documented baseline |
 | `clippy` | `0` | `true` | applied, satisfied | 2.5 s | `Checking komun-server v0.1.0 (/workspace/crates/server)`, then `Finished` with no lint |
 | `fmt` | `1` | `false` | not applicable | 0.1 s | 213 diff hunks across 35 files |
+| `policy` | `0` | `true` | not applicable | 1.1 s | `90 passed in 0.90s`, the two eval suites |
+| `conformance` | `0` | `true` | not applicable | 2.2 s | `verdict pass`, `"reason": "no rule's finding count rose against HEAD"`, 135 findings at base against 134 current |
 
 The `fmt` gate genuinely fails, and the failure is not this server's doing and not new: rustfmt over
 the committed `HEAD` revision of an untouched file also fails (`git show HEAD:crates/server/src/api/admin.rs`
@@ -234,10 +262,12 @@ gate rewrites any file; check mode only reports.
 
 ## How is this server's quality validated?
 
+Which script validates this server, and what does it assert?
+
 `mcp/gate/selftest.py` calls the running server over streamable HTTP and asserts every behaviour this
-document claims: the tool surface, the three-gate allowlist, three kinds of refusal, the clippy
-guard, the timeout clamp, real exit codes from the three gates, the ANSI strip, and one journal line
-per executed invocation.
+document claims: the tool surface, the five-gate allowlist, the three refusal shapes aimed at both new
+gate names, the clippy guard, the timeout clamp, real exit codes from the three cargo gates, the ANSI
+strip, and one journal line per executed invocation.
 
 Run it against a listening server:
 
@@ -249,16 +279,18 @@ python3 mcp/gate/selftest.py --url http://localhost:8003/mcp
 Which line does it print, and which exit code does it use?
 
 Print one `SELFTEST_RESULT` line and exit `0` only when every check passed
-(`mcp/gate/selftest.py:268` `print(f"SELFTEST_RESULT passed={passed} total={total}", flush=True)`).
+(`mcp/gate/selftest.py:316` `print(f"SELFTEST_RESULT passed={passed} total={total}", flush=True)`).
 
-A live run against the server on port 8003 printed `SELFTEST_RESULT passed=21 total=21` and exited
+A live run against the server on port 8003 printed `SELFTEST_RESULT passed=27 total=27` and exited
 `0`, with these checks:
 
 | Check | What it proves |
 | --- | --- |
 | `tool_surface`, `run_gate_parameters` | Exactly three tools, and `run_gate` takes `gate`, `calling_role`, `timeout_seconds` |
-| `allowlist_is_the_three_documented_gates` | The published argv equals the expected argv, held independently in the test (`mcp/gate/selftest.py:34` `EXPECTED_GATES = {`) |
-| `refuses_free_form_command`, `refuses_argument_passthrough`, `refuses_shell_injection` | A command string, an extra argument, and an injected `touch` are all refused |
+| `allowlist_is_the_five_documented_gates` | The published argv equals the expected argv, held independently in the test (`mcp/gate/selftest.py:34` `EXPECTED_GATES = {`) |
+| `refuses_free_form_command`, `refuses_argument_passthrough`, `refuses_shell_injection` | A command string, an extra argument, and an injected `touch` are all refused on the three cargo names |
+| `policy_refuses_free_form_command`, `policy_refuses_argument_passthrough`, `policy_refuses_shell_injection` | The same three refusals, aimed at `policy` |
+| `conformance_refuses_free_form_command`, `conformance_refuses_argument_passthrough`, `conformance_refuses_shell_injection` | The same three refusals, aimed at `conformance` |
 | `shell_injection_ran_nothing`, `refusals_journal_nothing` | Nothing ran and nothing was journalled |
 | `timeout_is_clamped_and_reported` | `timeout_seconds=1` comes back as `60` |
 | `fmt_gate_executes_and_reports`, `fmt_gate_writes_nothing` | The real `fmt` exit code and its diff report |
@@ -267,7 +299,7 @@ A live run against the server on port 8003 printed `SELFTEST_RESULT passed=21 to
 | `captured_output_has_no_ansi_escapes` | No ESC byte survives into the returned output |
 | `journal_grows_one_line_per_invocation`, `journal_records_argv_exit_code_and_timestamp`, `read_audit_log_matches_the_journal_file` | One line per executed call, with the exact argv, exit code and timestamp |
 
-The test holds its own expectation of the three argv tuples rather than asking the server twice, so a
+The test holds its own expectation of the five argv tuples rather than asking the server twice, so a
 server that published a wrong allowlist would fail the check instead of validating itself.
 
 ## Design notes
@@ -275,7 +307,7 @@ server that published a wrong allowlist would fail the check instead of validati
 Why is there no `run_command`, no `--` passthrough, and no cwd argument?
 
 - Keep the execution surface a fixed vocabulary, so a call cannot widen its own access: the
-  `GATES` table is the only argv source (`mcp/gate/gate_vocabulary.py:94` `GATES: dict[str, dict[str, Any]] = {`).
+  `GATES` table is the only argv source (`mcp/gate/gate_vocabulary.py:121` `GATES: dict[str, dict[str, Any]] = {name: _gate(name) for name in GATE_NAMES}`).
 - Keep `shell` off and the argv a list, so a metacharacter in a caller value can never become a
   command (`mcp/gate/server.py:279` `subprocess.run(`).
 - Journal only executed commands, so the journal's line count is itself an audit fact

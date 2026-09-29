@@ -308,6 +308,37 @@ mod schema_contract {
         assert_serde_is_db_value!(CategoryScope);
     }
 
+    /// Display must emit the database value, never the Rust variant name. `Display` is what a log
+    /// line, an error message and every `format!` string carry, so a fallback to the derived name
+    /// would put `LikeNew` where the column holds `like_new`.
+    /// Held by `crates/core/src/models/mod.rs:44` `f.write_str(self.as_str())`, inside
+    /// `impl std::fmt::Display for $name` at `crates/core/src/models/mod.rs:42`.
+    macro_rules! assert_display_is_db_value {
+        ($enum:ty) => {{
+            for variant in <$enum>::ALL {
+                assert_eq!(
+                    format!("{variant}"),
+                    variant.as_str(),
+                    "{} must Display as its database value",
+                    stringify!($enum)
+                );
+            }
+        }};
+    }
+
+    #[test]
+    fn enums_display_as_their_database_values() {
+        assert_display_is_db_value!(PostKind);
+        assert_display_is_db_value!(Urgency);
+        assert_display_is_db_value!(PostStatus);
+        assert_display_is_db_value!(Visibility);
+        assert_display_is_db_value!(ItemCondition);
+        assert_display_is_db_value!(Role);
+        assert_display_is_db_value!(MatchStatus);
+        assert_display_is_db_value!(OfferKind);
+        assert_display_is_db_value!(CategoryScope);
+    }
+
     #[test]
     fn only_marketplace_kinds_are_market_kinds() {
         assert!(PostKind::Listing.is_market());
