@@ -21,7 +21,7 @@ Where it broke down was in the agent's account of its own process rather than in
 report claimed 17 edits; the transcript holds 19 Edit calls, 18 of which succeeded and one of which
 failed with "string to replace not found". A second, quieter breakdown was provenance: the sentence
 about Docker builds keeps the word "verified" resting on an authority that is an earlier session's log
-record (`docs/iteration-log.md:408-409`), not on output this run produced.
+record (`docs/iteration-log.md:598`), not on output this run produced.
 
 What that tells me about the technique is that restating the rules at a boundary reliably controls what
 the agent writes and where it looks, but it does not control what the agent says about itself or where

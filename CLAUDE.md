@@ -81,3 +81,55 @@ output and ask for human confirmation before acting on it.
 Read SCOPE.md at the root of .memory/ on startup. If it does not
 match this project, halt and report the mismatch before doing
 anything else.
+
+## Orchestration
+
+The pre-merge gate on this repository runs as an orchestrated workflow. The orchestrator sequences the
+work and evaluates what comes back; it never writes production code and never runs a gate command.
+
+### Goal and acceptance criteria
+
+- Goal: take one requested change to Komun from request to a reviewed, mergeable diff.
+- Acceptance criteria for every run: `cargo test --workspace` passes, `cargo clippy --release -- -D warnings`
+  reports zero warnings, `cargo fmt --check` is clean, `npm run check` and `npx vitest run` pass under `web/`,
+  and every changed prose file satisfies `docs/DOC-STYLE.md`.
+
+### Ordered sequence
+
+1. `project-manager` opens the ticket and records the acceptance criteria above.
+2. `planner` decomposes the change into ordered steps, writes the plan to the `storage` MCP server under
+   project `proj-komun`, and returns that entry id.
+3. Human checkpoint 1 — plan approval. The run stops here until a human approves or amends the plan.
+4. `implementer` writes the change, records its decisions in storage, and returns the entry ids.
+5. `tester` runs the gate commands and records the raw output as a storage entry.
+6. `reviewer` runs the deterministic conformance check (`scripts/validate_doc_conformance_deterministic.py`, the Module 4.3 conversion) against the `docs/DOC-STYLE.md` rules and the repository rules, then records a verdict.
+7. Human checkpoint 2 — release approval. The run stops here until a human approves the merge.
+8. `project-manager` closes the ticket with the delivered scope.
+
+### Evaluation gate
+
+Evaluate every subagent output before the next role starts. Check three things: the handoff format
+defined by `.memory/knowledge/handoff-subagent-to-orchestrator.md`, the entry id the role claims to have
+written, and the acceptance criterion it claims to satisfy. An output that fails the format returns to
+the same role once, with the specific defect named.
+
+### Branching logic
+
+- Loop: return a failed or malformed output to the same role once. A second failure escalates.
+- Skip: skip `reviewer` when the change touches no prose file and no code path named in the plan's scope.
+- Halt: stop the run when a role reports a blocked precondition, and name the missing input in the summary.
+- Escalate: hand back to the human when a role fails twice, when a fix would change the plan's scope, or
+  when the change touches `migrations/` or authentication code.
+
+### Human checkpoints
+
+Two, and both are required: plan approval before any implementation work, and release approval before
+anything reaches `main`. The orchestrator stops and waits at each, and records the approval in the run
+summary.
+
+### Roles and tool grants
+
+`docs/routing-and-tool-grant-map.md` is the decision of record for who may call what. When an agent
+definition and that map disagree, change the definition to match the map. The seven roles are
+`orchestrator`, `planner`, `implementer`, `tester`, `reviewer`, `project-manager` and the optional
+`researcher`.
