@@ -1,0 +1,130 @@
+# Calibration Log
+
+Version: v1.0.0
+Last updated: 2026-09-28
+
+## What this log records
+
+Which events does this log turn into governance?
+
+Record every near-miss beside the iteration-log line that evidences it, so a Module 4 denial traces to an observed event (`docs/iteration-log.md:3` `Every run of a workflow in this repo gets an entry below`).
+Draw the patterns below from the log's top five entries, Run 001 to Run 005, and the Module 3 work (`docs/iteration-log.md:8` `Run 005 (workflow 6`).
+Name each pattern, so the governance policy can cite the denial it argues for (`docs/calibration-log.md` this section's `NM-1` to `NM-9`).
+
+## Near-miss patterns for Module 4 governance
+
+Which near-misses does Module 4 calibrate against, and what does each one risk?
+
+Nine patterns follow, each named and each cited to the line that evidences it (`docs/iteration-log.md:1` `Iteration Log`).
+
+### NM-1 — Inert grant
+
+Which near-miss let a granted tool satisfy no gate?
+
+Risk: a role granted an inert tool reports blocked gates rather than failed ones, so the run holds no gate evidence (`docs/iteration-log.md:46-47` `the course's deliberately inert stub`).
+
+### NM-2 — Starved role
+
+Which near-miss left a planning role unable to read its own inputs?
+
+Risk: a planning role denied its reads plans from a ten-line brief and cannot ground the plan it returns (`docs/iteration-log.md:75-76` `its plan rested entirely on the ten-line quotation`).
+
+### NM-3 — Union permissions
+
+Which near-miss showed confinement resting on a single file?
+
+Risk: a permission union lets a role call another role's tool, so confinement rests on each definition's denied list (`docs/iteration-log.md:103` `allows the union of every role's tools`).
+
+### NM-4 — Self-approved provenance
+
+Which near-miss put an approval in the approver's own voice?
+
+Risk: a checkpoint record written by the role it judges borrows the appearance of an independent approval (`docs/iteration-log.md:116-117` `the same role whose verdict it approves`).
+
+### NM-5 — Credential inside memory reach
+
+Which near-miss brought a credential within reach of a committable file?
+
+Risk: a write path open to any classification can persist a credential into files meant to be committed (`docs/iteration-log.md:235` `sk-ant-…`).
+
+### NM-6 — Borrowed memory mount
+
+Which near-miss let another project's rules answer for this one?
+
+Risk: memory mounted from another project looks identical to the right memory, so a role acts on foreign rules (`docs/iteration-log.md:230-231` `SCOPE.md declares project-b; the workspace is Komun`).
+
+### NM-7 — Unevidenced closure
+
+Which near-miss closed a change with gates never executed?
+
+Risk: a run can close a change with two gates unrun and record the gap as a known limitation (`docs/iteration-log.md:141` `not run: crates/wasm/pkg/ is absent`).
+
+### NM-8 — Unreproducible self-report
+
+Which near-miss showed a report's own numbers as no evidence?
+
+Risk: a role's self-reported count can drift while the artifact stays correct (`docs/iteration-log.md:366` `the closing report's self-reported edit count does not reproduce`).
+
+### NM-9 — Permissions that do not bind the process
+
+Which near-miss showed a permission bit stopping nothing?
+
+Risk: a filesystem permission is not a guardrail when the writing process runs as root (`docs/iteration-log.md:293` `root ignores those bits`).
+
+## Governance controls these near-misses argue for
+
+Which control does each near-miss buy?
+
+- Bind gate execution to the tester alone, because `NM-1` showed an inert grant blocking every gate (`docs/routing-and-tool-grant-map.md:70` `keep the gate server the one path that executes a command`).
+- Grant reads to the roles whose work needs them, because `NM-2` showed a starved planner (`docs/routing-and-tool-grant-map.md:16` `mcp__coursetools__codebase_search`).
+- Enumerate denials in every definition, because `NM-3` showed confinement inferred from a union (`docs/iteration-log.md:108` `enumerate the denied MCP tools in orchestrator.md`).
+- Give every checkpoint record one author, because `NM-4` showed a self-approved checkpoint (`docs/iteration-log.md:127` `assign checkpoint records to the project-manager`).
+- Cap every write at `internal`, because `NM-5` showed a credential inside memory reach (`docs/memory-architecture.md:151` `Must never appear in any memory file.`).
+- Scope every memory mount to this project, because `NM-6` showed borrowed memory answering for this repository (`docs/memory-architecture.md:138` `Identifies which project owns the mounted memory directory`).
+- Require one verdict per gate and no `Done` status without evidence, because `NM-7` showed an unevidenced closure (`.claude/agents/project-manager.md:53` `Every gate passed`).
+- Require the literal output behind every number, because `NM-8` showed a self-report that does not reproduce (`docs/iteration-log.md:425` `no claim may rest on an earlier session's record`).
+- Enforce the read-only memory layers with a hard stop, because `NM-9` showed permission bits a root process ignores (`docs/memory-architecture.md:196` `did not stop a root write`).
+
+## Before and after the deterministic conversion
+
+Which step does this entry measure, and what did each side of the conversion cost?
+
+The step is the prose and citation conformance check (`docs/step-classification.md:43` `Step: prose and citation conformance check — CONVERTED`). The decision of record is `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`, and both sides below are measured runs rather than projections.
+
+### Before conversion — the agentic run of 2026-09-26
+
+What did one agentic pass cost, and what did it score?
+
+- Cycle time: 45m13s of wall clock for nine operator messages (`docs/iteration-log.md:380` `45m13s wall`).
+- Token cost: 2,400 input and 164,438 output, plus 230,407 cache-write and 5,606,538 cache-read (`docs/iteration-log.md:386-387` `input 2,400 / output 164,438 / cache`).
+- Model spend: $8.37 at the CLI's own accounting, over 80 distinct API requests (`docs/iteration-log.md:386` `$8.37`).
+- Rubric score: 11 of 12, PASS (`docs/iteration-log.md:369` `| **Total** | **11 / 12**`).
+- Host-side review beside the run: ≈2.1 minutes in the longest cycle, scripted rather than spot-checked (`docs/iteration-log.md:498` `≈2.1 min`).
+
+### After conversion — three runs of the script on 2026-09-29
+
+What does the script cost, and does it repeat byte for byte?
+
+- Command: `python3 scripts/validate_doc_conformance_deterministic.py --input <file> --output run<N>.json`, over the ten files named at the end of this section.
+- Cycle time: 0.844s, 0.424s and 0.422s across the three runs, against 45m13s for the agentic pass (`docs/iteration-log.md:380` `45m13s wall`).
+- Token cost: zero and no model call, because the script imports five standard modules alone (`scripts/validate_doc_conformance_deterministic.py:63` `import argparse`).
+- Spend: $0.00, and the report carries no timestamp, so two runs over one input are byte-identical.
+- Repeatability, diff-verified: one SHA-256 digest over all three reports, `15f1c690dbfdb0e1c19f78237836ce1669b47de47c176a98dfe56a943cc61af5`; `diff -q run1.json run2.json` and `diff -q run1.json run3.json` each print nothing and exit 0.
+- Coverage of each run: 299 citations checked, 289 resolved at the cited line, 10 citation findings, and 72 pointers skipped for want of a literal beside them.
+- Clean inputs exist in the same run: `docs/step-classification.md` and `docs/orchestration-diagram.md` return `0 violation(s)` each.
+- **Known limitation, with its count.** Two of the ten findings are false positives from the
+  wrapped-literal pairing mode, and neither citation was rewritten. `AGENTS.md:29` and `AGENTS.md:45`
+  both cite `web/package.json`, whose intended literals sit one line below their pointers
+  (`web/package.json:12` `"@sveltejs/adapter-static": "^3.0.0",`) and
+  (`web/package.json:20` `"svelte": "^5.0.0",`).
+- **The other eight findings are the same pairing mode.** They sit in `docs/policy-reconciliation.md`,
+  where pointers are chained on one line, and two were hand-checked as correct citations
+  (`docs/policy-reconciliation.md:37` `the reviewer edits nothing it reviews`) and
+  (`.claude/agents/reviewer.md:16-17` `- mcp__gate__list_gates`).
+- **The rule findings are pre-existing.** Every file this conversion edited holds the same rule-finding
+  count after the edit as before it: `docs/step-classification.md` reports `0 violation(s)`,
+  `docs/routing-and-tool-grant-map.md` reports `8 violation(s)`, and `docs/governance-policy.md`
+  reports `1 violation(s)`. No rule finding here was introduced by the integration.
+
+The ten inputs, in the order the command names them: `AGENTS.md`, `CLAUDE.md`, `docs/DOC-STYLE.md`, `docs/governance-policy.md`, `docs/routing-and-tool-grant-map.md`, `docs/policy-reconciliation.md`, `docs/step-classification.md`, `docs/iteration-log.md`, `docs/memory-architecture.md`, `docs/orchestration-diagram.md`. The three reports live outside the repository, so the digest above is the record.
+

@@ -11,6 +11,15 @@ model: inherit
 permissionMode: default
 ---
 
+# komun-docs-stylist (RETIRED — annotated 2026-09-29)
+
+Which step replaced this definition, and where is the record?
+
+> **Retired.** The prose and citation conformance step this definition ran now runs as
+> `scripts/validate_doc_conformance_deterministic.py` (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`).
+> Keep this definition as the Module 1/2 record, and route no new conformance work to it. The
+> annotation replaces the lesson's deletion clause, and the ADR's Consequences section records why.
+
 Agent version: v0.1.0
 
 You enforce Komun's documentation standard on prose. You do not write documentation from scratch, you
