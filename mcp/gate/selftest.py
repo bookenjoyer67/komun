@@ -2,10 +2,10 @@
 """Self-test for the quality-gate MCP server.
 
 Calls the running server over streamable HTTP and asserts the behaviours the server claims: the tool
-surface, the three-gate allowlist, refusal of a free-form command, refusal of a shell-injection
-string, the clippy cache-hit guard, real exit codes from the three gates, and one audit-journal line
-per executed invocation. Every check prints PASS or FAIL with the evidence it used; any FAIL makes
-the process exit non-zero. Printed output is the record of a real run, not a restatement of intent.
+surface, the five-gate allowlist, refusal of a free-form command, a passthrough and a shell-injection
+string on each of the five names, the clippy cache-hit guard, real exit codes from the three Rust
+gates, and one audit-journal line per executed invocation. Every check prints PASS or FAIL with its
+evidence; any FAIL makes the process exit non-zero, and the output is the record of a real run.
 
 Run against a server already listening inside the sandbox container:
 
@@ -35,11 +35,17 @@ EXPECTED_GATES = {
     "test": ["cargo", "test", "--workspace"],
     "clippy": ["cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings"],
     "fmt": ["cargo", "fmt", "--check"],
+    "policy": [
+        "python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "-q",
+    ],
+    "conformance": ["python3", "scripts/run-conformance-gate.py"],
 }
 EXPECTED_TOOLS = {"list_gates", "run_gate", "read_audit_log"}
 EXPECTED_RUN_GATE_PARAMS = {"gate", "calling_role", "timeout_seconds"}
 GUARD_MARKER = "Checking komun-server"
 INJECTION_TARGET = "/tmp/gate-selftest-pwned"
+INJECTION_TARGET_POLICY = "/tmp/gate-selftest-pwned-policy"
+INJECTION_TARGET_CONFORMANCE = "/tmp/gate-selftest-pwned-conformance"
 TEST_SUMMARY = re.compile(r"^test result: \w+\. (?P<passed>\d+) passed; (?P<failed>\d+) failed")
 
 RESULTS: list[tuple[str, bool, str]] = []
@@ -115,7 +121,7 @@ async def run_selftest(url: str, audit_path: str) -> int:
         gates = payload(await client.call_tool("list_gates", {}))
         published = {entry["gate"]: entry["argv"] for entry in gates}
         check(
-            "allowlist_is_the_three_documented_gates",
+            "allowlist_is_the_five_documented_gates",
             published == EXPECTED_GATES,
             f"published={json.dumps(published, sort_keys=True)}",
         )
@@ -128,10 +134,52 @@ async def run_selftest(url: str, audit_path: str) -> int:
             f"test; touch {INJECTION_TARGET}",
             f"gate='test; touch {INJECTION_TARGET}'",
         )
+        # The two new gates are name-only too, so the same three refusals are aimed at each of them:
+        # a free-form command string, an argument passthrough and a shell-injection string.
+        await refusal(
+            client,
+            "policy_refuses_free_form_command",
+            "python3 -m pytest eval/test_policy.py",
+            "gate='python3 -m pytest eval/test_policy.py'",
+        )
+        await refusal(
+            client,
+            "policy_refuses_argument_passthrough",
+            "policy -- -k NM-1",
+            "gate='policy -- -k NM-1'",
+        )
+        await refusal(
+            client,
+            "policy_refuses_shell_injection",
+            f"policy; touch {INJECTION_TARGET_POLICY}",
+            f"gate='policy; touch {INJECTION_TARGET_POLICY}'",
+        )
+        await refusal(
+            client,
+            "conformance_refuses_free_form_command",
+            "python3 scripts/run-conformance-gate.py",
+            "gate='python3 scripts/run-conformance-gate.py'",
+        )
+        await refusal(
+            client,
+            "conformance_refuses_argument_passthrough",
+            "conformance --input docs/DOC-STYLE.md",
+            "gate='conformance --input docs/DOC-STYLE.md'",
+        )
+        await refusal(
+            client,
+            "conformance_refuses_shell_injection",
+            f"conformance; touch {INJECTION_TARGET_CONFORMANCE}",
+            f"gate='conformance; touch {INJECTION_TARGET_CONFORMANCE}'",
+        )
         check(
             "shell_injection_ran_nothing",
-            not Path(INJECTION_TARGET).exists(),
-            f"{INJECTION_TARGET} exists={Path(INJECTION_TARGET).exists()}",
+            not Path(INJECTION_TARGET).exists()
+            and not Path(INJECTION_TARGET_POLICY).exists()
+            and not Path(INJECTION_TARGET_CONFORMANCE).exists(),
+            f"{INJECTION_TARGET} exists={Path(INJECTION_TARGET).exists()}; "
+            f"{INJECTION_TARGET_POLICY} exists={Path(INJECTION_TARGET_POLICY).exists()}; "
+            f"{INJECTION_TARGET_CONFORMANCE} exists={Path(INJECTION_TARGET_CONFORMANCE).exists()}",
         )
         check(
             "refusals_journal_nothing",

@@ -44,7 +44,7 @@ review stays independent of the edits.
 
 - Read the plan entry, the implementer's decision entries and the tester's test-result entry from
   `proj-komun` before reading the diff.
-- Apply `docs/DOC-STYLE.md` to every prose file the change touches. v2 is the current rule set
+- Read the `conformance` gate's report for every prose file the change touches, rather than applying the rules by hand. v2 is the current
   (`docs/DOC-STYLE.md:21` `v2 is the current rule set`):
   - R1 — `A section opens with the question it answers.` (`docs/DOC-STYLE.md:26`).
   - R2 — `Every claim carries its authority in parentheses` (`docs/DOC-STYLE.md:27`), naming the artifact

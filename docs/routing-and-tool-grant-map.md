@@ -96,4 +96,5 @@ Which recorded step no longer holds an MCP grant, and what runs it now?
 - Stop routing that step to a subagent, because the reviewer ran it by hand from the reads its own row grants (`docs/routing-and-tool-grant-map.md:19` `mcp__coursetools__codebase_search`) and the step now holds no tool of its own.
 - Read the decision of record in `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`, which fixes the contract the script holds.
 - Keep the marker machine-readable, so a check can read it: `docs/routing-and-tool-grant-map.json:71` `"mcp_access": []`.
+- Run that step inside the workflow through the `conformance` gate, which the server runs by name (`agentic.config.json:61` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
 

@@ -166,7 +166,7 @@ Which MCP server operations may the tester call?
 - Grant `mcp__gate__run_gate`, `mcp__gate__list_gates` and `mcp__gate__read_audit_log` (`.claude/agents/tester.md:12-14` `- mcp__gate__run_gate`) — this grant answers `NM-1`, where an inert tool blocked every gate.
 - Grant `mcp__storage__read_entry`, `mcp__storage__list_entries` and `mcp__storage__write_entry` (`.claude/agents/tester.md:15-17` `- mcp__storage__write_entry`).
 - Resolve the tester-runner conflict by fixing the map: `docs/routing-and-tool-grant-map.md:18` now grants `mcp__gate__run_gate` and denies `mcp__coursetools__test_runner`. The stub is `the course's deliberately inert stub` (`docs/iteration-log.md:46-47`), and this grant answers `NM-1`.
-- Deny every command string and extra argument through the gate server (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments`) — a refused call runs nothing.
+- Deny every command string and extra argument through the gate server (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments`) — a refused call runs nothing. The vocabulary holds five names: `test`, `clippy`, `fmt`, `policy` and `conformance`.
 - Deny `mcp__coursetools__file_write` (`docs/routing-and-tool-grant-map.md:18` `a verifying role repairs nothing it finds`).
 - Deny `mcp__coursetools__shell` and `mcp__coursetools__task_tracker` (`docs/routing-and-tool-grant-map.md:18` `a result is a new record`).
 - Deny `mcp__retrieval__retrieve` (`docs/routing-and-tool-grant-map.md:60` `it works from the supplied acceptance criteria`).

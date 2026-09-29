@@ -30,7 +30,7 @@ Which steps hold their place as agentic work, and which ones are now determinist
 | Step | Classification | Converted to | Record |
 |---|---|---|---|
 | Prose and citation conformance check | agentic until this conversion, now deterministic | `scripts/validate_doc_conformance_deterministic.py` | `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md` |
-| Gate execution (`test`, `clippy`, `fmt`) | deterministic | `mcp/gate/server.py` | `docs/iteration-log.md:59` `a fourth MCP server, mcp/gate/server.py` |
+| Gate execution (`test`, `clippy`, `fmt`, `policy`, `conformance`) | deterministic | `mcp/gate/server.py` | `docs/iteration-log.md:59` `a fourth MCP server, mcp/gate/server.py` |
 | Change classification | deterministic | `scripts/classify-change.py` | `scripts/classify-change.py:12` `Change Classifier` |
 | Audit-trail assembly | deterministic | `scripts/build-audit-trail.py` | `scripts/build-audit-trail.py:2` `Assemble the run's audit trail` |
 | Plan authoring | agentic | — | `.claude/agents/planner.md:23` `autonomy: medium` |
@@ -88,6 +88,7 @@ What moved the gate commands out of a role's hands?
   `158 passed, 0 failed, 0 ignored`).
 - Note the record that motivated the conversion: an inert grant blocked every gate in the first
   orchestrated run (`docs/iteration-log.md:46-47` `the course's deliberately inert stub`).
+- Run the two converted deterministic steps through the same vocabulary, as the `policy` and `conformance` gates (`mcp/gate/gate_vocabulary.py` builds all five names from `toolchain.commands`).
 - **Next review:** 2026-11-30. The server is deterministic, and its selftest covers the refusal path.
 
 ## Step: change classification — already deterministic

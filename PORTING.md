@@ -8,7 +8,7 @@ What does a fork inherit?
 
 Seven governed roles run behind one launcher (`agentic.config.json:70` `"valid": ["orchestrator", "planner", "implementer", "tester", "reviewer", "project-manager", "researcher"]`).
 Four MCP servers enforce the boundaries (`agentic.config.json:93` `"storage_server": "mcp/storage/server.py"`, `agentic.config.json:95` `"gate_server": "mcp/gate/server.py"`, `ls mcp/coursetools_server.py` -> `mcp/coursetools_server.py`).
-A deterministic gate core runs three commands from the config (`agentic.config.json:19` `"test": {`, `agentic.config.json:24` `"clippy": {`, `agentic.config.json:34` `"fmt": {`).
+A deterministic gate core runs five commands from the config (`agentic.config.json:19` `"test": {`, `agentic.config.json:24` `"clippy": {`, `agentic.config.json:34` `"fmt": {`).
 Five CI jobs carry the pipeline (`python3 -c "import yaml;print(list(yaml.safe_load(open('.github/workflows/ci.yml'))['jobs']))"` -> `['change-type-check', 'policy-gate', 'eval-gate', 'advisory-review', 'audit-trail']`).
 A conversion loop replaces stable agent steps with scripts (`docs/step-classification.md:3` `Which agentic steps run in this repository, and which of them earn deterministic conversion?`).
 
@@ -17,7 +17,7 @@ A conversion loop replaces stable agent steps with scripts (`docs/step-classific
 Which files must a fork copy, and which config values must it change?
 
 1. Copy the tree and keep `agentic.config.json` at its root, because every consumer resolves paths from there (`agentic.config.json:2` `"schema_version": 1`).
-2. Replace the toolchain commands, because the three gates are Rust and cargo today (`agentic.config.json:20` `"argv": ["cargo", "test", "--workspace"]`).
+2. Replace the toolchain commands, because three of the five gates are Rust and cargo today (`agentic.config.json:20` `"argv": ["cargo", "test", "--workspace"]`).
 3. Rewrite the clippy guard, because its marker names this repository's crate (`agentic.config.json:28` `"marker": "Checking komun-server"`, `agentic.config.json:30` `"touch_file": "crates/server/src/main.rs"`).
 4. Rebuild both images under the fork's own tags (`agentic.config.json:43` `"base_image": "agent-sandbox:komun"`, `agentic.config.json:44` `"tools_image": "agent-sandbox:komun-m3"`).
 5. Rename the cargo registry volume, because the tester mounts it read-write (`agentic.config.json:48` `"registry_volume": "komun-cargo-registry"`).
@@ -90,7 +90,7 @@ Which parts of this gate are content and code rather than values?
 
 - Keep the retrieval corpus as data, because the retrieval server reads Markdown at startup (`mcp/retrieval/server.py:589` `reference corpus not found at {reference_dir}`).
 - Keep the style-rules content as prose, because the config carries only its path (`docs/DOC-STYLE.md:26` `A section opens with the question it answers`).
-- Replace the three gate commands for a non-Rust toolchain, because cargo argv is Rust-specific (`agentic.config.json:20` `"argv": ["cargo", "test", "--workspace"]`).
+- Replace the three cargo gate commands for a non-Rust toolchain, because cargo argv is Rust-specific (`agentic.config.json:20` `"argv": ["cargo", "test", "--workspace"]`).
 - Replace or delete the clippy guard, because a cached linter prints nothing and exits 0 (`agentic.config.json:31` `a cached clippy run prints nothing and exits 0, which is indistinguishable from a clean lint`).
 - Delete the guard when your linter prints a cache hit, because a visible cache-hit line is already distinguishable from a clean lint (`agentic.config.json:31` `the touched file forces a real check`).
 

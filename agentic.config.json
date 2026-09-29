@@ -51,6 +51,16 @@
         ],
         "description": "formatting gate: check mode, no files are written",
         "guard": null
+      },
+      "policy": {
+        "argv": ["python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "-q"],
+        "description": "policy gate: the governance and deterministic-step eval suites",
+        "guard": null
+      },
+      "conformance": {
+        "argv": ["python3", "scripts/run-conformance-gate.py"],
+        "description": "conformance gate: the prose and citation check, run against base and failing on new drift only",
+        "guard": null
       }
     },
     "cache_dirs": [
@@ -203,9 +213,82 @@
       "artifacts.style_rules": "docs/DOC-STYLE.md"
     },
     "language_specific_note": [
-      "The three toolchain commands, the clippy cache guard and the build cache are Rust and cargo",
+      "The cargo toolchain commands, the clippy cache guard and the build cache are Rust and cargo",
       "specific. A Node or Python fork replaces the whole `toolchain` block and drops the guard, or",
       "writes a guard of its own: the guard exists only because a cached linter prints nothing."
+    ]
+  },
+  "gates": {
+    "conformance": {
+      "files": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/DOC-STYLE.md",
+        "docs/governance-policy.md",
+        "docs/routing-and-tool-grant-map.md",
+        "docs/policy-reconciliation.md",
+        "docs/step-classification.md",
+        "docs/iteration-log.md",
+        "docs/memory-architecture.md",
+        "docs/orchestration-diagram.md",
+        "mcp/gate/SCHEMA.md",
+        "docs/calibration-log.md"
+      ]
+    }
+  },
+  "console": {
+    "_purpose": [
+      "The runtime facts a terminal console needs that the rest of this file does not carry. A",
+      "console is a window onto the artifacts, never a source of them: it reads this block, the",
+      "journals and `docker ps`, and it never writes inside the repository. Every value below is",
+      "also a Komun default until a fork changes it; a fork that changes one deletes its key from",
+      "`komun_defaults` below, which is exactly what the console reads to flag a value as still",
+      "Komun's rather than the fork's."
+    ],
+    "container": "agent-rev-m3",
+    "claude_command": "claude",
+    "claude_flags": ["--agent", "orchestrator", "--permission-mode", "acceptEdits"],
+    "role_container_prefix": "agent-rev-m4-",
+    "ports": {"gate": 8003, "storage": 8001, "retrieval": 8002},
+    "evidence_dir": "~/komun-agent-exercise-4-3",
+    "briefs_dir": "~/komun-agent-exercise-4-3/briefs",
+    "checkpoint_fresh_minutes": 30,
+    "ci_jobs": [
+      {"name": "change-type-check", "needs": [], "gating": true},
+      {"name": "policy-gate", "needs": ["change-type-check"], "gating": true},
+      {"name": "eval-gate", "needs": ["change-type-check", "policy-gate"], "gating": true},
+      {"name": "advisory-review", "needs": ["change-type-check", "policy-gate"], "gating": false},
+      {
+        "name": "audit-trail",
+        "needs": ["change-type-check", "policy-gate", "eval-gate", "advisory-review"],
+        "gating": false
+      }
+    ],
+    "orchestration_steps": [
+      {"label": "project-manager opens the ticket", "kind": "role", "role": "project-manager"},
+      {"label": "planner plans", "kind": "role", "role": "planner"},
+      {"label": "HUMAN CHECKPOINT 1 (plan approval)", "kind": "human"},
+      {"label": "implementer writes", "kind": "role", "role": "implementer"},
+      {"label": "tester runs gates", "kind": "role", "role": "tester"},
+      {
+        "label": "reviewer reads the journal and records a verdict",
+        "kind": "role",
+        "role": "reviewer"
+      },
+      {"label": "HUMAN CHECKPOINT 2 (release approval)", "kind": "human"},
+      {"label": "project-manager closes", "kind": "role", "role": "project-manager"}
+    ],
+    "komun_defaults": [
+      "container",
+      "claude_command",
+      "claude_flags",
+      "role_container_prefix",
+      "ports",
+      "evidence_dir",
+      "briefs_dir",
+      "checkpoint_fresh_minutes",
+      "ci_jobs",
+      "orchestration_steps"
     ]
   }
 }

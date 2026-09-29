@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Quality-gate MCP server for the Komun repository.
 
-Exposes a fixed, allowlisted execution surface over streamable HTTP (FastMCP): three named gates,
-``test``, ``clippy`` and ``fmt``. A caller names a gate, never a command. Every argv comes from an
-``agentic.config.json`` entry, ``shell`` is never used, and no caller-supplied string reaches a
-command line, so the worst a caller can do is run one of the three documented gates. There is no
-raw shell operation.
+Exposes a fixed, allowlisted execution surface over streamable HTTP (FastMCP): five named gates,
+``test``, ``clippy``, ``fmt``, ``policy`` and ``conformance``. A caller names a gate, never a
+command. Every argv comes from an ``agentic.config.json`` entry, ``shell`` is never used, and no
+caller-supplied string reaches a command line, so the worst a caller can do is run one of the five
+documented gates. There is no raw shell operation.
 
 Each invocation returns the exit code, the captured stdout and stderr, the wall-clock duration and a
 pass/fail verdict, and appends exactly one JSON object per line to an append-only audit journal. A
@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 
 # --- The portability seam: the gate vocabulary lives in agentic.config.json -------------------
-# `gate_vocabulary.py` reads the three argv tuples, the clippy cache-hit guard and the container
+# `gate_vocabulary.py` reads the gate names and the argv tuples, the clippy cache-hit guard and the container
 # paths the gates run in from the config (`toolchain.commands` and `containers`), and falls back to
 # its own embedded defaults, which are this repository's values. A run with no config file therefore
 # behaves exactly as this server did before the config existed.
@@ -68,7 +68,7 @@ from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 # --- Gate vocabulary: the whole execution surface of this server -----------------------------
 # The argv tuples are the only commands this process can ever run: nothing else is composed,
 # interpolated or appended at call time, and the caller contributes no element of any argv. Each
-# gate's argv, description and guard is the config's `toolchain.commands.<name>` block, read by
+# gate's name, argv, description and guard is the config's `toolchain.commands.<name>` block, read by
 # `gate_vocabulary.py`; the clippy cache-hit guard is `toolchain.commands.clippy.guard`.
 
 # cargo honours CARGO_TERM_COLOR=always in this image even when stderr is a pipe, so the status
@@ -337,7 +337,7 @@ def _decode(blob: str | bytes | None) -> str:
 # --- Operations -----------------------------------------------------------------------------
 @mcp.tool
 def list_gates() -> list[dict]:
-    """List the three allowlisted gates with the exact argv each one runs. Runs nothing."""
+    """List the five allowlisted gates with the exact argv each one runs. Runs nothing."""
     return [
         {
             "gate": name,

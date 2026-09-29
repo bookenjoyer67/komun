@@ -185,7 +185,7 @@ and the image's own default target path is not usable there (`Dockerfile:90`
 ## Step: Run the deterministic gates through the gate server (eval-gate)
 
 - Does: Load `mcp/gate/server.py` inside the container and call its `run_gate` tool for `test`,
-  `clippy` and `fmt`.
+  `clippy`, `fmt`, `policy` and `conformance`.
 - Input: the repository read-only at `/workspace`, plus one writable bind of the file the clippy
   guard touches (`.github/workflows/ci.yml` `-v
   "$GITHUB_WORKSPACE/crates/server/src/main.rs":/workspace/crates/server/src/main.rs`).

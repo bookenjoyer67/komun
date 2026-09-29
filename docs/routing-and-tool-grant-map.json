@@ -69,7 +69,8 @@
     "prose-and-citation-conformance": {
       "record": "docs/adr/ADR-001-doc-conformance-deterministic-conversion.md",
       "mcp_access": [],
-      "replacement": "scripts/validate_doc_conformance_deterministic.py"
+      "replacement": "scripts/validate_doc_conformance_deterministic.py",
+      "gate": "conformance"
     }
   }
 }

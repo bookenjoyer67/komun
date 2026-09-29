@@ -69,6 +69,7 @@ CONFIG_KEYS: tuple[str, ...] = (
     "artifacts.storage_server",
     "artifacts.retrieval_server",
     "artifacts.gate_server",
+    "artifacts.coursetools_server",
     "artifacts.launcher",
     "artifacts.definitions_dir",
     "artifacts.skills_dir",
@@ -104,9 +105,11 @@ RETRIEVAL_ALLOW = _artifact("retrieval_allow_list")
 STORAGE_SERVER = _artifact("storage_server")
 RETRIEVAL_SERVER = _artifact("retrieval_server")
 GATE_SERVER = _artifact("gate_server")
-# The course-tools server carries no `artifacts` key: it is the one server outside the governed
-# three, so it keeps its literal path here and is named in the reports this suite emits.
-COURSETOOLS_SERVER = REPO / "mcp" / "coursetools_server.py"
+# The course-tools server is the one server outside the governed three, and it is named in the
+# reports this suite emits. The config names it like the rest — `agentic.config.json:166`
+# `"coursetools_server": "mcp/coursetools_server.py"` — so it resolves through `_artifact` here
+# rather than through a literal path.
+COURSETOOLS_SERVER = _artifact("coursetools_server")
 LAUNCHER = _artifact("launcher")
 AGENTS_DIR = _artifact("definitions_dir")
 SKILLS_DIR = _artifact("skills_dir")
