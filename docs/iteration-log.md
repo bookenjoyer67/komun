@@ -5,6 +5,115 @@ Entries are never deleted or rewritten, and the commits that add them are never 
 
 ---
 
+## Run 007 (workflow 7 — the gate's own output summaries) — 2026-09-30 — the fmt counts made readable to a role, defects 4 and 6 closed, ten findings carried
+
+What did this run change, and what did each role measure?
+
+Run metadata:
+- System under test: the gate server's output path — the capture-and-clamp code in `mcp/gate/server.py`, the
+  command table in `agentic.config.json`, its vocabulary reader `mcp/gate/gate_vocabulary.py`, the checker
+  `mcp/gate/selftest.py`, and the mirror `scripts/agentic_config.py`.
+- Change under gate: ticket `KOMUN-RUN-007-GATE-SUMMARY` — the `fmt` gate counts its own hunks, files, added
+  and removed above the clamp and publishes them in the response and in the journal row.
+- Invocation: headless `claude -p` inside container `agent-rev-m3` from `/workspace`, `--agent orchestrator
+  --permission-mode acceptEdits`, in one session `54952aeb-75a0-4ae2-8d40-d97e324423a6` resumed twice after
+  human rulings, briefed by hand from `briefs/run5-brief-defect-4-6.md`.
+- Transcript: `~/komun-agent-exercise-4-3/` — `run5-1.txt` … `run5-4.txt`, the three rulings
+  `run5-ruling1-checkpoint1.md`, `run5-ruling2-operator.md`, `run5-ruling3-checkpoint2.md`, and
+  `run5-selftest-operator.txt` for the operator's own selftest run.
+- Elapsed: 21:57–02:09 CDT, with two provider-window stops — a 429 at 23:26 and a window that reset at 01:50.
+
+### Why did the counts need a new mechanism instead of a bigger allowance?
+
+Why could no role assert the formatting gate's figures before this run?
+
+- The evidence existed only inside the payload. The gate reported `exit_code: 1`, while the four counts sat in
+  a diff of `159859` characters (`summary.input_chars` in the journal row for 04:22:01).
+- No role could read it. The `tester`'s only surface is `mcp__gate__run_gate`, and its caller returned
+  `175637` characters, above its own tool output limit, which the runner spilled to a path outside the
+  tester's readable root.
+- Run 006 had recorded this as defect 4: the payload is unreadable, so the counts are unmeasurable by the
+  role that must assert them.
+
+### What changed, and where?
+
+Which files carry the change, and what did they cost?
+
+- The rule lives in config, not in code. `agentic.config.json` gained a `summary` object per command — a
+  `counts` map over `streams: ["stdout", "stderr"]` with `strip_ansi: true`, and a `reason` string quoted here
+  in part: "the fmt payload runs to six figures of characters and the counts exist only inside it".
+- The server counts before the clamp and reports the result twice: at `mcp/gate/server.py:446` the response
+  carries the object, and the journal row carries the same object, which is how the tester reached it.
+- No gate's command changed. `fmt` remains `["cargo","fmt","--check"]` and only `fmt-fix` carries `--all`
+  (`["cargo","fmt","--all"]`), so the recorded drift could not move with the reporting change.
+- Five code files plus the schema document: `+932/−137` by `git diff --stat`, with `mcp/gate/SCHEMA.md` updated
+  as the change's documentation and its own citations resolving `66` → `0`.
+
+### Which acceptance criteria were met, and by whom?
+
+Who measured each criterion, and which one only the operator could settle?
+
+- AC2 through AC5 and AC7 by the `tester`'s own measurements, from its own rows and responses.
+- AC1 met on the journal half, by the human's ruling at Checkpoint 2. The row for its own invocation carries
+  `{"hunks": 213, "files": 35, "added": 1101, "removed": 2475}`.
+- AC1's response half is unreachable to a role holding only `file_read`, and the ruling kept that sentence
+  rather than flattening it into a plain "met".
+- AC6 was settled on operator measurement and fenced off as such, quoting
+  `SELFTEST_RESULT passed=40 total=40` and both synthetic predicate lines.
+- The standing `CLAUDE.md` criteria are NOT MET: `npm run check` and `npx vitest run` remain unrun, because no
+  allow-listed gate exposes either command.
+
+### Did any gate's outcome move?
+
+Did the change leave every gate's verdict where it stood?
+
+- No gate moved. `fmt` stayed red at the same four figures, `test` reported `159 passed; 0 failed`, `clippy`
+  exited 0 with its cache-hit guard applied and satisfied, `policy` reported `90 passed in 1.00s`, and
+  `conformance` exited 0 having checked 12 files.
+- The formatting debt is unchanged: 213 hunks over 35 files, 1101 added and 2475 removed, against the frozen
+  baseline this repository has carried since Run 005.
+
+### Which defects closed, and which new ones did the run find?
+
+What did the run fix, and what did it add to the defect list?
+
+- Defect 4 closed. The four counts reach a role from the gate's own journal row, with no operator figure
+  anywhere in the chain that produced them.
+- Defect 6 closed. `test_gate_totals` now requires `failed == 0` alongside the recorded baseline of 159, so
+  `{"passed": 158, "failed": 1}` reports FAIL; the selftest went `34/34` → `40/40`.
+- Unasked but kept: a gate with no rule records `{"applied": false, "counts": null, "detail": "no output
+  summary rule applies to this gate"}`, so "no rule applies" differs from "the writer dropped the key".
+- Ten findings were added, none blocking: `calling_role` is unvalidated caller input, and the selftest's own
+  rows are stamped `"tester"`, so attribution needed a watermark and a duration cross-match instead;
+  `docs/ci-step-design.md` carries four non-resolving `server.py` pointers and sits outside the gate's file
+  list; `mcp/gate/SCHEMA.md` still claims "No run through the summary code path is recorded in this document
+  yet" and prints `SELFTEST_RESULT passed=27 total=27`.
+
+### What did the run refute in its own brief?
+
+Which operator claims fell to a role's measurement?
+
+- The brief's `fmt` command, which it gave as `cargo fmt --all --check`. The tree holds
+  `["cargo","fmt","--check"]` and `--all` belongs to `fmt-fix`.
+- The brief's clamp premise. `MAX_OUTPUT_CHARS = 200_000` (`mcp/gate/server.py:84`) against a payload the brief
+  sized at 175082 characters, so nothing was clamped and the cause was payload size instead.
+- The brief's claim that journal rows carry `guard_detail` and `guard_reason`. Zero rows carry either key; the
+  guard object appears in the response alone.
+
+### What is carried, and why is it not repaired here?
+
+What stays unrepaired on purpose?
+
+- Four records still assert a baseline of 158 against the real 159 (`TEST_BASELINE_PASSED = 159`):
+  `mcp/gate/SCHEMA.md`, `docs/calibration-log.md`, and `AGENTS.md:202` (`158 passed, 0 failed, 0 ignored`)
+  — plus `.memory/knowledge/coding-standards.md` rule 2, which is read-only to every role.
+- Five pointers to `agentic.config.json:61` are stale — the cited literal
+  `"argv": ["python3", "scripts/run-conformance-gate.py"],` now sits at line 65 — including the orchestrator's
+  own role prompt at `.claude/agents/orchestrator.md:80`.
+- Act 1's forty unrepaired `CIT-LINE-DRIFT` findings stay as they are, and the rule the human set explains
+  why: this run repairs a citation only if its own edit breaks it, so "repair what you caused" cannot drift
+  into "repair everything".
+
 ## Run 006 (workflow 6 — orchestrated pre-merge quality gate) — 2026-09-29 — longest run so far: the fmt surface made reachable and reviewed, 8 harness defects found, AC2 carried on operator measurement
 
 What did this run cover, and what did the gate decide?
@@ -513,7 +622,7 @@ at least 9 / 12, no dimension scored 1):
 
 | Dimension | Score | Evidence |
 |---|---|---|
-| D1 Accuracy | 3 | Every citation resolves and the quoted text is present: the 65-claim table was re-executed against the current tree — 60 citations resolve (56 at the cited line, 4 with drift), 0 text-not-found, 4 unsettleable read-only, and the single contradiction (A7 "SvelteKit 5") pre-dates this run. Two deductions: the closing report's self-reported edit count does not reproduce (17 claimed; the transcript holds 19 Edit calls, 18 successful, one "string to replace not found"), and the Docker-build sentence keeps "verified" on an authority that is a previous session's log record (`docs/iteration-log.md:408-409`) rather than output this run produced. A third, smaller deduction: the run's own self-reference in `AGENTS.md` cited `:39` for the `cargo sqlx prepare` step, which its own edits moved to `:91` (text intact, number stale). A strict reading of level 2 ("a count that does not reproduce") would score this 2; recorded here so the judgement is visible. |
+| D1 Accuracy | 3 | Every citation resolves and the quoted text is present: the 65-claim table was re-executed against the current tree — 60 citations resolve (56 at the cited line, 4 with drift), 0 text-not-found, 4 unsettleable read-only, and the single contradiction (A7 "SvelteKit 5") pre-dates this run. Two deductions: the closing report's self-reported edit count does not reproduce (17 claimed; the transcript holds 19 Edit calls, 18 successful, one "string to replace not found"), and the Docker-build sentence keeps "verified" on an authority that is a previous session's log record (`docs/iteration-log.md:517-518`) rather than output this run produced. A third, smaller deduction: the run's own self-reference in `AGENTS.md` cited `:39` for the `cargo sqlx prepare` step, which its own edits moved to `:91` (text intact, number stale). A strict reading of level 2 ("a count that does not reproduce") would score this 2; recorded here so the judgement is visible. |
 | D2 Task adherence | 4 | Level 3: both phase-A sections were revisited under v2 and all four changes applied (rule measurement: 10 headings, 0 non-question openers, 0 surviving "This section" purpose sentences, 0 sentences over 35 words, 0 bare-location parentheticals, 0 hedging words, 0 nested bullets). Level 4: the agent restated the changed rules in its own words before editing — the phase-B and phase-C messages open with a boundary restatement naming R1's replacement, R2's strengthening, R3's new limit and R5's withdrawal. |
 | D3 Coherence | 4 | Level 3: every touched section is at v2 and the `[UNVERIFIED]` discipline is carried forward (4 flagged claims, 6 marker occurrences, 3 "Claims needing verification" lists, each naming what would settle it). Level 4: the consistency pass is auditable — six numbered violations, each with its file, the rule it broke, the search that settled it and the fix. |
 | **Total** | **11 / 12** | PASS (AC1, AC2 and AC3 all pass; no dimension scored 1) |

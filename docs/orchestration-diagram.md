@@ -76,7 +76,7 @@ The Tester reports each command with its exit status and its output, and the Orc
 Where does the Tester run the gate commands, and against which mount?
 
 - Run the gates inside the agent sandbox, where the repository is mounted at `/workspace` (`setup.md:408` `` `/home/computing/rev` is mounted at `/workspace` ``).
-- Read project memory from `/workspace/.memory` (`docs/iteration-log.md:379` `` mounted that directory over `/workspace/.memory/` ``).
+- Read project memory from `/workspace/.memory` (`docs/iteration-log.md:488` `` mounted that directory over `/workspace/.memory/` ``).
 - Build the WASM package first, because the frontend gates need it (`AGENTS.md:160` `# build (wasm first!)`; `AGENTS.md:161` `wasm-pack build crates/wasm --target web`).
 
 ## What must the Implementer never change?
