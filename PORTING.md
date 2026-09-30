@@ -106,6 +106,18 @@ Claims needing verification:
 
 - The course material's `logs/` directory name has no artifact in this repository, so `ls` cannot settle it. Settle it by quoting the course lesson that names `logs/`.
 
+## The console
+
+What does the fork get to watch the gate with, without reading journals by hand?
+
+- `console/` ships a read-only terminal window onto the artifacts. It reads files, docker and the journals, and it never invents state (`console/README.md`).
+- Build it with `cd console && cargo build --release`. The crate is its own workspace root (`console/Cargo.toml:13` `[workspace]`), so the kit's `cargo test --workspace` never builds it (`Cargo.toml:2` `members = ["crates/server", "crates/core", "crates/wasm"]`).
+- Run it with `console/open.sh` and no argument, because it watches the repository it ships inside (`console/open.sh:37` `REPO_DEFAULT="$(cd "$HERE/.." && pwd)"`).
+- Approve a checkpoint with `Enter`, or open the ruling chooser with `e` (`console/README.md:101` `| \`Enter\` | **approve**`).
+- The wording of each canned ruling is yours to change (`agentic.config.json:334` `"rulings": [`).
+- The console reads its own block of the seam table (`agentic.config.json:280` `"console": {`) plus a per-probe cadence (`agentic.config.json:389` `"console_probe_cadence": {`).
+- Its tmux session sits on its own socket, so no other tool can end it (`console/open.sh:27` `SOCKET=agentic-console`).
+
 ## Running every check
 
 Which command proves which layer still works?
