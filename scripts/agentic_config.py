@@ -358,32 +358,58 @@ DEFAULT: dict[str, Any] = {
             {"label": "project-manager closes", "kind": "role", "role": "project-manager"},
         ],
         "rulings": [
-            {
-                "id": "approve-as-written",
-                "label": "approve as written",
-                "text": "Approved. Proceed with the plan as written.",
-                "prefill": False
-            },
-            {
-                "id": "approve-with-rework",
-                "label": "approve with a rework first",
-                "text": (
-                    "Approved with one rework first: revise the plan so that <name the change>,"
-                    " then stop at checkpoint 1 again for approval. Do not start implementing before"
-                    " the revised plan is approved."
-                ),
-                "prefill": True
-            },
-            {
-                "id": "halt",
-                "label": "halt",
-                "text": (
-                    "Halt. Do not proceed with the plan:"
-                    " stop this run here and report what you have so far. I will decide the next"
-                    " step."
-                ),
-                "prefill": True
-            },
+        {
+            "id": "approve-as-written",
+            "label": "approve as written",
+            "text": "Approved. Proceed with the plan as written.",
+            "checkpoints": [1],
+        "prefill": False
+        },
+        {
+            "id": "approve-with-rework",
+            "label": "approve with a rework first",
+            "text": (
+                "Approved with one rework first: revise the plan so that <name the change>, then "
+                "stop at checkpoint 1 again for approval. Do not start implementing before the "
+                "revised plan is approved."
+            ),
+            "checkpoints": [1],
+        "prefill": True
+        },
+        {
+            "id": "release-as-written",
+            "label": "release as written",
+            "text": "Approved: release as written. Close the ticket and stop.",
+            "checkpoints": [2],
+        "prefill": False
+        },
+        {
+            "id": "release-with-followup",
+            "label": "release, with a follow-up",
+            "text": (
+                "Approved: release as written, then open a follow-up for <name the follow-up>. "
+                "Stop after opening it."
+            ),
+            "checkpoints": [2],
+        "prefill": True
+        },
+        {
+            "id": "hold-open",
+            "label": "hold the ticket open",
+            "text": "Hold: do not close the ticket yet. Report what remains open and stop.",
+            "checkpoints": [2],
+        "prefill": True
+        },
+        {
+            "id": "halt",
+            "label": "halt",
+            "text": (
+                "Halt. Do not proceed with the plan: stop this run here and report what you have "
+                "so far. I will decide the next step."
+            ),
+            "checkpoints": [],
+            "prefill": True
+        },
         ],
         "komun_defaults": [
             "container",
