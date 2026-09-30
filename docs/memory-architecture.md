@@ -209,7 +209,7 @@ in a file that is read deliberately.
 
 **2. Put `.memory/` outside the repository, in a mounted volume.** Rejected for this system, and the
 repository's own history argues against it: the 2.2 run's evidence is citable only because the
-artifacts sit in the working tree with commit SHAs behind them (`docs/iteration-log.md:435`). Memory
+artifacts sit in the working tree with commit SHAs behind them (`docs/iteration-log.md:585`). Memory
 kept outside version control cannot be diffed against the code whose behaviour it explains, and a mount
 set up wrongly is exactly the scope-leak failure mode the next lesson drills. The cost of this choice
 is real and accepted: entries must be reviewed before every commit, which is why the write policy in

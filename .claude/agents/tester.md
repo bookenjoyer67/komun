@@ -22,6 +22,7 @@ disallowedTools:
   - mcp__retrieval__retrieve
   - mcp__storage__update_entry
   - mcp__storage__delete_entry
+  - mcp__gate__run_fix
 autonomy: low
 version: 1.0.0
 ---
@@ -87,6 +88,7 @@ guard itself: it touches a source file, runs the gate, and reports `guard.satisf
 | `mcp__retrieval__retrieve` | **No** | Denied: the tester works from the acceptance criteria in its brief and does not search the reference corpus. |
 | `mcp__storage__update_entry` | **No** | Denied: a gate result is a new record; a rerun writes a new entry, so the earlier result stays readable. |
 | `mcp__storage__delete_entry` | **No** | Denied: no role in this workflow removes a stored record, and a failed gate's evidence stays. |
+| `mcp__gate__run_fix` | **No** | Denied: the tester repairs nothing it finds, so the write-mode command stays with the implementer and the check surface stays exclusive. |
 
 ## Orchestration context
 

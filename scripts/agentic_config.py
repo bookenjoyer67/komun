@@ -66,6 +66,8 @@ DEFAULT: dict[str, Any] = {
                 "argv": ["cargo", "test", "--workspace"],
                 "description": "unit-test gate: the workspace test suites",
                 "guard": None,
+                "summary": None,
+                "writes": False,
             },
             "clippy": {
                 "argv": [
@@ -87,11 +89,37 @@ DEFAULT: dict[str, Any] = {
                         " from a clean lint; the touched file forces a real check"
                     ),
                 },
+                "summary": None,
+                "writes": False,
             },
             "fmt": {
                 "argv": ["cargo", "fmt", "--check"],
                 "description": "formatting gate: check mode, no files are written",
                 "guard": None,
+                "summary": {
+                    "reason": (
+                        "the fmt payload runs to six figures of characters and the counts exist"
+                        " only inside it, so a role reading the response cannot reach them;"
+                        " counting before the clamp puts the four numbers in the response and in"
+                        " the journal row"
+                    ),
+                    "streams": ["stdout", "stderr"],
+                    "strip_ansi": True,
+                    "counts": {
+                        "hunks": {"mode": "count_matching_lines", "pattern": "^Diff in "},
+                        "files": {
+                            "mode": "count_unique_groups",
+                            "pattern": (
+                                "^Diff in (?P<value>.+?)"
+                                "(?:(?::|\\s+at\\s+line\\s+)\\d+)?:?\\s*$"
+                            ),
+                            "group": "value",
+                        },
+                        "added": {"mode": "count_matching_lines", "pattern": "^\\+"},
+                        "removed": {"mode": "count_matching_lines", "pattern": "^-"},
+                    },
+                },
+                "writes": False,
             },
             "policy": {
                 "argv": [
@@ -104,6 +132,8 @@ DEFAULT: dict[str, Any] = {
                 ],
                 "description": "policy gate: the governance and deterministic-step eval suites",
                 "guard": None,
+                "summary": None,
+                "writes": False,
             },
             "conformance": {
                 "argv": ["python3", "scripts/run-conformance-gate.py"],
@@ -112,6 +142,15 @@ DEFAULT: dict[str, Any] = {
                     " on new drift only"
                 ),
                 "guard": None,
+                "summary": None,
+                "writes": False,
+            },
+            "fmt-fix": {
+                "argv": ["cargo", "fmt", "--all"],
+                "description": "formatting fix: write mode, rewrites files",
+                "guard": None,
+                "summary": None,
+                "writes": True,
             },
         },
         "cache_dirs": ["target"],
@@ -304,6 +343,34 @@ DEFAULT: dict[str, Any] = {
             {"label": "HUMAN CHECKPOINT 2 (release approval)", "kind": "human"},
             {"label": "project-manager closes", "kind": "role", "role": "project-manager"},
         ],
+        "rulings": [
+            {
+                "id": "approve-as-written",
+                "label": "approve as written",
+                "text": "Approved. Proceed with the plan as written.",
+                "prefill": False
+            },
+            {
+                "id": "approve-with-rework",
+                "label": "approve with a rework first",
+                "text": (
+                    "Approved with one rework first: revise the plan so that <name the change>,"
+                    " then stop at checkpoint 1 again for approval. Do not start implementing before"
+                    " the revised plan is approved."
+                ),
+                "prefill": True
+            },
+            {
+                "id": "halt",
+                "label": "halt",
+                "text": (
+                    "Halt. Do not proceed with the plan:"
+                    " stop this run here and report what you have so far. I will decide the next"
+                    " step."
+                ),
+                "prefill": True
+            },
+        ],
         "komun_defaults": [
             "container",
             "claude_command",
@@ -316,6 +383,42 @@ DEFAULT: dict[str, Any] = {
             "ci_jobs",
             "orchestration_steps",
         ],
+    },
+    "console_probe_cadence": {
+        "_purpose": [
+            "How often each of the console's probes is re-executed. The console takes its snapshots on a",
+            "worker thread and draws the last one it was given, so nothing here makes the screen wait: this",
+            "table is about freshness, not about latency. refresh_seconds is how often a snapshot is taken;",
+            "stale_after_seconds is the age at which the snapshot on the screen is labelled STALE;",
+            "default_ttl_seconds is the TTL of any probe the probes table below does not name. gate_allowlist",
+            "is the expensive one -- it asks the running gate server for its own list_gates, which spawns",
+            "python3 inside the container and imports fastmcp, on the order of a second and a half -- so it is",
+            "asked far less often than the file stats and the container process table. A reading's age on",
+            "screen is the age of the read and never the age of the collect that served it, and `r` forces",
+            "every probe regardless of this table.",
+        ],
+        "refresh_seconds": 3,
+        "stale_after_seconds": 15,
+        "default_ttl_seconds": 3,
+        "probes": {
+            "docker_ps": 3,
+            "container_ps": 3,
+            "ports": 5,
+            "sessions": 5,
+            "session_transcript": 5,
+            "gate_journal": 3,
+            "storage_journal": 3,
+            "retrieval_journal": 3,
+            "files": 3,
+            "pipeline": 15,
+            "conversions": 30,
+            "grants": 30,
+            "selftest_record": 15,
+            "port_self_test_record": 15,
+            "evidence_files": 5,
+            "evidence_tails": 5,
+            "gate_allowlist": 30,
+        },
     },
 }
 

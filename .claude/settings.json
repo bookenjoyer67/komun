@@ -39,6 +39,7 @@
       "mcp__coursetools__web_search",
       "mcp__gate__list_gates",
       "mcp__gate__read_audit_log",
+      "mcp__gate__run_fix",
       "mcp__gate__run_gate",
       "mcp__retrieval__retrieve",
       "mcp__storage__list_entries",

@@ -31,8 +31,8 @@ not delete the claim, and do not invent authority for it. Mark the sentence with
 line carrying that marker is therefore exempt from the R2 check, and the exemption is tested.
 
 Citations -- the second half of the same step. The repository's recorded failure classes are a
-citation to the wrong file and a citation that lands one line off: `docs/iteration-log.md:568-574`
-(the pointer resolves to another file) and `docs/iteration-log.md:515-521` ("the quoted text is
+citation to the wrong file and a citation that lands one line off: `docs/iteration-log.md:718-724`
+(the pointer resolves to another file) and `docs/iteration-log.md:665-671` ("the quoted text is
 correct and the reader lands one line away"). This script resolves each `path:start[-end]` plus its
 quoted literal against the repository and reports `CIT-FILE-MISSING`, `CIT-LITERAL-MISSING` or
 `CIT-LINE-DRIFT` with the line the literal really sits on.
@@ -141,7 +141,7 @@ def is_authority_token(token: str, repo: str) -> bool:
 
     The token needs a source extension, or a slash and a path that exists under the repository
     root. Without that rule a plain ratio such as `R/G/Glob` reads as a path
-    (`docs/iteration-log.md:504` `Tool calls (R/G/Glob)`) and the check reports a location that is
+    (`docs/iteration-log.md:654` `Tool calls (R/G/Glob)`) and the check reports a location that is
     not one.
     """
     if not token or token in {"-", "->"}:

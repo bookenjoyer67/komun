@@ -5,6 +5,156 @@ Entries are never deleted or rewritten, and the commits that add them are never 
 
 ---
 
+## Run 006 (workflow 6 — orchestrated pre-merge quality gate) — 2026-09-29 — longest run so far: the fmt surface made reachable and reviewed, 8 harness defects found, AC2 carried on operator measurement
+
+What did this run cover, and what did the gate decide?
+
+Run metadata:
+- System under test: the Module 3.1 orchestration — the role definitions in `.claude/agents/`, the gate
+  server `mcp/gate/server.py`, `mcp/gate/selftest.py`, `agentic.config.json`, and the four-way grant
+  agreement across `docs/routing-and-tool-grant-map.json`, `docs/routing-and-tool-grant-map.md` and
+  `docs/governance-policy.md`.
+- Change under gate: ticket `KOMUN-RUN-FIX-001` — make a formatter reachable without widening the tester's
+  read-only surface. Adds one write-mode command `fmt-fix` (`cargo fmt --all`) and a second, narrower gate
+  entry point `run_fix`, granted to the `implementer` alone.
+- Invocation: headless `claude -p` inside container `agent-rev-m3` from `/workspace`, `--agent orchestrator
+  --permission-mode acceptEdits`, in one session `079cffbe-cdd7-465d-89ba-da586506f456` resumed five times
+  with `--resume` after human rulings, briefed by hand from `briefs/run4-a1-brief.md`.
+- Transcript: `~/komun-agent-exercise-4-3/` — `run4-baseline.md` (frozen baseline, operator-labelled),
+  `run4-a1-ruling{,2,3,4-amendment,5-repair,6-close}.md` (the human's rulings, relayed verbatim),
+  `run4-a1-1.txt` … `run4-a1-6.txt` (the session's own summaries), `run4-a1/` (session and subagent
+  transcripts, `flake-baseline.txt`).
+- Elapsed: 17:30–22:00 CDT, with two provider pauses — a session-limit reset at 20:50 and a mid-run 429 that
+  killed a pass after 111 tool calls.
+
+### Why this task, and why it could not run as it stood
+
+Why was this task chosen, and what made it unreachable first?
+
+- Target: the gate red in every previous run — `cargo fmt --check` -> `exit 1`, 213 hunks, 35 files, 1101
+  added / 2475 removed lines (`rustfmt 1.9.0-stable`).
+- Reachability, measured before dispatch: no role held a shell; the `tester`'s only tool was
+  `mcp__gate__run_gate` over five name-only gates; the `implementer` held file and storage tools with
+  `mcp__coursetools__shell` denied, and the gate server refuses any name outside its allow-list. Hand
+  reproducing 2475 rustfmt lines through `file_write` was refused, and the human was asked rather than the
+  run burning quota on an unreachable step.
+
+### What the change does
+
+What does the change add, file by file?
+
+- `mcp/gate/server.py` +125/-34: `run_fix` added beside `run_gate`, both name-only. `run_fix` accepts a
+  write-mode command and refuses a check-mode name; `run_gate` refuses a write-mode name by mode and by name.
+- `mcp/gate/gate_vocabulary.py` +70/-23: one command table, six commands, each carrying a `writes` flag; the
+  five check gates keep their argv.
+- `agentic.config.json` +72/-5 and `scripts/agentic_config.py` +75/-0: the command table and its `DEFAULT`
+  mirror. These two files also carry the human's own console work — `console_probe_cadence` and
+  `console.rulings` — which is out of this run's scope and was written by no role.
+- Grants and documentation: `.claude/agents/implementer.md` +4/-0, `.claude/agents/tester.md` +2/-0 (the
+  tester now denies `run_fix` explicitly), `.claude/settings.json` +1/-0,
+  `docs/routing-and-tool-grant-map.json` +2/-1, `docs/routing-and-tool-grant-map.md` +4/-3,
+  `docs/governance-policy.md` +4/-1, `docs/step-classification.md` +4/-1, `mcp/gate/SCHEMA.md` +207/-92,
+  `scripts/run-agent.sh` +5/-5 (matrix citation renumbering only).
+- Amendment, authorised at Checkpoint 2 and outside the plan: `crates/server/Cargo.toml` +1/-0 and the two
+  geocode limiter tests, `crates/server/src/api/geocode/mod.rs` +6/-1 and
+  `crates/server/src/api/geocode/limiter.rs` +6/-1 — both moved to `#[tokio::test(start_paused = true)]`,
+  with `test-util` added as a dev-dependency of `komun-server`.
+
+Delivered set: 17 files, `+694/-174` (`git diff --numstat`), plus `PORTING.md` +12/-0 which is the human's
+console documentation and out of scope.
+
+### Gate evidence at close
+
+What did each gate report on the final tree?
+
+- `test` -> `exit 0`, `159 passed; 0 failed`, once plus ten consecutive runs all green (journal rows
+  `02:33:18` … `02:34:59`).
+- `clippy` -> `exit 0` with the cache guard applied and satisfied; `policy` -> `exit 0`, `90 passed`;
+  `conformance` -> `exit 0`, no rule's finding count rose against HEAD.
+- `run_gate(gate='fmt-fix')` -> refused by mode and by name, and the refusal writes no journal row.
+- `fmt` -> not run by any role: the payload is 175,082 characters and lands outside what the tester can read.
+  Read three times by the operator instead.
+- `npm run check`, `npx vitest run` -> not run: no gate name exposes either and no role holds a shell.
+
+### Where the roles pushed back, and were right to
+
+Where did the roles refuse, and why was refusing correct?
+
+- The `tester` refused to copy the 213-hunk baseline forward as though it had measured it, and refused to
+  collapse a compile-error `exit 101` with a test-failure `exit 101` — two different failures.
+- The `implementer` disputed the operator's `full`-includes-`test-util` premise and escalated rather than
+  writing an unauthorised third file. The compiler proved it right: `full` is twelve features and
+  `test-util` is not one of them.
+- The `reviewer` returned `BLOCK` on red evidence and kept that block in the record unaltered after the
+  amendment answered it, then verified the paused-clock tests still discriminate — `assert_eq!(counter, 1)`
+  rather than `<= 1` is what stops the test passing vacuously.
+- The `project-manager` refused to guess a ticket status word twice, spending no tracker call on a guess.
+
+### Operator measurements, labelled as such
+
+Which numbers did the operator measure rather than a role?
+
+- `cargo fmt --check`, three readings on the live tree -> `exit 1`, 213 hunks, 35 files, 1101 added / 2475
+  removed, identical every time.
+- Flake before the amendment: `api::geocode::tests::limiter_queues_second_lookup_instead_of_firing_both` ->
+  12 failures in 50 runs (24%), panicking at `crates/server/src/api/geocode/mod.rs:379` with a 199.6 ms gap
+  against a threshold exactly equal to the limiter's interval on a wall clock. After the paused clock ->
+  50/50, on both tests.
+- `crates/server/src/api/geocode/limiter.rs`'s test measured 50/50 before the amendment, so its own
+  paused-clock edit is precautionary: it removes a latent boundary dependence, not an observed failure.
+- `cargo test --workspace` with no feature flag -> `159 passed`, `exit 0`; the dev-dependency reaches test
+  targets only.
+- `mcp/gate/selftest.py` -> `SELFTEST_RESULT passed=34 total=34`, which is compatible with a red `test` gate
+  because of defect 6 below.
+
+### Outcome and the ticket's terminal state
+
+How did the run end, and where does its ticket state live?
+
+- `KOMUN-RUN-FIX-001` closed as `Done` on the human's Checkpoint 2 ruling, with AC2 on operator measurement,
+  the frontend gates not run, and the earlier `BLOCK` retained.
+- Checkpoint 1 was approved with four item-by-item rulings; Checkpoint 2 was ruled `amend`, and the
+  amendment was executed and reviewed inside the same session.
+
+### Harness defects found by this run
+
+Which harness defects did this run find?
+
+1. A checkpoint approval has no de-duplication: one press produced two `claude --resume` sessions seven
+   seconds apart, each dispatching an implementer against the same tree. The operator killed the duplicate.
+2. A session waiting on an asynchronous subagent has no liveness guard: it idled over two minutes with no
+   model call after its child had died, silently.
+3. A provider 429 ended an implementer pass after 111 tool calls, mid-step, with no resumption point.
+4. `fmt` counts are unreachable from every role's tool surface: the payload is the 175 KB diff and
+   `clamp_output` keeps its head, so no role can assert the count. This is what keeps AC2 on operator
+   measurement, and it will recur every run until the gate summarizes its own output.
+5. `.claude/agents/tester.md` names `npm run check` and `npx vitest run`, which its tool surface cannot
+   reach.
+6. `mcp/gate/selftest.py` asserts `sum(passed) >= 158`, so it printed PASS on a tree where the `test` gate
+   was reporting `158 passed; 1 failed` — a check that cannot detect the failure it exists to detect.
+7. `run_fix` is structurally unevidenceable: no journal row can carry `"tool": "run_fix"` for the role that
+   holds it, so the write path has no role-produced evidence by construction.
+8. A ticket's terminal state has no durable record. `task_tracker` is a simulation — it is declared
+   `Simulate updating a shared work ticket` and returns a string — and the `project-manager` holds no
+   storage write grant, so `Done` survives only in the run's own summary.
+9. The `conformance` gate cannot see cross-file citation drift. It compares per-file counts against HEAD and
+   resolves both passes against the same working tree, so a change that moves another file's lines leaves
+   every citation into it stale while the gate stays green. This run did exactly that: its
+   `agentic.config.json` edit (+72/-5) left 40 findings of `CIT-LINE-DRIFT` across six of the configured
+   files, measured by the raw checker over the twelve-file set, and `conformance` still reported `exit 0`.
+
+### Carried into the next run
+
+What does the next run inherit?
+
+- AC2 rests on operator measurement until defect 4 is repaired; that repair is briefed ahead of act 2, and
+  defect 6 is folded into the same run.
+- The frontend gates remain not run with the reason recorded.
+- Six advisory findings from the final review and eight from the earlier one stay open, and the `BLOCK` is
+  retained unaltered.
+- Defect 9's 40 stale citations into `agentic.config.json` are unrepaired: repair them, or leave them as the
+  standing evidence of the gate's blind spot.
+
 ## Run 005 (workflow 6 — orchestrated pre-merge quality gate) — 2026-09-28 — gate closed on real evidence, 2 findings carried
 
 Run metadata:

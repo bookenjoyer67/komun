@@ -15,11 +15,13 @@ tools:
   - mcp__storage__write_entry
   - mcp__storage__update_entry
   - mcp__retrieval__retrieve
+  - mcp__gate__run_fix
 disallowedTools:
   - mcp__coursetools__shell
   - mcp__coursetools__test_runner
   - mcp__coursetools__task_tracker
   - mcp__storage__delete_entry
+  - mcp__gate__run_gate
 autonomy: medium
 version: 1.0.0
 ---
@@ -80,10 +82,12 @@ never deletes an entry.
 | `mcp__storage__write_entry` | Yes | Classification `public` or `internal` only; the server rejects `confidential` and `secret`. |
 | `mcp__storage__update_entry` | Yes | Revises this role's own recorded decisions; classification is preserved. |
 | `mcp__retrieval__retrieve` | Yes | Reads the reference corpus at the pinned `internal` ceiling. |
+| `mcp__gate__run_fix` | Yes | Runs a write-mode command by name, and the vocabulary holds one: `fmt-fix`. It takes no command string, no extra argument and no shell. |
 | `mcp__coursetools__shell` | **No** | Denied: no command execution, so no build or migration runs from the writing role. |
 | `mcp__coursetools__test_runner` | **No** | Denied: gate execution is the tester's role, and a self-run gate is not independent evidence. |
 | `mcp__coursetools__task_tracker` | **No** | Denied: ticket state belongs to the project manager. |
 | `mcp__storage__delete_entry` | **No** | Denied: records are never removed, so a superseded decision stays readable in the audit trail. |
+| `mcp__gate__run_gate` | **No** | Denied: the check surface stays the tester's, so the role that writes a fix never reports the gate that judges it. |
 
 ## Retrieval guidance
 

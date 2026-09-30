@@ -90,9 +90,9 @@ All queries use `sqlx::query()` / `sqlx::query_as()`, not the compile-time macro
 (`rg 'sqlx::query!|query_as!|query_scalar!|query_file!' crates` -> No matches found). There is no
 `cargo sqlx prepare` step and no offline query cache (`Glob {.sqlx/**,migrations/*.sql,docker/*}`
 -> 4 paths, none under `.sqlx/`). Docker builds work as-is, and that is verified rather than
-assumed: `docker build -f docker/Dockerfile .` finished in 1m51s (`docs/iteration-log.md:600`
+assumed: `docker build -f docker/Dockerfile .` finished in 1m51s (`docs/iteration-log.md:750`
 `` `docker build` → success in 1m51s ``). That image provisioned a fresh database from `001` to
-`003` and answered `/api/health` (`docs/iteration-log.md:601` `` → migrations `001`→`003`,
+`003` and answered `/api/health` (`docs/iteration-log.md:751` `` → migrations `001`→`003`,
 `/api/health` 200, media directories writable. ``). The builder stage is pinned to the workspace
 toolchain (`docker/Dockerfile:5` `FROM rust:1.95-slim-bookworm AS builder`). The old `1.82` cannot
 parse the `edition2024` manifest of `aligned 0.4.3` (`docker/Dockerfile:3` `` # needs the

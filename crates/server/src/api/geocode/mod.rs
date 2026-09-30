@@ -338,7 +338,12 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
-    #[tokio::test]
+    // The clock is paused, so `Instant::now()` and both sleeps below read
+    // tokio's timer rather than the wall clock. The 50 ms checkpoint and the
+    // 200 ms slot are then exact, instead of being eaten into by the first
+    // lookup's own latency. `acquire()` is already on that timer and is
+    // unchanged.
+    #[tokio::test(start_paused = true)]
     async fn limiter_queues_second_lookup_instead_of_firing_both() {
         let cache = Arc::new(GeocodeCache::new(Duration::from_secs(60), 8));
         let limiter = Arc::new(RateLimiter::new(Duration::from_millis(200)));

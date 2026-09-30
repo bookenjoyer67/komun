@@ -25,7 +25,8 @@
       "mcp__storage__list_entries",
       "mcp__storage__write_entry",
       "mcp__storage__update_entry",
-      "mcp__retrieval__retrieve"
+      "mcp__retrieval__retrieve",
+      "mcp__gate__run_fix"
     ],
     "tester": [
       "mcp__coursetools__file_read",

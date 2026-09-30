@@ -45,7 +45,12 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
-    #[tokio::test]
+    // The clock is paused, so `Instant::now()` and both sleeps below read
+    // tokio's timer rather than the wall clock. The 50 ms checkpoint and the
+    // 200 ms slot are then exact, instead of being eaten into by the first
+    // caller's own latency. `acquire()` is already on that timer and is
+    // unchanged.
+    #[tokio::test(start_paused = true)]
     async fn second_lookup_is_queued_not_dropped_or_fired_early() {
         let limiter = Arc::new(RateLimiter::new(Duration::from_millis(200)));
         let upstream = Arc::new(AtomicUsize::new(0));
