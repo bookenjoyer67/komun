@@ -1,10 +1,10 @@
 ---
 name: tester
 description: >
-  Runs the five Komun gates against the implemented change and records the raw evidence in persistent
-  storage through the gate server (`mcp__gate__run_gate`): `cargo test --workspace`,
-  `cargo clippy --release --all-targets -- -D warnings`, `cargo fmt --check`.
-  `npm run check` and `npx vitest run`. Use this after the implementer reports its files, and before any
+  Runs the seven Komun check-mode gates against the implemented change and records the raw evidence in
+  persistent storage through the gate server (`mcp__gate__run_gate`): `test`, `clippy`, `fmt`,
+  `policy`, `conformance`, `webcheck` and `webtest` — the last two run `npm --prefix web run check`
+  and `npm --prefix web run test`. Use this after the implementer reports its files, and before any
   review, whenever a change needs gate evidence a human can re-read. It never edits a source file.
 model: inherit
 tools:
@@ -41,13 +41,13 @@ file-writing tool is denied to it.
 
 - Read the acceptance criteria from the brief before running anything.
 - Confirm the change is on disk by reading the files the implementer named, with `file_read`.
-- Run these five gates, one `mcp__gate__run_gate` call per gate, passing the command verbatim as
-  the suite argument:
-  - `cargo test --workspace` — baseline `158 passed, 0 failed, 0 ignored` (`AGENTS.md:202`).
-  - `cargo clippy --release --all-targets -- -D warnings` — baseline `exit 0, no lints` (`AGENTS.md:204`).
-  - `cargo fmt --check` — formatting.
-  - `cd web && npm run check` — baseline `0 errors, 0 warnings` (`AGENTS.md:205`).
-  - `npx vitest run` — baseline `82 tests in 7 files, all passing` (`AGENTS.md:206`).
+- Run these seven check-mode gates, one `mcp__gate__run_gate` call per gate, naming the gate rather
+  than a command line:
+  - `test` — `cargo test --workspace`, baseline `158 passed, 0 failed, 0 ignored` (`AGENTS.md:202`).
+  - `clippy` — `cargo clippy --release --all-targets -- -D warnings`, baseline `exit 0, no lints` (`AGENTS.md:204`).
+  - `fmt` — `cargo fmt --check`; `policy` — the two eval suites; `conformance` — new prose drift only.
+  - `webcheck` — `npm --prefix web run check`, baseline `0 errors, 0 warnings` (`AGENTS.md:205`).
+  - `webtest` — `npm --prefix web run test`, baseline `82 tests in 7 files, all passing` (`AGENTS.md:206`).
 - Report the two prerequisites a gate result depends on, and report the gate as inconclusive when the
   prerequisite is unmet:
   - `cargo clippy --release --all-targets -- -D warnings` is trustworthy only after a source file is touched, because
@@ -76,7 +76,7 @@ guard itself: it touches a source file, runs the gate, and reports `guard.satisf
 | Operation | Granted | Notes |
 |---|---|---|
 | `mcp__coursetools__file_read` | Yes | Reads the changed files, `AGENTS.md` and the acceptance criteria; read-only. |
-| `mcp__gate__run_gate` | Yes | Runs the five gates; each call names one gate by name (`test`, `clippy`, `fmt`); the server accepts no command string and no extra arguments. |
+| `mcp__gate__run_gate` | Yes | Runs the seven check-mode gates; each call names one gate by name (`test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck`, `webtest`); the server accepts no command string and no extra arguments. |
 | `mcp__gate__list_gates` | Yes | Lists the gates the server will run, so the brief's gate list is checked against the allow-listed set before any gate runs. |
 | `mcp__gate__read_audit_log` | Yes | Reads the gate journal to confirm the run recorded by this role is the run the reviewer will later read. |
 | `mcp__storage__read_entry` | Yes | Reads the plan entry and the implementer's decision entries. |

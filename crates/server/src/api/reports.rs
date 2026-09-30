@@ -7,20 +7,29 @@ use axum::{
 use serde::Deserialize;
 use uuid::Uuid;
 
+use super::StatusError;
 use crate::auth::{require_auth, require_superadmin, AuthUser};
 use crate::AppState;
-use super::StatusError;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/posts/{post_id}/report", post(report_post))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth))
         .route("/posts/{post_id}/hide", post(hide_post))
-        .layer(middleware::from_fn_with_state(state.clone(), require_superadmin))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_superadmin,
+        ))
         .route("/admin/reports", get(list_reports))
-        .layer(middleware::from_fn_with_state(state.clone(), require_superadmin))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_superadmin,
+        ))
         .route("/admin/reports/{report_id}", patch(resolve_report))
-        .layer(middleware::from_fn_with_state(state.clone(), require_superadmin))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_superadmin,
+        ))
         .with_state(state)
 }
 
@@ -35,13 +44,9 @@ async fn report_post(
     Path(post_id): Path<Uuid>,
     Json(input): Json<ReportRequest>,
 ) -> Result<Json<crate::db::reports::Report>, StatusError> {
-    let report = crate::db::reports::create_report(
-        &state.pool,
-        auth.user_id,
-        post_id,
-        &input.reason,
-    )
-    .await?;
+    let report =
+        crate::db::reports::create_report(&state.pool, auth.user_id, post_id, &input.reason)
+            .await?;
     Ok(Json(report))
 }
 

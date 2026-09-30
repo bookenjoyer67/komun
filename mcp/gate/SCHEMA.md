@@ -20,12 +20,12 @@ Runtime file inside the sandbox container:
 
 | File | Default path | Authority |
 | --- | --- | --- |
-| Audit journal | `/workspace/.memory/gate-audit.log` | `mcp/gate/gate_vocabulary.py:93` `AUDIT_PATH = os.getenv("GATE_AUDIT_PATH", str(Path(MEMORY_DIR) / "gate-audit.log"))` |
+| Audit journal | `/workspace/.memory/gate-audit.log` | `mcp/gate/gate_vocabulary.py:101` `AUDIT_PATH = os.getenv("GATE_AUDIT_PATH", str(Path(MEMORY_DIR) / "gate-audit.log"))` |
 
 The path follows `MEMORY_DIR`, which defaults to `/workspace/.memory`, the config's `containers.memory_dir`
-(`mcp/gate/gate_vocabulary.py:92` `MEMORY_DIR = os.getenv("MEMORY_DIR", str(agentic_config.get("containers.memory_dir")))`).
+(`mcp/gate/gate_vocabulary.py:100` `MEMORY_DIR = os.getenv("MEMORY_DIR", str(agentic_config.get("containers.memory_dir")))`).
 Override `GATE_AUDIT_PATH` and `GATE_WORKSPACE` for a local run
-(`mcp/gate/gate_vocabulary.py:91` `WORKSPACE = os.getenv("GATE_WORKSPACE", str(agentic_config.get("containers.workspace")))`).
+(`mcp/gate/gate_vocabulary.py:99` `WORKSPACE = os.getenv("GATE_WORKSPACE", str(agentic_config.get("containers.workspace")))`).
 
 Which command starts the server, and how is it registered?
 
@@ -41,17 +41,17 @@ claude mcp add --transport http gate http://localhost:8003/mcp
 and `--host` defaults to `0.0.0.0` (`mcp/gate/server.py:579` `parser.add_argument("--host", default="0.0.0.0", help="bind address (default 0.0.0.0)")`). The help output
 confirms both (`python3 mcp/gate/server.py --help` -> `--port PORT           HTTP port (default 8003)`).
 
-## Which six commands exist, and which command does each one run?
+## Which eight commands exist, and which command does each one run?
 
-Where do the six command names come from?
+Where do the eight command names come from?
 
-Six commands exist: five are check-mode and one is write-mode. The names are the
+Eight commands exist: seven are check-mode and one is write-mode. The names are the
 `toolchain.commands` keys in `agentic.config.json`, and `gate_vocabulary.py` builds one table from
-them (`mcp/gate/gate_vocabulary.py:236` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
+them (`mcp/gate/gate_vocabulary.py:244` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
 
 That table is then split by each command's declared `writes` boolean into two disjoint vocabularies
-(`mcp/gate/gate_vocabulary.py:237` `GATES: dict[str, dict[str, Any]] = {` and
-`mcp/gate/gate_vocabulary.py:240` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`). `run_gate` resolves a
+(`mcp/gate/gate_vocabulary.py:245` `GATES: dict[str, dict[str, Any]] = {` and
+`mcp/gate/gate_vocabulary.py:248` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`). `run_gate` resolves a
 name against `GATES` only, and `run_fix` resolves a name against `FIX_COMMANDS` only.
 
 | Command | Mode | Exact argv | Authority |
@@ -61,18 +61,24 @@ name against `GATES` only, and `run_fix` resolves a name against `FIX_COMMANDS` 
 | `fmt` | check | `cargo fmt --check` | `agentic.config.json:51-55` `"argv": [ "cargo", "fmt", "--check" ],` |
 | `policy` | check | `python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q` | `agentic.config.json:72` `"argv": ["python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "-q"],` |
 | `conformance` | check | `python3 scripts/run-conformance-gate.py` | `agentic.config.json:79` `"argv": ["python3", "scripts/run-conformance-gate.py"],` |
+| `webcheck` | check | `npm --prefix web run check` | `agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],` |
+| `webtest` | check | `npm --prefix web run test` | `agentic.config.json:100` `"argv": ["npm", "--prefix", "web", "run", "test"],` |
 | `fmt-fix` | write | `cargo fmt --all` | `agentic.config.json:86` `"argv": ["cargo", "fmt", "--all"],` |
+
+Both frontend gates name an npm script rather than a command line
+(`web/package.json:9` `"test": "vitest run"`). The `check` script sits on that same line
+(`web/package.json:9` `"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",`).
 
 Which mode does each command declare, and who declares it?
 
-The config declares it, one boolean per command. The five check-mode commands carry
+The config declares it, one boolean per command. The seven check-mode commands carry
 `"writes": false` and the one write-mode command carries `"writes": true`
 (`agentic.config.json:90` `"writes": true`). Nothing in the server infers a mode from a command's
 argv, so a fork that adds a mutating command declares it rather than being guessed at.
 
 The `policy` gate runs the eval suites. The `conformance` gate runs `scripts/run-conformance-gate.py`,
 whose verdict is new drift only (`scripts/run-conformance-gate.py:2` `fail on NEW drift only.`), and
-whose prose file set is the config key `gates.conformance.files` (`agentic.config.json:250` `"files": [`).
+whose prose file set is the config key `gates.conformance.files` (`agentic.config.json:264` `"files": [`).
 It checks each file against the same file at `HEAD` and fails only when a rule's finding count rises,
 so the repository's pre-existing findings never make it red.
 
@@ -101,7 +107,7 @@ tuples verbatim, so the allowlist a caller sees is the allowlist that runs:
 ```
 
 The `fmt-fix` entry is published by that same code path and by no other, but no live capture of the
-six-entry list exists in this document yet.
+eight-entry list exists in this document yet.
 
 ## Why can a caller not run an arbitrary command?
 
@@ -154,7 +160,7 @@ Which artifact settles the parameter list?
 
 The tool signature is the parameter authority (`mcp/gate/server.py:494` `def run_gate(`).
 
-- Pass `gate` (`str`, required) as one of `test`, `clippy`, `fmt`, `policy`, `conformance` (`mcp/gate/server.py:494` `gate: str,`).
+- Pass `gate` (`str`, required) as one of `test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck`, `webtest` (`mcp/gate/server.py:494` `gate: str,`).
 - Pass `calling_role` (`str`, optional, default `unknown`) so the journal names the caller (`mcp/gate/server.py:494` `calling_role: str = "unknown"`).
 - Pass `timeout_seconds` (`int`, optional, default `null` -> 900) as the per-run cap, clamped to 60..3600 (`mcp/gate/server.py:494` `timeout_seconds: int | None = None`).
 
@@ -263,21 +269,21 @@ exit codes alone would call that a clean lint; the guard makes it unrepresentabl
 
 Which artifact declares a summary rule, and which command carries one?
 
-The config declares it, one `summary` block per command, beside the `guard` block it mirrors. Five
+The config declares it, one `summary` block per command, beside the `guard` block it mirrors. Seven
 commands declare `"summary": null` and one declares a rule: `fmt`
 (`agentic.config.json:58` `"summary": {`).
 
 The vocabulary normalises that block once, at import time
-(`mcp/gate/gate_vocabulary.py:118` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`),
+(`mcp/gate/gate_vocabulary.py:126` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`),
 and compiles each declared pattern beside the guard's
-(`mcp/gate/gate_vocabulary.py:261` `SUMMARY_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {`).
+(`mcp/gate/gate_vocabulary.py:269` `SUMMARY_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {`).
 
 Compiled patterns live in `SUMMARY_PATTERNS` and not in `COMMANDS`, so `COMMANDS` stays JSON-safe for
 the tool that publishes it (`mcp/gate/server.py:476` `"argv": list(definition["argv"]),`).
 
 A malformed rule degrades to no summary rather than to a crash. `_summary` returns `None` for an
 unrecognised mode, an uncompilable pattern, or a named group absent from that pattern
-(`mcp/gate/gate_vocabulary.py:118` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`).
+(`mcp/gate/gate_vocabulary.py:126` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`).
 
 Which four numbers does the `fmt` rule count?
 
@@ -322,14 +328,14 @@ What does a command with no rule record?
 
 Record an unapplied marker with no counts, so the absence is explicit rather than a missing key
 (`mcp/gate/server.py:311` `def compute_output_summary(command: str, stdout: str, stderr: str) -> dict[str, Any]:`).
-The five commands that declare `"summary": null` take that path, and the self-test asserts it on
-`clippy` and on `test` (`mcp/gate/selftest.py:501` `"no_summary_gate_records_none",`).
+The seven commands that declare `"summary": null` take that path, and the self-test asserts it on
+`clippy` and on `test` (`mcp/gate/selftest.py:505` `"no_summary_gate_records_none",`).
 
 What does this run not settle?
 
 Whether any other gate needs a summary rule is not settled by this run. Only `fmt` declares one
 (`agentic.config.json:58` `"summary": {`), and nothing measured here bears on `test`, `clippy`,
-`policy`, `conformance` or `fmt-fix`.
+`policy`, `conformance`, `webcheck`, `webtest` or `fmt-fix`.
 
 No run through the summary code path is recorded in this document yet, so treat the four numbers the
 gate now reports as unmeasured here until a journal row carries them.
@@ -384,7 +390,7 @@ Because a journal reader reaches the counts without the payload that produced th
 is the part the clamp cuts. The server passes the same object to both
 (`mcp/gate/server.py:446` `"summary": summary,` in the result, `mcp/gate/server.py:220` `"summary": summary,`
 in the record), and the self-test compares them
-(`mcp/gate/selftest.py:540` `"journal_records_the_summary",`).
+(`mcp/gate/selftest.py:544` `"journal_records_the_summary",`).
 
 Why do `tool` and `writes` both appear?
 
@@ -418,7 +424,7 @@ No tool edits or erases the journal; it is opened append-only
 read is bounded (`mcp/gate/server.py:553` `if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 200:`
 with `mcp/gate/server.py:554` `raise ValueError("limit must be an integer between 1 and 200")`).
 
-## Which exit codes did the five check-mode gates produce?
+## Which exit codes did five of the seven check-mode gates produce?
 
 When and where were these exit codes captured?
 
@@ -439,8 +445,11 @@ Every row above predates the summary rule, so the `fmt` row's hunk and file coun
 that day rather than a number this gate reported. The four counts the gate now computes enter this
 table after a recorded run produces them.
 
-The sixth command, `fmt-fix`, has no row: it has not been run through this server, and a row would be
-a prediction rather than a capture.
+Three commands have no row. `fmt-fix` rewrites the tree, so it has never been run here
+(`mcp/gate/server.py:521` `def run_fix(`). `webcheck` and `webtest` entered the vocabulary after this
+capture (`agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],` and
+`agentic.config.json:100` `"argv": ["npm", "--prefix", "web", "run", "test"],`). A row for any of the
+three would be a prediction rather than a capture.
 
 The `fmt` gate genuinely fails, and the failure is not this server's doing and not new: rustfmt over
 the committed `HEAD` revision of an untouched file also fails (`git show HEAD:crates/server/src/api/admin.rs`
@@ -454,9 +463,9 @@ gate rewrites any file; check mode only reports.
 Which script validates this server, and what does it assert?
 
 `mcp/gate/selftest.py` calls the running server over streamable HTTP and asserts every behaviour this
-document claims: the tool surface, the six-command allowlist and the mode published for each, the
+document claims: the tool surface, the eight-command allowlist and the mode published for each, the
 three refusal shapes aimed at the check-mode names, refusal in both directions across the mode
-boundary, the clippy guard, the configured output summary and its absence on the five commands
+boundary, the clippy guard, the configured output summary and its absence on the seven commands
 without a rule, the test baseline predicate, the timeout clamp, real exit codes from the three cargo
 gates, the ANSI strip, and one journal line per executed invocation.
 
@@ -474,7 +483,7 @@ python3 mcp/gate/selftest.py --url http://localhost:8003/mcp
 Which line does it print, and which exit code does it use?
 
 Print one `SELFTEST_RESULT` line and exit `0` only when every check passed
-(`mcp/gate/selftest.py:567` `print(f"SELFTEST_RESULT passed={passed} total={total}", flush=True)`).
+(`mcp/gate/selftest.py:571` `print(f"SELFTEST_RESULT passed={passed} total={total}", flush=True)`).
 
 The last recorded run predates the write-mode checks: against the five-command surface it printed
 `SELFTEST_RESULT passed=27 total=27` and exited `0`. The rows naming `run_fix` and the rows naming
@@ -483,25 +492,25 @@ rather than as a measurement.
 
 | Check | What it proves |
 | --- | --- |
-| `tool_surface`, `run_gate_parameters` | Exactly four tools, and `run_gate` takes `gate`, `calling_role`, `timeout_seconds` (`mcp/gate/selftest.py:59` `EXPECTED_TOOLS = {"list_gates", "run_gate", "run_fix", "read_audit_log"}`) |
-| `run_fix_parameters` | `run_fix` takes `command`, `calling_role`, `timeout_seconds`, and no fourth property (`mcp/gate/selftest.py:64` `EXPECTED_RUN_FIX_PARAMS = {"command", "calling_role", "timeout_seconds"}`) |
-| `allowlist_is_the_six_documented_commands` | The published argv and mode equal the expected argv and mode, held independently in the test (`mcp/gate/selftest.py:39` `EXPECTED_GATES = {`) |
+| `tool_surface`, `run_gate_parameters` | Exactly four tools, and `run_gate` takes `gate`, `calling_role`, `timeout_seconds` (`mcp/gate/selftest.py:63` `EXPECTED_TOOLS = {"list_gates", "run_gate", "run_fix", "read_audit_log"}`) |
+| `run_fix_parameters` | `run_fix` takes `command`, `calling_role`, `timeout_seconds`, and no fourth property (`mcp/gate/selftest.py:68` `EXPECTED_RUN_FIX_PARAMS = {"command", "calling_role", "timeout_seconds"}`) |
+| `allowlist_is_the_eight_documented_commands` | The published argv and mode equal the expected argv and mode, held independently in the test (`mcp/gate/selftest.py:39` `EXPECTED_GATES = {`) |
 | `refuses_free_form_command`, `refuses_argument_passthrough`, `refuses_shell_injection` | A command string, an extra argument, and an injected `touch` are all refused on the three cargo names |
 | `policy_refuses_free_form_command`, `policy_refuses_argument_passthrough`, `policy_refuses_shell_injection` | The same three refusals, aimed at `policy` |
 | `conformance_refuses_free_form_command`, `conformance_refuses_argument_passthrough`, `conformance_refuses_shell_injection` | The same three refusals, aimed at `conformance` |
-| `run_gate_refuses_the_write_mode_command` | `run_gate` refuses `fmt-fix` by name and by mode (`mcp/gate/selftest.py:322` `"run_gate_refuses_the_write_mode_command",`) |
-| `run_fix_refuses_a_check_mode_gate`, `run_fix_refuses_shell_injection` | `run_fix` refuses a check-mode name and an injection string (`mcp/gate/selftest.py:328` `"run_fix_refuses_a_check_mode_gate",`) |
+| `run_gate_refuses_the_write_mode_command` | `run_gate` refuses `fmt-fix` by name and by mode (`mcp/gate/selftest.py:326` `"run_gate_refuses_the_write_mode_command",`) |
+| `run_fix_refuses_a_check_mode_gate`, `run_fix_refuses_shell_injection` | `run_fix` refuses a check-mode name and an injection string (`mcp/gate/selftest.py:332` `"run_fix_refuses_a_check_mode_gate",`) |
 | `refused_run_fix_journals_nothing`, `run_fix_shell_injection_ran_nothing` | The mode refusals added no journal line and created no file |
 | `shell_injection_ran_nothing`, `refusals_journal_nothing` | Nothing ran and nothing was journalled |
 | `timeout_is_clamped_and_reported` | `timeout_seconds=1` comes back as `60` |
 | `fmt_gate_executes_and_reports`, `fmt_gate_writes_nothing` | The real `fmt` exit code and its diff report |
-| `fmt_summary_reported` | The `fmt` response carries an applied summary with all four declared counts (`mcp/gate/selftest.py:408` `"fmt_summary_reported",`) |
-| `fmt_summary_matches_an_independent_recount` | A recount of the returned output, written without the config's patterns, agrees with the reported counts (`mcp/gate/selftest.py:421` `"fmt_summary_matches_an_independent_recount",`) |
-| `no_summary_gate_records_none` | `clippy` and `test` report an unapplied summary with no counts, and `fmt` is the only summarised command (`mcp/gate/selftest.py:501` `"no_summary_gate_records_none",`) |
-| `journal_records_the_summary` | The journal row's `summary` equals the response's `summary`, key for key (`mcp/gate/selftest.py:540` `"journal_records_the_summary",`) |
+| `fmt_summary_reported` | The `fmt` response carries an applied summary with all four declared counts (`mcp/gate/selftest.py:412` `"fmt_summary_reported",`) |
+| `fmt_summary_matches_an_independent_recount` | A recount of the returned output, written without the config's patterns, agrees with the reported counts (`mcp/gate/selftest.py:425` `"fmt_summary_matches_an_independent_recount",`) |
+| `no_summary_gate_records_none` | `clippy` and `test` report an unapplied summary with no counts, and `fmt` is the only summarised command (`mcp/gate/selftest.py:505` `"no_summary_gate_records_none",`) |
+| `journal_records_the_summary` | The journal row's `summary` equals the response's `summary`, key for key (`mcp/gate/selftest.py:544` `"journal_records_the_summary",`) |
 | `clippy_guard_applied`, `clippy_guard_satisfied`, `clippy_passed_requires_guard`, `clippy_marker_in_captured_output` | The guard touched the file, found the marker, and gates `passed` |
-| `baseline_predicate_rejects_a_failed_test`, `baseline_predicate_accepts_the_recorded_baseline` | A synthetic record of `{"passed": 158, "failed": 1}` reads `FAIL` and one of `{"passed": 159, "failed": 0}` reads `PASS` (`mcp/gate/selftest.py:122` `"baseline_predicate_rejects_a_failed_test",`) |
-| `test_gate_executes_and_reports`, `test_gate_totals` | The real `test` exit code, zero failures, and at least the recorded baseline of passes (`mcp/gate/selftest.py:74` `TEST_BASELINE_PASSED = 159`) |
+| `baseline_predicate_rejects_a_failed_test`, `baseline_predicate_accepts_the_recorded_baseline` | A synthetic record of `{"passed": 158, "failed": 1}` reads `FAIL` and one of `{"passed": 159, "failed": 0}` reads `PASS` (`mcp/gate/selftest.py:126` `"baseline_predicate_rejects_a_failed_test",`) |
+| `test_gate_executes_and_reports`, `test_gate_totals` | The real `test` exit code, zero failures, and at least the recorded baseline of passes (`mcp/gate/selftest.py:78` `TEST_BASELINE_PASSED = 159`) |
 | `captured_output_has_no_ansi_escapes` | No ESC byte survives into the returned output |
 | `journal_grows_one_line_per_invocation`, `journal_records_argv_exit_code_and_timestamp`, `read_audit_log_matches_the_journal_file` | One line per executed call, with the exact argv, exit code and timestamp |
 | `journal_marks_every_check_as_a_check` | Every line the run produced carries `"tool": "run_gate"` and `"writes": false` |
@@ -510,10 +519,10 @@ Why does the baseline predicate get its own two checks?
 
 Because a totals check that reads the pass count alone calls a suite green while a test fails. The
 predicate requires zero failures as well as the baseline count
-(`mcp/gate/selftest.py:95` `def baseline_ok(record: dict[str, Any]) -> bool:`), and the two synthetic
+(`mcp/gate/selftest.py:99` `def baseline_ok(record: dict[str, Any]) -> bool:`), and the two synthetic
 records exercise both directions without depending on the day's real totals.
 
-The test holds its own expectation of the six argv tuples rather than asking the server twice, so a
+The test holds its own expectation of the eight argv tuples rather than asking the server twice, so a
 server that published a wrong allowlist would fail the check instead of validating itself. It holds
 its own recount of the `fmt` counts for the same reason.
 
@@ -522,9 +531,9 @@ its own recount of the `fmt` counts for the same reason.
 Why is there no `run_command`, no `--` passthrough, and no cwd argument?
 
 - Keep the execution surface a fixed vocabulary, so a call cannot widen its own access: the
-  `COMMANDS` table is the only argv source (`mcp/gate/gate_vocabulary.py:236` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
+  `COMMANDS` table is the only argv source (`mcp/gate/gate_vocabulary.py:244` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
 - Split that vocabulary by declared mode and give each half its own tool, so a check surface cannot
-  reach a mutation (`mcp/gate/gate_vocabulary.py:240` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
+  reach a mutation (`mcp/gate/gate_vocabulary.py:248` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
 - Keep `shell` off and the argv a list, so a metacharacter in a caller value can never become a
   command (`mcp/gate/server.py:400` `completed = subprocess.run(  # noqa: S603 - a fixed argv, never a caller-supplied string`).
 - Journal only executed commands, so the journal's line count is itself an audit fact

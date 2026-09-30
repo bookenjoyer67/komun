@@ -298,12 +298,8 @@ pub(crate) fn parse_scope(raw: Option<&str>) -> Result<Option<CategoryScope>, St
 /// vocabularies for the same mistake.
 pub(crate) fn parse_body_scope(raw: &str) -> Result<CategoryScope, String> {
     let value = raw.trim();
-    CategoryScope::parse(value).ok_or_else(|| {
-        format!(
-            "scope must be one of {} (got {value:?})",
-            accepted_scopes()
-        )
-    })
+    CategoryScope::parse(value)
+        .ok_or_else(|| format!("scope must be one of {} (got {value:?})", accepted_scopes()))
 }
 
 /// The accepted `?scope=` values, rendered from the enum so the error message cannot fall behind

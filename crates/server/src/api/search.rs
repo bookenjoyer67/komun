@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::AppState;
 use super::StatusError;
+use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -106,7 +106,7 @@ async fn search_users(
            FROM users u
            WHERE u.display_name ILIKE $1
            ORDER BY u.display_name
-           LIMIT 20"#
+           LIMIT 20"#,
     )
     .bind(&pattern)
     .fetch_all(&state.pool)

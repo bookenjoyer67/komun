@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use tokio::sync::Mutex as TokioMutex;
 
-use crate::AppState;
-use crate::auth::require_auth;
 use super::StatusError;
+use crate::auth::require_auth;
+use crate::AppState;
 
 static REGISTRATIONS: LazyLock<TokioMutex<Vec<StdInstant>>> =
     LazyLock::new(|| TokioMutex::new(Vec::new()));
@@ -26,8 +26,7 @@ pub fn router(state: AppState) -> Router {
     // directory by setting `open_registration = true`; unset falls back to the signup mode.
     let registration_is_open = state.config.open_registration();
 
-    let mut public = Router::new()
-        .route("/directory", get(list_servers));
+    let mut public = Router::new().route("/directory", get(list_servers));
 
     if registration_is_open {
         public = public.route("/directory/register", post(register_server));
@@ -40,9 +39,11 @@ pub fn router(state: AppState) -> Router {
     let protected_register = if registration_is_open {
         None
     } else {
-        Some(Router::new()
-            .route("/directory/register", post(register_server))
-            .layer(middleware::from_fn_with_state(state.clone(), require_auth)))
+        Some(
+            Router::new()
+                .route("/directory/register", post(register_server))
+                .layer(middleware::from_fn_with_state(state.clone(), require_auth)),
+        )
     };
 
     let mut router = public.merge(protected);
@@ -155,7 +156,9 @@ async fn register_server(
     .execute(&state.pool)
     .await?;
 
-    Ok(Json(serde_json::json!({"status": "registered", "url": url})))
+    Ok(Json(
+        serde_json::json!({"status": "registered", "url": url}),
+    ))
 }
 
 async fn list_servers(
@@ -197,7 +200,10 @@ async fn list_servers(
         .await?;
 
         rows.into_iter()
-            .map(|e| DirectoryEntryWithDistance { entry: e, distance_km: None })
+            .map(|e| DirectoryEntryWithDistance {
+                entry: e,
+                distance_km: None,
+            })
             .collect()
     } else {
         let rows = sqlx::query_as::<_, DirectoryEntry>(&format!(
@@ -210,7 +216,10 @@ async fn list_servers(
         .await?;
 
         rows.into_iter()
-            .map(|e| DirectoryEntryWithDistance { entry: e, distance_km: None })
+            .map(|e| DirectoryEntryWithDistance {
+                entry: e,
+                distance_km: None,
+            })
             .collect()
     };
 

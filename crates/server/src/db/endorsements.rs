@@ -20,7 +20,12 @@ pub struct EndorsementWithName {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-pub async fn create(pool: &PgPool, endorser_id: Uuid, endorsee_id: Uuid, note: Option<String>) -> Result<Endorsement, sqlx::Error> {
+pub async fn create(
+    pool: &PgPool,
+    endorser_id: Uuid,
+    endorsee_id: Uuid,
+    note: Option<String>,
+) -> Result<Endorsement, sqlx::Error> {
     let id = Uuid::now_v7();
     sqlx::query_as::<_, Endorsement>(
         "INSERT INTO endorsements (id, endorser_id, endorsee_id, note) VALUES ($1, $2, $3, $4) RETURNING id, endorser_id, endorsee_id, note, created_at"
@@ -33,7 +38,11 @@ pub async fn create(pool: &PgPool, endorser_id: Uuid, endorsee_id: Uuid, note: O
     .await
 }
 
-pub async fn remove(pool: &PgPool, endorser_id: Uuid, endorsee_id: Uuid) -> Result<bool, sqlx::Error> {
+pub async fn remove(
+    pool: &PgPool,
+    endorser_id: Uuid,
+    endorsee_id: Uuid,
+) -> Result<bool, sqlx::Error> {
     let rows = sqlx::query("DELETE FROM endorsements WHERE endorser_id = $1 AND endorsee_id = $2")
         .bind(endorser_id)
         .bind(endorsee_id)
@@ -42,14 +51,17 @@ pub async fn remove(pool: &PgPool, endorser_id: Uuid, endorsee_id: Uuid) -> Resu
     Ok(rows.rows_affected() > 0)
 }
 
-pub async fn list_for_user(pool: &PgPool, endorsee_id: Uuid) -> Result<Vec<EndorsementWithName>, sqlx::Error> {
+pub async fn list_for_user(
+    pool: &PgPool,
+    endorsee_id: Uuid,
+) -> Result<Vec<EndorsementWithName>, sqlx::Error> {
     sqlx::query_as::<_, EndorsementWithName>(
         r#"SELECT e.id, e.endorser_id, e.note, e.created_at,
            u.display_name as endorser_name
            FROM endorsements e
            JOIN users u ON u.id = e.endorser_id
            WHERE e.endorsee_id = $1
-           ORDER BY e.created_at DESC"#
+           ORDER BY e.created_at DESC"#,
     )
     .bind(endorsee_id)
     .fetch_all(pool)

@@ -5,6 +5,84 @@ Entries are never deleted or rewritten, and the commits that add them are never 
 
 ---
 
+## Run 008 (workflow 8 — the frontend on the gate surface, and the first write-mode run) — 2026-09-30 — eight commands, the standing criteria settled by a role, and the drift cleared through `run_fix`
+
+What did this run change, and what did each role settle?
+
+Run metadata:
+- System under test: the gate surface and its write path — `agentic.config.json`, `mcp/gate/gate_vocabulary.py`, `mcp/gate/server.py`, `mcp/gate/selftest.py`, `scripts/agentic_config.py`, and the frontend manifest `web/package.json`.
+- Change under gate: ticket `KOMUN-act2-v2-run1` — two check-mode names so a role can settle the frontend, and one write-mode call clearing the standing formatting drift.
+- Invocation: headless `claude -p` inside container `agent-rev-m3` from `/workspace`, `--agent orchestrator --permission-mode acceptEdits`, in one session `c55bdf4e-3d77-4dcb-82ce-9ab8d332e81e` resumed three times after human rulings.
+- Transcript: `~/komun-agent-exercise-4-3/` — `act2-v2-1.txt` … `act2-v2-4.txt`, the three rulings `act2-v2-ruling{,2,3}-*.md`, and the operator's own captures `act2-fmt-filelist-operator.txt` and `act2-selftest-operator.txt`.
+- Elapsed: 09:22–10:52 CDT, preceded by one aborted attempt stopped 2:48 in so the frontend could be folded into scope before any file was touched.
+
+### Why could no role settle the standing frontend criteria before this run?
+
+Why did the frontend need the surface widened rather than a wider allowance to one role?
+
+- `CLAUDE.md`'s standing criteria include `npm run check` and `npx vitest run`, and no gate name exposed either, so every earlier run recorded both as NOT MET.
+- The checks themselves worked all along. Measured from the shell: `npm --prefix web run check` returns `svelte-check found 0 errors and 0 warnings`, and `npm --prefix web run test` returns `Test Files  7 passed (7)` and `Tests  82 passed (82)`.
+- One argv was rejected by measurement, not by taste. `npm --prefix web exec -- vitest run` runs with `/workspace` as its working directory and reports `Test Files  7 failed (7)` and `Tests  no tests`, so the script form was the only usable one.
+
+### What changed, and where?
+
+Which files carry the change, and what did each cost?
+
+- Two check-mode entries were added: `webcheck` is `["npm","--prefix","web","run","check"]` and `webtest` is `["npm","--prefix","web","run","test"]`.
+- The `test` script was appended on the same line as `check` in `web/package.json`, so no line below moved and the pinned citation in `eval/test_deterministic_step.py` still resolves. The human ratified that over editing the test.
+- The selftest's assertion was renamed to `allowlist_is_the_eight_documented_commands`, and its docstring was corrected downward from "on each of the five check-mode names" to "three of the seven".
+- The reformat itself was one `run_fix` call with the single allowed name `fmt-fix`, whose argv is `["cargo","fmt","--all"]`.
+
+### What did the gate's own summary report before and after?
+
+What did the formatting gate say about itself on either side of the write?
+
+- Before, at 15:26:34, its journal row carried `exit_code: 1` with `{"hunks": 213, "files": 35, "added": 1101, "removed": 2475}`.
+- After, at 15:32:15, it carried `exit_code: 0` with `{"hunks": 0, "files": 0, "added": 0, "removed": 0}`, and a second invocation at 15:33:14 repeated those zeros, which is what proves the tree byte-stable.
+- The counts came from the summary mechanism Run 007 added, which is why a role could assert them at all.
+
+### Which criteria were met, and by whom?
+
+Who settled each criterion, and which two no role could settle?
+
+- AC1 to AC5 were settled by the `tester` from its own rows and responses.
+- AC6 was settled by operator measurement — `port-self-test: PASS` and `SELFTEST_RESULT passed=40 total=40` — and labelled not gate-settled, because no gate name runs either script.
+- AC7 was settled by operator measurement in the only place it could be. No role holds git, so the operator read `git status --short` and found 35 modified `.rs` files, all under `crates/`, plus 15 modified non-`.rs` files and no file added, deleted or renamed.
+- The journal's first write-mode row appears here: `{"gate": "fmt-fix", "tool": "run_fix", "calling_role": "implementer", "writes": true, "duration_seconds": 0.242, "exit_code": 0}`. Every one of the 165 rows before it carried `"tool": "run_gate"`.
+
+### Did any gate's outcome move?
+
+Did widening the surface or clearing the drift change what any gate decides?
+
+- No gate moved. `test` reported `159 passed; 0 failed`, `policy` reported `90 passed`, `clippy` exited 0 with its cache-hit guard applied and satisfied, and `conformance` exited 0.
+- The frontend arrived on the surface without any existing gate's argv changing, and the two new names are check-mode with `writes: false`.
+
+### Which criteria exist now that no gate can reach?
+
+What did this run prove it still cannot cover?
+
+- The `fmt` file list stayed out of reach. The tester's client refused the whole response, since `result (175,636 characters) exceeds maximum allowed tokens`. The counts survived in the journal, but the 35 names did not, and only a shell could capture them.
+- No gate rebuilds the wasm package the frontend consumes. The reformat rewrote `crates/wasm/src/lib.rs` while `crates/wasm/pkg/` held a build from ten hours earlier, so those frontend tests ran against a stale artifact.
+- `.claude/agents/tester.md` sits outside `gates.conformance.files`, so no gate checks the file this run rewrote most.
+- A storage entry of 59,912 characters exceeds `read_entry`'s limit and the tool offers no paging, so neither the implementer nor the reviewer could read the plan it acted on.
+
+### What did the run get wrong, and how was it caught?
+
+Which of the run's own conclusions did measurement dissolve?
+
+- The run reported that its edits broke three citations in `AGENTS.md`, raising that file's count from 2 to 5. The operator measured otherwise: the file is untouched, its 22 citations are identical to HEAD, and the gate reports `{"CIT": 5}` at both base and current.
+- The likely cause is the gate's own design. A base-versus-current comparison re-reads HEAD on every invocation, and the operator committed two revisions mid-window at 09:12 and 09:25, so a measurement spanning that commit saw a rise belonging to someone else's diff. The human declined the repair and had the mis-attribution recorded.
+- The run's own honesty held elsewhere: it caught a 137-word sentence it had written into `docs/routing-and-tool-grant-map.md` against the 35-word limit, and repaired it before the reviewer saw it.
+
+### What is carried, and why is it not repaired here?
+
+What stays unrepaired on purpose, and what did the run repair because its own edits broke it?
+
+- The five pointers to `agentic.config.json:61` remain stale, now by 18 lines. Line 61 reads `"strip_ansi": true,` while the cited conformance argv sits at `:79`, and the run's insertion at line 92 broke none of them.
+- `AGENTS.md:202` still asserts a baseline of 158 against the measured 159, and the human declined a repair that measurement had shown unnecessary.
+- The run repaired only what its own edits broke: `agentic.config.json:250` became `:264` in `mcp/gate/SCHEMA.md`, plus the pointer shifts that its insertions caused in `gate_vocabulary.py` and `selftest.py`.
+- `PORTING.md` and `console/` are the human's own uncommitted work and stay outside this run's diff. The reviewer inferred the former correctly from a file-count reconciliation, having no git to measure with.
+
 ## Run 007 (workflow 7 — the gate's own output summaries) — 2026-09-30 — the fmt counts made readable to a role, defects 4 and 6 closed, ten findings carried
 
 What did this run change, and what did each role measure?
@@ -622,7 +700,7 @@ at least 9 / 12, no dimension scored 1):
 
 | Dimension | Score | Evidence |
 |---|---|---|
-| D1 Accuracy | 3 | Every citation resolves and the quoted text is present: the 65-claim table was re-executed against the current tree — 60 citations resolve (56 at the cited line, 4 with drift), 0 text-not-found, 4 unsettleable read-only, and the single contradiction (A7 "SvelteKit 5") pre-dates this run. Two deductions: the closing report's self-reported edit count does not reproduce (17 claimed; the transcript holds 19 Edit calls, 18 successful, one "string to replace not found"), and the Docker-build sentence keeps "verified" on an authority that is a previous session's log record (`docs/iteration-log.md:517-518`) rather than output this run produced. A third, smaller deduction: the run's own self-reference in `AGENTS.md` cited `:39` for the `cargo sqlx prepare` step, which its own edits moved to `:91` (text intact, number stale). A strict reading of level 2 ("a count that does not reproduce") would score this 2; recorded here so the judgement is visible. |
+| D1 Accuracy | 3 | Every citation resolves and the quoted text is present: the 65-claim table was re-executed against the current tree — 60 citations resolve (56 at the cited line, 4 with drift), 0 text-not-found, 4 unsettleable read-only, and the single contradiction (A7 "SvelteKit 5") pre-dates this run. Two deductions: the closing report's self-reported edit count does not reproduce (17 claimed; the transcript holds 19 Edit calls, 18 successful, one "string to replace not found"), and the Docker-build sentence keeps "verified" on an authority that is a previous session's log record (`docs/iteration-log.md:595-596`) rather than output this run produced. A third, smaller deduction: the run's own self-reference in `AGENTS.md` cited `:39` for the `cargo sqlx prepare` step, which its own edits moved to `:91` (text intact, number stale). A strict reading of level 2 ("a count that does not reproduce") would score this 2; recorded here so the judgement is visible. |
 | D2 Task adherence | 4 | Level 3: both phase-A sections were revisited under v2 and all four changes applied (rule measurement: 10 headings, 0 non-question openers, 0 surviving "This section" purpose sentences, 0 sentences over 35 words, 0 bare-location parentheticals, 0 hedging words, 0 nested bullets). Level 4: the agent restated the changed rules in its own words before editing — the phase-B and phase-C messages open with a boundary restatement naming R1's replacement, R2's strengthening, R3's new limit and R5's withdrawal. |
 | D3 Coherence | 4 | Level 3: every touched section is at v2 and the `[UNVERIFIED]` discipline is carried forward (4 flagged claims, 6 marker occurrences, 3 "Claims needing verification" lists, each naming what would settle it). Level 4: the consistency pass is auditable — six numbered violations, each with its file, the rule it broke, the search that settled it and the fix. |
 | **Total** | **11 / 12** | PASS (AC1, AC2 and AC3 all pass; no dimension scored 1) |

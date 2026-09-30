@@ -132,7 +132,9 @@ pub struct EmailConfig {
 impl EmailConfig {
     /// SMTP is configured only when a host and a from address are both present.
     pub fn is_configured(&self) -> bool {
-        self.smtp_host.as_deref().is_some_and(|h| !h.trim().is_empty())
+        self.smtp_host
+            .as_deref()
+            .is_some_and(|h| !h.trim().is_empty())
             && self.from.as_deref().is_some_and(|f| !f.trim().is_empty())
     }
 
@@ -288,8 +290,7 @@ impl Default for SecurityConfig {
 
 impl Config {
     pub fn load() -> anyhow::Result<Self> {
-        let config_path = std::env::var("KOMUN_CONFIG")
-            .unwrap_or_else(|_| "config.toml".into());
+        let config_path = std::env::var("KOMUN_CONFIG").unwrap_or_else(|_| "config.toml".into());
 
         let mut config = if Path::new(&config_path).exists() {
             let content = std::fs::read_to_string(&config_path)?;
@@ -355,7 +356,9 @@ impl Config {
             self.server.bind_address = v;
         }
         if let Ok(v) = std::env::var("KOMUN_PORT") {
-            if let Ok(p) = v.parse() { self.server.port = p; }
+            if let Ok(p) = v.parse() {
+                self.server.port = p;
+            }
         }
         if let Ok(v) = std::env::var("DATABASE_URL") {
             self.database.url = v;
@@ -366,7 +369,9 @@ impl Config {
         if let Ok(v) = std::env::var("BIND_ADDR") {
             let parts: Vec<&str> = v.rsplitn(2, ':').collect();
             if parts.len() == 2 {
-                if let Ok(p) = parts[0].parse() { self.server.port = p; }
+                if let Ok(p) = parts[0].parse() {
+                    self.server.port = p;
+                }
                 self.server.bind_address = parts[1].into();
             }
         }
@@ -377,7 +382,9 @@ impl Config {
     }
 
     pub fn public_url(&self) -> String {
-        self.node.public_url.clone()
+        self.node
+            .public_url
+            .clone()
             .unwrap_or_else(|| format!("http://localhost:{}", self.server.port))
     }
 }
@@ -393,7 +400,6 @@ pub struct GeocodeConfig {
     /// this to a real address. Requests may be blocked when it is missing.
     pub contact: Option<String>,
 }
-
 
 impl GeocodeConfig {
     /// The outbound `User-Agent`: identifies this deployment and carries the

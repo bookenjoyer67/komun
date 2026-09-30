@@ -50,7 +50,7 @@ pub async fn list(pool: &PgPool, user_id: Uuid) -> Result<Vec<Notification>> {
 
 pub async fn unread_count(pool: &PgPool, user_id: Uuid) -> Result<i64> {
     let count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = false"
+        "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = false",
     )
     .bind(user_id)
     .fetch_one(pool)

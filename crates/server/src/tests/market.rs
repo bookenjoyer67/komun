@@ -82,7 +82,10 @@ mod market_config_tests {
         );
 
         let unset: Config = toml::from_str("").expect("parse empty config");
-        assert_eq!(unset.market.resolve_currency(Some("USD")).as_deref(), Some("USD"));
+        assert_eq!(
+            unset.market.resolve_currency(Some("USD")).as_deref(),
+            Some("USD")
+        );
         assert_eq!(
             unset.market.resolve_currency(None),
             None,
@@ -216,9 +219,19 @@ mod categories_tests {
     #[test]
     fn scope_aid_sees_its_own_rows_and_the_shared_ones() {
         let aid = slugs_for(CategoryScope::Aid);
-        assert_eq!(aid.len(), 8, "the aid form must see 8 categories, got {aid:?}");
-        assert!(aid.iter().any(|s| s == "shelter"), "an aid-only category is missing");
-        assert!(aid.iter().any(|s| s == "food"), "a 'both' category must reach the aid form");
+        assert_eq!(
+            aid.len(),
+            8,
+            "the aid form must see 8 categories, got {aid:?}"
+        );
+        assert!(
+            aid.iter().any(|s| s == "shelter"),
+            "an aid-only category is missing"
+        );
+        assert!(
+            aid.iter().any(|s| s == "food"),
+            "a 'both' category must reach the aid form"
+        );
         assert!(
             !aid.iter().any(|s| s == "electronics"),
             "a market-only category must not reach the aid form"
@@ -235,7 +248,11 @@ mod categories_tests {
     #[test]
     fn a_missing_or_blank_scope_means_every_active_category() {
         assert_eq!(parse_scope(None), Ok(None));
-        assert_eq!(parse_scope(Some("   ")), Ok(None), "an untouched form field is not a filter");
+        assert_eq!(
+            parse_scope(Some("   ")),
+            Ok(None),
+            "an untouched form field is not a filter"
+        );
     }
 
     #[test]
@@ -251,9 +268,15 @@ mod categories_tests {
     fn an_unknown_scope_is_rejected_and_the_message_lists_what_is_accepted() {
         let err = parse_scope(Some("nope")).expect_err("an unknown scope must not be accepted");
         for scope in CategoryScope::ALL {
-            assert!(err.contains(scope.as_str()), "the 400 must list {scope}, got: {err}");
+            assert!(
+                err.contains(scope.as_str()),
+                "the 400 must list {scope}, got: {err}"
+            );
         }
-        assert!(err.contains("nope"), "the 400 must echo the bad value, got: {err}");
+        assert!(
+            err.contains("nope"),
+            "the 400 must echo the bad value, got: {err}"
+        );
         assert_eq!(accepted_scopes(), "aid, market, both");
     }
 
@@ -284,7 +307,11 @@ mod categories_tests {
                 actor(role).is_admin(),
                 allowed,
                 "role {role:?} must {} edit categories",
-                if allowed { "be able to" } else { "not be able to" }
+                if allowed {
+                    "be able to"
+                } else {
+                    "not be able to"
+                }
             );
         }
     }
@@ -294,7 +321,13 @@ mod categories_tests {
     /// `detail`. A row that did not carry it would record that *something* changed and not what.
     #[test]
     fn a_category_audit_row_carries_the_slug_the_subject_column_cannot_hold() {
-        let created = category("bicycle-parts", "Bicycle Parts", CategoryScope::Market, 15, true);
+        let created = category(
+            "bicycle-parts",
+            "Bicycle Parts",
+            CategoryScope::Market,
+            15,
+            true,
+        );
         let detail = audit_detail_create(&created);
 
         assert_eq!(detail["slug"], "bicycle-parts");
@@ -306,7 +339,13 @@ mod categories_tests {
 
     #[test]
     fn an_update_audit_row_records_both_sides_and_the_reindex() {
-        let before = category("household", "Household Goods", CategoryScope::Market, 140, true);
+        let before = category(
+            "household",
+            "Household Goods",
+            CategoryScope::Market,
+            140,
+            true,
+        );
         let after = category("household", "Home Goods", CategoryScope::Market, 140, false);
         let detail = audit_detail_update("household", &before, &after, 7);
 
@@ -325,7 +364,10 @@ mod categories_tests {
     fn the_audit_actions_are_namespaced_like_the_other_admin_actions() {
         assert_eq!(AUDIT_CREATE, "admin.category_create");
         assert_eq!(AUDIT_UPDATE, "admin.category_update");
-        assert!(AUDIT_CREATE.starts_with("admin."), "one prefix must find every admin action");
+        assert!(
+            AUDIT_CREATE.starts_with("admin."),
+            "one prefix must find every admin action"
+        );
         assert!(AUDIT_UPDATE.starts_with("admin."));
     }
 
@@ -467,9 +509,15 @@ mod category_body_scope_tests {
             "an unknown body scope must be a 400, not the extractor's 422: {body}"
         );
         for scope in CategoryScope::ALL {
-            assert!(body.contains(scope.as_str()), "the 400 must list {scope}, got: {body}");
+            assert!(
+                body.contains(scope.as_str()),
+                "the 400 must list {scope}, got: {body}"
+            );
         }
-        assert!(body.contains("nope"), "the 400 must echo the bad value, got: {body}");
+        assert!(
+            body.contains("nope"),
+            "the 400 must echo the bad value, got: {body}"
+        );
         assert!(
             !body.contains("unknown variant") && !body.contains("Failed to deserialize"),
             "serde's wording must not reach the caller, got: {body}"
@@ -478,7 +526,8 @@ mod category_body_scope_tests {
         // The same call with a real scope clears every check this endpoint makes and reaches the
         // database, which is unreachable here by construction. A 400 or a 422 would mean the fix
         // had started refusing valid bodies; the card's runtime gate is where this turns into 201.
-        let (status, body) = create(r#"{"slug":"polish-probe","label":"P","scope":"market"}"#).await;
+        let (status, body) =
+            create(r#"{"slug":"polish-probe","label":"P","scope":"market"}"#).await;
         assert_eq!(
             status,
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -537,7 +586,10 @@ mod category_body_scope_tests {
 
         // A body that names `scope` is naming one, so blank is a mistake rather than "no filter" —
         // the one place the two paths are allowed to differ.
-        assert!(parse_body_scope("  ").is_err(), "a blank body scope is not a scope");
+        assert!(
+            parse_body_scope("  ").is_err(),
+            "a blank body scope is not a scope"
+        );
         assert_eq!(parse_scope(Some("  ")), Ok(None));
 
         for scope in CategoryScope::ALL {
@@ -561,7 +613,10 @@ mod post_filter_tests {
         assert_eq!(filter.kind, None);
         assert_eq!(filter.category, None);
         assert_eq!(filter.currency, None);
-        assert_eq!(filter.limit, DEFAULT_LIMIT, "an unbounded feed is not an option");
+        assert_eq!(
+            filter.limit, DEFAULT_LIMIT,
+            "an unbounded feed is not an option"
+        );
         assert_eq!(filter.offset, 0);
     }
 
@@ -602,10 +657,20 @@ mod post_filter_tests {
             kind: Some("listings".to_string()),
             ..Default::default()
         };
-        let err = validate_filters(&raw).expect_err("an unknown kind must be a 400, not an empty list");
-        assert!(err.starts_with("kind "), "the 400 must name the parameter, got: {err}");
-        assert!(err.contains("listing"), "the 400 must list the accepted values, got: {err}");
-        assert!(err.contains("listings"), "the 400 must echo the bad value, got: {err}");
+        let err =
+            validate_filters(&raw).expect_err("an unknown kind must be a 400, not an empty list");
+        assert!(
+            err.starts_with("kind "),
+            "the 400 must name the parameter, got: {err}"
+        );
+        assert!(
+            err.contains("listing"),
+            "the 400 must list the accepted values, got: {err}"
+        );
+        assert!(
+            err.contains("listings"),
+            "the 400 must echo the bad value, got: {err}"
+        );
     }
 
     /// Shape only. A well-formed slug nobody has created yet is a legitimately empty result;
@@ -617,7 +682,10 @@ mod post_filter_tests {
             ..Default::default()
         };
         assert_eq!(
-            validate_filters(&raw).expect("a slug is legal").category.as_deref(),
+            validate_filters(&raw)
+                .expect("a slug is legal")
+                .category
+                .as_deref(),
             Some("bikes-vehicles")
         );
 
@@ -626,7 +694,10 @@ mod post_filter_tests {
             ..Default::default()
         };
         let err = validate_filters(&raw).expect_err("a label is not a slug");
-        assert!(err.starts_with("category "), "the 400 must name the parameter, got: {err}");
+        assert!(
+            err.starts_with("category "),
+            "the 400 must name the parameter, got: {err}"
+        );
     }
 
     #[test]
@@ -661,7 +732,10 @@ mod post_filter_tests {
                 }
             };
             let err = validate_filters(&raw).expect_err("a malformed price must be a 400");
-            assert!(err.starts_with(field), "the 400 must name {field}, got: {err}");
+            assert!(
+                err.starts_with(field),
+                "the 400 must name {field}, got: {err}"
+            );
         }
     }
 
@@ -688,7 +762,10 @@ mod post_filter_tests {
             ..Default::default()
         };
         assert_eq!(
-            validate_filters(&raw).expect("USD is legal").currency.as_deref(),
+            validate_filters(&raw)
+                .expect("USD is legal")
+                .currency
+                .as_deref(),
             Some("USD")
         );
 
@@ -698,8 +775,14 @@ mod post_filter_tests {
                 ..Default::default()
             };
             let err = validate_filters(&raw).expect_err("a non-ISO currency must be a 400");
-            assert!(err.starts_with("currency "), "the 400 must name the parameter, got: {err}");
-            assert!(err.contains(bad), "the 400 must echo the bad value, got: {err}");
+            assert!(
+                err.starts_with("currency "),
+                "the 400 must name the parameter, got: {err}"
+            );
+            assert!(
+                err.contains(bad),
+                "the 400 must echo the bad value, got: {err}"
+            );
         }
     }
 
@@ -723,8 +806,14 @@ mod post_filter_tests {
             ..Default::default()
         };
         let err = validate_filters(&raw).expect_err("'mint' is not a condition this schema allows");
-        assert!(err.starts_with("item_condition "), "the 400 must name the parameter, got: {err}");
-        assert!(err.contains("like_new"), "the 400 must list the accepted values, got: {err}");
+        assert!(
+            err.starts_with("item_condition "),
+            "the 400 must name the parameter, got: {err}"
+        );
+        assert!(
+            err.contains("like_new"),
+            "the 400 must list the accepted values, got: {err}"
+        );
     }
 
     /// `status` predates M1, but it is the same trap: a value the `CHECK` has never heard of used
@@ -745,7 +834,10 @@ mod post_filter_tests {
             ..Default::default()
         };
         let err = validate_filters(&raw).expect_err("'sold' is not a post status");
-        assert!(err.starts_with("status "), "the 400 must name the parameter, got: {err}");
+        assert!(
+            err.starts_with("status "),
+            "the 400 must name the parameter, got: {err}"
+        );
     }
 
     /// Rejected rather than clamped: a caller that asks for 5,000 and is quietly handed 200 has
@@ -781,7 +873,10 @@ mod post_filter_tests {
                 ..Default::default()
             };
             let err = validate_filters(&raw).expect_err("a bad limit must be a 400");
-            assert!(err.starts_with("limit "), "the 400 must name the parameter for {bad:?}, got: {err}");
+            assert!(
+                err.starts_with("limit "),
+                "the 400 must name the parameter for {bad:?}, got: {err}"
+            );
         }
 
         let raw = PostFilters {
@@ -789,7 +884,10 @@ mod post_filter_tests {
             ..Default::default()
         };
         let err = validate_filters(&raw).expect_err("a negative offset must be a 400");
-        assert!(err.starts_with("offset "), "the 400 must name the parameter, got: {err}");
+        assert!(
+            err.starts_with("offset "),
+            "the 400 must name the parameter, got: {err}"
+        );
     }
 
     /// The query the market grid actually sends, all filters at once.
@@ -866,8 +964,7 @@ mod offer_tests {
         }
 
         for kind in [PostKind::Resource, PostKind::Need, PostKind::Offer] {
-            let err = offers_allowed_on(kind)
-                .expect_err("an aid thread must refuse offers");
+            let err = offers_allowed_on(kind).expect_err("an aid thread must refuse offers");
             assert_eq!(err, "offers are for listings and wanted ads");
         }
     }
@@ -900,8 +997,14 @@ mod offer_tests {
             post_currency: Some("USD".to_string()),
         };
 
-        assert!(thread.is_participant(author), "the post's author is a participant");
-        assert!(thread.is_participant(responder), "the responder is a participant");
+        assert!(
+            thread.is_participant(author),
+            "the post's author is a participant"
+        );
+        assert!(
+            thread.is_participant(responder),
+            "the responder is a participant"
+        );
         assert!(
             !thread.is_participant(stranger),
             "anyone else must be refused: this is the 403"
@@ -920,11 +1023,15 @@ mod offer_tests {
             assert_eq!(valid.kind, kind);
         }
         assert_eq!(
-            validate_offer(&priced("accept", 2000)).expect("accept is a kind").kind,
+            validate_offer(&priced("accept", 2000))
+                .expect("accept is a kind")
+                .kind,
             OfferKind::Accept
         );
         assert_eq!(
-            validate_offer(&request("decline")).expect("decline is a kind").kind,
+            validate_offer(&request("decline"))
+                .expect("decline is a kind")
+                .kind,
             OfferKind::Decline
         );
 
@@ -932,9 +1039,15 @@ mod offer_tests {
         // has to reject it first, with a message that says what the four steps are.
         let err = validate_offer(&priced("bid", 100)).expect_err("'bid' is not an offer kind");
         for kind in OfferKind::ALL {
-            assert!(err.contains(kind.as_str()), "the 400 must list {kind}, got: {err}");
+            assert!(
+                err.contains(kind.as_str()),
+                "the 400 must list {kind}, got: {err}"
+            );
         }
-        assert!(err.contains("bid"), "the 400 must echo the bad value, got: {err}");
+        assert!(
+            err.contains("bid"),
+            "the 400 must echo the bad value, got: {err}"
+        );
         assert_eq!(offer_kinds(), "offer, counter, accept, decline");
     }
 
@@ -942,8 +1055,14 @@ mod offer_tests {
     fn a_missing_kind_is_a_400_that_says_what_the_field_takes() {
         for raw in [OfferRequest::default(), request(""), request("   ")] {
             let err = validate_offer(&raw).expect_err("an offer with no kind is not an offer");
-            assert!(err.contains("kind"), "the 400 must name the field, got: {err}");
-            assert!(err.contains("counter"), "the 400 must list the kinds, got: {err}");
+            assert!(
+                err.contains("kind"),
+                "the 400 must name the field, got: {err}"
+            );
+            assert!(
+                err.contains("counter"),
+                "the 400 must list the kinds, got: {err}"
+            );
         }
     }
 
@@ -958,7 +1077,10 @@ mod offer_tests {
                 err.contains("amount_cents"),
                 "the 400 must name the field, got: {err}"
             );
-            assert!(err.contains(kind.as_str()), "the 400 must name the kind, got: {err}");
+            assert!(
+                err.contains(kind.as_str()),
+                "the 400 must name the kind, got: {err}"
+            );
         }
     }
 
@@ -968,8 +1090,14 @@ mod offer_tests {
     fn a_decline_carries_no_amount() {
         let err = validate_offer(&priced("decline", 2000))
             .expect_err("a decline with an amount must be a 400");
-        assert!(err.contains("amount_cents"), "the 400 must name the field, got: {err}");
-        assert!(err.contains("decline"), "the 400 must name the kind, got: {err}");
+        assert!(
+            err.contains("amount_cents"),
+            "the 400 must name the field, got: {err}"
+        );
+        assert!(
+            err.contains("decline"),
+            "the 400 must name the kind, got: {err}"
+        );
 
         let valid = validate_offer(&request("decline")).expect("a bare decline is legal");
         assert_eq!(valid.amount_cents, None);
@@ -980,7 +1108,9 @@ mod offer_tests {
     #[test]
     fn an_amount_may_be_zero_but_never_negative() {
         assert_eq!(
-            validate_offer(&priced("offer", 0)).expect("free is a price").amount_cents,
+            validate_offer(&priced("offer", 0))
+                .expect("free is a price")
+                .amount_cents,
             Some(0)
         );
 
@@ -1011,8 +1141,14 @@ mod offer_tests {
                 ..priced("offer", 2500)
             })
             .expect_err("a non-ISO currency must be a 400");
-            assert!(err.contains("currency"), "the 400 must name the field, got: {err}");
-            assert!(err.contains(bad), "the 400 must echo the bad value, got: {err}");
+            assert!(
+                err.contains("currency"),
+                "the 400 must name the field, got: {err}"
+            );
+            assert!(
+                err.contains(bad),
+                "the 400 must echo the bad value, got: {err}"
+            );
         }
 
         // An untouched form field is not a currency the caller chose; it falls through to the
@@ -1040,7 +1176,10 @@ mod offer_tests {
                 ..priced("offer", 2500)
             })
             .expect("a blank note is no note");
-            assert_eq!(valid.note, None, "a whitespace-only note must not be stored");
+            assert_eq!(
+                valid.note, None,
+                "a whitespace-only note must not be stored"
+            );
         }
 
         let at_limit = "x".repeat(MAX_NOTE_CHARS);
@@ -1059,7 +1198,10 @@ mod offer_tests {
             ..priced("offer", 2500)
         })
         .expect_err("one character past the limit must be a 400");
-        assert!(err.contains("note"), "the 400 must name the field, got: {err}");
+        assert!(
+            err.contains("note"),
+            "the 400 must name the field, got: {err}"
+        );
         assert!(
             err.contains(&MAX_NOTE_CHARS.to_string()),
             "the 400 must state the limit, got: {err}"
@@ -1112,7 +1254,10 @@ mod offer_tests {
     fn with_no_currency_anywhere_the_offer_is_refused_rather_than_priced_in_a_guess() {
         let err = resolve_offer_currency(None, None, None)
             .expect_err("an amount with no currency must not be stored");
-        assert!(err.contains("currency"), "the 400 must name what is missing, got: {err}");
+        assert!(
+            err.contains("currency"),
+            "the 400 must name what is missing, got: {err}"
+        );
         assert!(
             err.contains("[market] default_currency"),
             "the 400 must name the key an operator would set, got: {err}"
@@ -1151,7 +1296,8 @@ mod offer_tests {
                 let expected = legal.contains(&(*from, *to));
                 let actual = check_transition(*from, *to).is_ok();
                 assert_eq!(
-                    actual, expected,
+                    actual,
+                    expected,
                     "{from} -> {to} must be {}",
                     if expected { "allowed" } else { "refused" }
                 );
@@ -1213,7 +1359,11 @@ mod offer_tests {
     fn an_accept_is_refused_on_any_thread_that_is_no_longer_proposed() {
         check_accept_allowed(MatchStatus::Proposed).expect("the only state an accept is legal in");
 
-        for current in [MatchStatus::Accepted, MatchStatus::Completed, MatchStatus::Withdrawn] {
+        for current in [
+            MatchStatus::Accepted,
+            MatchStatus::Completed,
+            MatchStatus::Withdrawn,
+        ] {
             let err = check_accept_allowed(current)
                 .expect_err("an accept on a thread that is no longer proposed must be refused");
             assert!(
@@ -1262,9 +1412,15 @@ mod offer_tests {
 
         for bad in ["", "   ", "sold", "Accepted", "done"] {
             let err = parse_status(bad).expect_err("an unknown status must be a 400");
-            assert!(err.contains("status"), "the 400 must name the field, got: {err}");
+            assert!(
+                err.contains("status"),
+                "the 400 must name the field, got: {err}"
+            );
             for status in MatchStatus::ALL {
-                assert!(err.contains(status.as_str()), "the 400 must list {status}, got: {err}");
+                assert!(
+                    err.contains(status.as_str()),
+                    "the 400 must list {status}, got: {err}"
+                );
             }
         }
     }
@@ -1457,7 +1613,10 @@ mod review_tests {
         for stars in [0, 6, -1, 100, i64::MIN, i64::MAX] {
             let err = validate_review(&rated(stars.into()))
                 .unwrap_err_or_panic(&format!("{stars} is not a star rating"));
-            assert!(err.contains("rating"), "the 400 must name the field, got: {err}");
+            assert!(
+                err.contains("rating"),
+                "the 400 must name the field, got: {err}"
+            );
             assert!(
                 err.contains(&MIN_RATING.to_string()) && err.contains(&MAX_RATING.to_string()),
                 "the 400 must state the range, got: {err}"
@@ -1483,7 +1642,10 @@ mod review_tests {
         ] {
             let err = validate_review(&rated(not_a_rating.clone()))
                 .unwrap_err_or_panic(&format!("{not_a_rating} is not a rating"));
-            assert!(err.contains("rating"), "the 400 must name the field, got: {err}");
+            assert!(
+                err.contains("rating"),
+                "the 400 must name the field, got: {err}"
+            );
             assert!(
                 err.contains("whole number"),
                 "the 400 must say what a rating is, got: {err}"
@@ -1495,7 +1657,10 @@ mod review_tests {
     fn a_missing_rating_is_a_400_that_says_what_the_field_takes() {
         for raw in [ReviewRequest::default(), rated(serde_json::Value::Null)] {
             let err = validate_review(&raw).unwrap_err_or_panic("a review with no rating");
-            assert!(err.contains("rating"), "the 400 must name the field, got: {err}");
+            assert!(
+                err.contains("rating"),
+                "the 400 must name the field, got: {err}"
+            );
             assert!(
                 err.contains(&MAX_RATING.to_string()),
                 "the 400 must state the range, got: {err}"
@@ -1510,7 +1675,10 @@ mod review_tests {
             body: Some("  Smooth pickup, arrived on time  ".to_string()),
         })
         .expect("a written review is legal");
-        assert_eq!(valid.body.as_deref(), Some("Smooth pickup, arrived on time"));
+        assert_eq!(
+            valid.body.as_deref(),
+            Some("Smooth pickup, arrived on time")
+        );
 
         for blank in ["", "   ", "\n\t"] {
             let valid = validate_review(&ReviewRequest {
@@ -1540,7 +1708,10 @@ mod review_tests {
             body: Some("x".repeat(MAX_BODY_CHARS + 1)),
         })
         .unwrap_err_or_panic("one character past the limit");
-        assert!(err.contains("body"), "the 400 must name the field, got: {err}");
+        assert!(
+            err.contains("body"),
+            "the 400 must name the field, got: {err}"
+        );
         assert!(
             err.contains(&MAX_BODY_CHARS.to_string()),
             "the 400 must state the limit, got: {err}"
@@ -1595,8 +1766,8 @@ mod review_tests {
             MatchStatus::Accepted,
             MatchStatus::Withdrawn,
         ] {
-            let err = check_reviewable(open)
-                .unwrap_err_or_panic("only a completed deal may be reviewed");
+            let err =
+                check_reviewable(open).unwrap_err_or_panic("only a completed deal may be reviewed");
             assert!(
                 err.contains(open.as_str()),
                 "the 409 must name the current status, got: {err}"
@@ -1797,7 +1968,10 @@ mod review_tests {
             offset: Some("-1".to_string()),
         })
         .unwrap_err_or_panic("a negative offset");
-        assert!(err.starts_with("offset "), "the 400 must name the parameter, got: {err}");
+        assert!(
+            err.starts_with("offset "),
+            "the 400 must name the parameter, got: {err}"
+        );
     }
 
     /// M3.3: newest first, attributed, with a deterministic tie-break — without which a row can

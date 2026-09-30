@@ -15,9 +15,11 @@ mod schema_contract {
     // -----------------------------------------------------------------------
 
     fn schema_sql() -> String {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../migrations/001_schema.sql");
-        std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("cannot read {path}: {e}"))
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../migrations/001_schema.sql"
+        );
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"))
     }
 
     /// Split a SQL value list on commas that are not inside a single-quoted string.
@@ -66,7 +68,9 @@ mod schema_contract {
                 continue;
             };
             if column.is_empty()
-                || !column.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                || !column
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
             {
                 continue;
             }
@@ -189,9 +193,7 @@ mod schema_contract {
 
         let unpinned: Vec<String> = check_lists()
             .keys()
-            .filter(|name| {
-                !pinned.contains(&name.as_str()) && !exempt.contains(&name.as_str())
-            })
+            .filter(|name| !pinned.contains(&name.as_str()) && !exempt.contains(&name.as_str()))
             .cloned()
             .collect();
         assert!(
@@ -248,7 +250,8 @@ mod schema_contract {
             assert!(seen.insert(slug.clone()), "duplicate category slug {slug}");
             assert!(!slug.is_empty(), "empty category slug");
             assert!(
-                slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                slug.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
                 "category slug {slug} is not lowercase-kebab"
             );
             assert!(

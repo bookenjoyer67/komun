@@ -273,7 +273,10 @@ mod tests {
         let contact = parse_contact(config);
         assert_eq!(contact.as_deref(), Some("not a real address!!!"));
         let ua = build_user_agent(contact.as_deref());
-        assert!(ua.contains("not a real address!!!"), "User-Agent was {ua:?}");
+        assert!(
+            ua.contains("not a real address!!!"),
+            "User-Agent was {ua:?}"
+        );
     }
 
     #[test]

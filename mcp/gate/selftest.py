@@ -2,8 +2,8 @@
 """Self-test for the quality-gate MCP server.
 
 Calls the running server over streamable HTTP and asserts the behaviours the server claims: the tool
-surface, the six-command allowlist and the mode published for each, refusal of a free-form command, a
-passthrough and a shell-injection string on each of the five check-mode names, refusal in both
+surface, the eight-command allowlist and the mode published for each, refusal of a free-form command,
+a passthrough and a shell-injection string on three of the seven check-mode names, refusal in both
 directions across the mode boundary, the clippy cache-hit guard, real exit codes from the three Rust
 gates, and one audit-journal line per executed invocation. Every check prints PASS or FAIL with its
 evidence; any FAIL makes the process exit non-zero, and the output is the record of a real run.
@@ -45,6 +45,8 @@ EXPECTED_GATES = {
     ],
     "conformance": ["python3", "scripts/run-conformance-gate.py"],
     "fmt-fix": ["cargo", "fmt", "--all"],
+    "webcheck": ["npm", "--prefix", "web", "run", "check"],
+    "webtest": ["npm", "--prefix", "web", "run", "test"],
 }
 # The mode each published command declares, as an independent literal for the same reason. `check`
 # is what `run_gate` runs and `write` is what `run_fix` runs; the two sets are disjoint.
@@ -55,6 +57,8 @@ EXPECTED_MODES = {
     "policy": "check",
     "conformance": "check",
     "fmt-fix": "write",
+    "webcheck": "check",
+    "webtest": "check",
 }
 EXPECTED_TOOLS = {"list_gates", "run_gate", "run_fix", "read_audit_log"}
 EXPECTED_RUN_GATE_PARAMS = {"gate", "calling_role", "timeout_seconds"}
@@ -255,7 +259,7 @@ async def run_selftest(url: str, audit_path: str) -> int:
         published_modes = {entry["gate"]: entry["mode"] for entry in gates}
         published_writes = {entry["gate"]: entry["writes"] for entry in gates}
         check(
-            "allowlist_is_the_six_documented_commands",
+            "allowlist_is_the_eight_documented_commands",
             published == EXPECTED_GATES
             and published_modes == EXPECTED_MODES
             and published_writes == {name: mode == "write" for name, mode in EXPECTED_MODES.items()},

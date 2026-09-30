@@ -22,7 +22,10 @@ pub struct UserProfileRow {
     pub profile_json: serde_json::Value,
 }
 
-pub async fn get_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<UserProfileRow>, sqlx::Error> {
+pub async fn get_profile(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Option<UserProfileRow>, sqlx::Error> {
     // A2a: the previous version joined LATERAL against `members` and selected `u.public_key`,
     // both of which A1 dropped — so every call failed at runtime with an undefined-column error.
     // A3.2 removes the two stand-ins A2a left behind: `public_key` (an alias of

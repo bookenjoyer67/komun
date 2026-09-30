@@ -53,21 +53,30 @@ pub async fn run_repl(state: AppState) {
                 println!("Shutting down...");
                 std::process::exit(0);
             }
-            other => println!("Unknown command: {}. Type 'help' for available commands.", other),
+            other => println!(
+                "Unknown command: {}. Type 'help' for available commands.",
+                other
+            ),
         }
     }
 }
 
 async fn print_banner(state: &AppState) {
     let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.pool).await.unwrap_or(0);
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
     let posts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE status = 'active'")
-        .fetch_one(&state.pool).await.unwrap_or(0);
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
 
     println!();
     println!("  \x1b[1mkomun\x1b[0m v{}", env!("CARGO_PKG_VERSION"));
-    println!("  node: {} | {} users | {} active posts",
-        state.config.node.name, users, posts);
+    println!(
+        "  node: {} | {} users | {} active posts",
+        state.config.node.name, users, posts
+    );
     if state.config.discovery.directory_enabled {
         println!("  directory: enabled");
     }
@@ -89,15 +98,25 @@ fn print_help() {
 
 async fn cmd_stats(state: &AppState) {
     let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.pool).await.unwrap_or(0);
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
     let posts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE status = 'active'")
-        .fetch_one(&state.pool).await.unwrap_or(0);
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
     let matches: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM matches")
-        .fetch_one(&state.pool).await.unwrap_or(0);
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
     let messages: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages")
-        .fetch_one(&state.pool).await.unwrap_or(0);
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
     let dir: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM directory_entries")
-        .fetch_one(&state.pool).await.unwrap_or(0);
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
 
     println!("Users:         {}", users);
     println!("Active posts:  {}", posts);
@@ -107,10 +126,11 @@ async fn cmd_stats(state: &AppState) {
 }
 
 async fn cmd_list_users(state: &AppState) {
-    let rows: Vec<(uuid::Uuid, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-        "SELECT id, display_name, role, created_at FROM users ORDER BY created_at"
-    )
-    .fetch_all(&state.pool).await.unwrap_or_default();
+    let rows: Vec<(uuid::Uuid, String, String, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as("SELECT id, display_name, role, created_at FROM users ORDER BY created_at")
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
 
     if rows.is_empty() {
         println!("No users registered.");
@@ -119,15 +139,23 @@ async fn cmd_list_users(state: &AppState) {
 
     println!("{:<38} {:<20} {:<12} Created", "ID", "Name", "Role");
     for (id, name, role, created) in &rows {
-        println!("{:<38} {:<20} {:<12} {}", id, name, role, created.format("%Y-%m-%d"));
+        println!(
+            "{:<38} {:<20} {:<12} {}",
+            id,
+            name,
+            role,
+            created.format("%Y-%m-%d")
+        );
     }
 }
 
 async fn cmd_list_directory(state: &AppState) {
     let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
-        "SELECT url, name, location_name FROM directory_entries ORDER BY registered_at"
+        "SELECT url, name, location_name FROM directory_entries ORDER BY registered_at",
     )
-    .fetch_all(&state.pool).await.unwrap_or_default();
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
 
     if rows.is_empty() {
         println!("No directory entries.");
@@ -135,27 +163,38 @@ async fn cmd_list_directory(state: &AppState) {
     }
 
     for (url, name, loc) in &rows {
-        println!("{} — {} ({})", url, name, loc.as_deref().unwrap_or("no location"));
+        println!(
+            "{} — {} ({})",
+            url,
+            name,
+            loc.as_deref().unwrap_or("no location")
+        );
     }
 }
 
 async fn cmd_add_superadmin(state: &AppState, name: &str) {
-    let rows: Vec<(uuid::Uuid, String)> = sqlx::query_as(
-        "SELECT id, display_name FROM users WHERE LOWER(display_name) = LOWER($1)"
-    )
-    .bind(name)
-    .fetch_all(&state.pool).await.unwrap_or_default();
+    let rows: Vec<(uuid::Uuid, String)> =
+        sqlx::query_as("SELECT id, display_name FROM users WHERE LOWER(display_name) = LOWER($1)")
+            .bind(name)
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
 
     match rows.len() {
         0 => println!("No user found with name '{}'", name),
         1 => {
             sqlx::query("UPDATE users SET role = 'superadmin' WHERE id = $1")
                 .bind(rows[0].0)
-                .execute(&state.pool).await.ok();
+                .execute(&state.pool)
+                .await
+                .ok();
             println!("'{}' promoted to superadmin", rows[0].1);
         }
         n => {
-            println!("Found {} users named '{}'. Be more specific or use the full ID:", n, name);
+            println!(
+                "Found {} users named '{}'. Be more specific or use the full ID:",
+                n, name
+            );
             for (id, dname) in &rows {
                 println!("  {} — {}", id, dname);
             }
@@ -190,18 +229,21 @@ async fn cmd_purge_expired(state: &AppState) {
 }
 
 async fn cmd_ban_user(state: &AppState, name: &str) {
-    let rows: Vec<(uuid::Uuid, String)> = sqlx::query_as(
-        "SELECT id, display_name FROM users WHERE LOWER(display_name) = LOWER($1)"
-    )
-    .bind(name)
-    .fetch_all(&state.pool).await.unwrap_or_default();
+    let rows: Vec<(uuid::Uuid, String)> =
+        sqlx::query_as("SELECT id, display_name FROM users WHERE LOWER(display_name) = LOWER($1)")
+            .bind(name)
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
 
     match rows.len() {
         0 => println!("No user found with name '{}'", name),
         1 => {
             sqlx::query("DELETE FROM users WHERE id = $1")
                 .bind(rows[0].0)
-                .execute(&state.pool).await.ok();
+                .execute(&state.pool)
+                .await
+                .ok();
             println!("User '{}' deleted", rows[0].1);
         }
         n => {

@@ -169,22 +169,27 @@ pub async fn create_match(
     tx.commit().await?;
 
     if let Some(author_id) = post_author {
-        let responder_name = sqlx::query_scalar::<_, String>("SELECT display_name FROM users WHERE id = $1")
-            .bind(responder_id)
-            .fetch_optional(pool)
-            .await?
-            .unwrap_or_default();
+        let responder_name =
+            sqlx::query_scalar::<_, String>("SELECT display_name FROM users WHERE id = $1")
+                .bind(responder_id)
+                .fetch_optional(pool)
+                .await?
+                .unwrap_or_default();
         let post_title = sqlx::query_scalar::<_, String>("SELECT title FROM posts WHERE id = $1")
             .bind(post_id)
             .fetch_optional(pool)
             .await?
             .unwrap_or_default();
         super::notifications::create(
-            pool, author_id, "response",
+            pool,
+            author_id,
+            "response",
             &format!("{} responded to: {}", responder_name, post_title),
             None,
             Some(&format!("/messages/{}", match_id)),
-        ).await.ok();
+        )
+        .await
+        .ok();
     }
 
     Ok((match_id, message_id))
@@ -223,7 +228,11 @@ pub async fn list_conversations(pool: &PgPool, user_id: Uuid) -> Result<Vec<Conv
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
-pub async fn get_conversation(pool: &PgPool, match_id: Uuid, user_id: Uuid) -> Result<Conversation> {
+pub async fn get_conversation(
+    pool: &PgPool,
+    match_id: Uuid,
+    user_id: Uuid,
+) -> Result<Conversation> {
     let row = sqlx::query_as::<_, MatchDetailRow>(
         r#"SELECT
             m.id AS match_id, m.post_id, p.title AS post_title, p.kind AS post_kind,
@@ -234,7 +243,7 @@ pub async fn get_conversation(pool: &PgPool, match_id: Uuid, user_id: Uuid) -> R
         JOIN posts p ON p.id = m.post_id
         JOIN users ru ON ru.id = m.responder_id
         JOIN users au ON au.id = p.author_id
-        WHERE m.id = $1 AND (m.responder_id = $2 OR p.author_id = $2)"#
+        WHERE m.id = $1 AND (m.responder_id = $2 OR p.author_id = $2)"#,
     )
     .bind(match_id)
     .bind(user_id)
@@ -300,7 +309,7 @@ pub async fn send_message(
 
     let other_party = sqlx::query_scalar::<_, Uuid>(
         r#"SELECT CASE WHEN p.author_id = $2 THEN m.responder_id ELSE p.author_id END
-           FROM matches m JOIN posts p ON p.id = m.post_id WHERE m.id = $1"#
+           FROM matches m JOIN posts p ON p.id = m.post_id WHERE m.id = $1"#,
     )
     .bind(match_id)
     .bind(sender_id)
@@ -308,18 +317,23 @@ pub async fn send_message(
     .await?;
 
     if let Some(recipient_id) = other_party {
-        let sender_name = sqlx::query_scalar::<_, String>("SELECT display_name FROM users WHERE id = $1")
-            .bind(sender_id)
-            .fetch_optional(pool)
-            .await?
-            .unwrap_or_default();
+        let sender_name =
+            sqlx::query_scalar::<_, String>("SELECT display_name FROM users WHERE id = $1")
+                .bind(sender_id)
+                .fetch_optional(pool)
+                .await?
+                .unwrap_or_default();
         // The notification carries who, not what — it is stored in cleartext.
         super::notifications::create(
-            pool, recipient_id, "message",
+            pool,
+            recipient_id,
+            "message",
             &format!("New message from {}", sender_name),
             None,
             Some(&format!("/messages/{}", match_id)),
-        ).await.ok();
+        )
+        .await
+        .ok();
     }
 
     Ok(MessageRow {
@@ -509,7 +523,9 @@ pub fn check_transition(from: MatchStatus, to: MatchStatus) -> Result<(), String
 
     let allowed = matches!(
         (from, to),
-        (Proposed, Proposed) | (Proposed, Accepted) | (Proposed, Withdrawn)
+        (Proposed, Proposed)
+            | (Proposed, Accepted)
+            | (Proposed, Withdrawn)
             | (Accepted, Completed)
             | (Accepted, Withdrawn)
     );
@@ -617,7 +633,16 @@ pub async fn append_offer(
         return Ok(DealStep::Conflict(why));
     }
 
-    let row = insert_offer(&mut tx, match_id, actor_id, kind, amount_cents, currency, note).await?;
+    let row = insert_offer(
+        &mut tx,
+        match_id,
+        actor_id,
+        kind,
+        amount_cents,
+        currency,
+        note,
+    )
+    .await?;
 
     tx.commit().await?;
     Ok(DealStep::Done(row))
@@ -652,12 +677,11 @@ pub(crate) async fn lock_status(
     conn: &mut sqlx::PgConnection,
     match_id: Uuid,
 ) -> Result<MatchStatus> {
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM matches WHERE id = $1 FOR UPDATE")
-            .bind(match_id)
-            .fetch_optional(conn)
-            .await?
-            .ok_or_else(|| anyhow!("conversation {match_id} disappeared mid-transaction"))?;
+    let status: String = sqlx::query_scalar("SELECT status FROM matches WHERE id = $1 FOR UPDATE")
+        .bind(match_id)
+        .fetch_optional(conn)
+        .await?
+        .ok_or_else(|| anyhow!("conversation {match_id} disappeared mid-transaction"))?;
 
     MatchStatus::parse(&status)
         .ok_or_else(|| anyhow!("match {match_id} has unknown status {status:?}"))
@@ -768,11 +792,7 @@ pub async fn decline_offer(
 /// naive version did — set the column, then separately mark the post fulfilled — could leave a
 /// completed match beside an active post if the second statement failed, and had no idea that
 /// completing a deal is what makes a listing sold.
-pub async fn update_status(
-    pool: &PgPool,
-    match_id: Uuid,
-    to: MatchStatus,
-) -> Result<DealStep<()>> {
+pub async fn update_status(pool: &PgPool, match_id: Uuid, to: MatchStatus) -> Result<DealStep<()>> {
     let mut tx = pool.begin().await?;
 
     let from = lock_status(&mut tx, match_id).await?;
@@ -801,7 +821,9 @@ pub async fn update_status(
         .await?;
 
         if let Some(Some(_)) = sold_at {
-            return Ok(DealStep::Conflict("this listing is already sold".to_string()));
+            return Ok(DealStep::Conflict(
+                "this listing is already sold".to_string(),
+            ));
         }
     }
 

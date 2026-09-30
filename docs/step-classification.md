@@ -12,9 +12,9 @@ reviewed for re-scoping."
 What has to hold before a step counts as a candidate?
 
 - Show **stability**: the step ran through at least two recorded calibration cycles with a consistent
-  outcome (`docs/iteration-log.md:706` `Run 003 (workflow 3`; `docs/iteration-log.md:744` `16 / 16`).
+  outcome (`docs/iteration-log.md:784` `Run 003 (workflow 3`; `docs/iteration-log.md:822` `16 / 16`).
 - Show **repeatability**: the same input produced the same output, checked rather than assumed
-  (`docs/iteration-log.md:846` `All 96 citations were checked programmatically`).
+  (`docs/iteration-log.md:924` `All 96 citations were checked programmatically`).
 - Show **specifiability**: one paragraph lets a developer implement the step, because the standard
   names each rule's detection (`docs/DOC-STYLE.md:24` `How a violation is detected`).
 - Show a **high run rate**: the step runs on every review of a prose change
@@ -30,7 +30,7 @@ Which steps hold their place as agentic work, and which ones are now determinist
 | Step | Classification | Converted to | Record |
 |---|---|---|---|
 | Prose and citation conformance check | agentic until this conversion, now deterministic | `scripts/validate_doc_conformance_deterministic.py` | `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md` |
-| Gate execution (`test`, `clippy`, `fmt`, `policy`, `conformance`) | deterministic | `mcp/gate/server.py` | `docs/iteration-log.md:318` `a fourth MCP server, mcp/gate/server.py` |
+| Gate execution (`test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck`, `webtest`) | deterministic | `mcp/gate/server.py` | `docs/iteration-log.md:396` `a fourth MCP server, mcp/gate/server.py` |
 | Change classification | deterministic | `scripts/classify-change.py` | `scripts/classify-change.py:12` `Change Classifier` |
 | Audit-trail assembly | deterministic | `scripts/build-audit-trail.py` | `scripts/build-audit-trail.py:2` `Assemble the run's audit trail` |
 | Plan authoring | agentic | — | `.claude/agents/planner.md:23` `autonomy: medium` |
@@ -45,11 +45,11 @@ Which steps hold their place as agentic work, and which ones are now determinist
 Why was this step the strongest candidate in the repository?
 
 - **Stability.** The step ran in one full documentation-standard cycle and in three citation cycles.
-  The documentation-standard run scored `11 / 12` (`docs/iteration-log.md:628` `| **Total** | **11 / 12**`).
-  The citation cycles scored 14, 14 and 16 out of 16 (`docs/iteration-log.md:744` `16 / 16`).
+  The documentation-standard run scored `11 / 12` (`docs/iteration-log.md:706` `| **Total** | **11 / 12**`).
+  The citation cycles scored 14, 14 and 16 out of 16 (`docs/iteration-log.md:822` `16 / 16`).
 - **Repeatability.** Phase C of the documentation-standard run re-measured the same four sections and
-  reported `0 non-question openers` (`docs/iteration-log.md:626` `0 non-question openers`). The
-  contract-auditor cycles re-executed 96 citations and found one defect (`docs/iteration-log.md:774`
+  reported `0 non-question openers` (`docs/iteration-log.md:704` `0 non-question openers`). The
+  contract-auditor cycles re-executed 96 citations and found one defect (`docs/iteration-log.md:852`
   `M6 — one citation is one line off (D2, minor).`).
 - **Specifiability.** Each rule carries its own detection clause in the standard
   (`docs/DOC-STYLE.md:24` `How a violation is detected`), and the authority forms name the three
@@ -62,8 +62,8 @@ Why was this step the strongest candidate in the repository?
   cannot be traced keeps its place and gets the marker, never invented authority
   (`docs/DOC-STYLE.md:72` `Do not delete the claim, and do not invent authority for it.`). A citation
   whose quoted text is present one line away from its pointer counts as a defect, not a pass
-  (`docs/iteration-log.md:774` `M6 — one citation is one line off (D2, minor).`). A citation whose
-  quoted text sits in a different file counts as a defect (`docs/iteration-log.md:832`
+  (`docs/iteration-log.md:852` `M6 — one citation is one line off (D2, minor).`). A citation whose
+  quoted text sits in a different file counts as a defect (`docs/iteration-log.md:910`
   `The citation therefore does not resolve to the text it quotes`).
 - **Limitation the script reports instead of deciding.** R4's "first word is not a verb" clause needs
   a verb lexicon the standard does not define, so the script checks the four named hedge words and
@@ -84,14 +84,14 @@ What moved the gate commands out of a role's hands?
 
 - Bind each gate to a name, with no command string and no extra argument
   (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments`).
-- Keep the recorded evidence in one place per gate (`docs/iteration-log.md:395`
+- Keep the recorded evidence in one place per gate (`docs/iteration-log.md:473`
   `158 passed, 0 failed, 0 ignored`).
 - Note the record that motivated the conversion: an inert grant blocked every gate in the first
-  orchestrated run (`docs/iteration-log.md:305-306` `the course's deliberately inert stub`).
-- Run the two converted deterministic steps through the same vocabulary, as the `policy` and `conformance` gates (`mcp/gate/gate_vocabulary.py:218` `this repository's six names: five check-mode and one write-mode.`).
-- Read that vocabulary as six commands in two modes: the five check-mode names `test`, `clippy`, `fmt`, `policy` and `conformance`, and one write-mode name, `fmt-fix` (`agentic.config.json:85` `"fmt-fix": {`).
+  orchestrated run (`docs/iteration-log.md:383-384` `the course's deliberately inert stub`).
+- Run the two converted deterministic steps through the same vocabulary, as the `policy` and `conformance` gates (`mcp/gate/gate_vocabulary.py:226` `this repository's eight names: seven check-mode and one write-mode.`).
+- Read that vocabulary as eight commands in two modes: the seven check-mode names `test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck` and `webtest`, and one write-mode name, `fmt-fix` (`agentic.config.json:85` `"fmt-fix": {`).
 - Bind `fmt-fix` to `cargo fmt --all`, the one command on this surface that rewrites files (`agentic.config.json:86` `"argv": ["cargo", "fmt", "--all"],`).
-- Split the vocabulary on that mode, so the check surface and the write surface resolve against disjoint tables (`mcp/gate/gate_vocabulary.py:240` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
+- Split the vocabulary on that mode, so the check surface and the write surface resolve against disjoint tables (`mcp/gate/gate_vocabulary.py:248` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
 - **Next review:** 2026-11-30. The server is deterministic, and its selftest covers the refusal path.
 
 ## Step: change classification — already deterministic
@@ -121,7 +121,7 @@ When does a plan need a model rather than a template?
 - A plan needs the repository read as a whole and a judgment about scope
   (`.claude/agents/planner.md:23` `autonomy: medium`).
 - A planner starved of its reads produced a plan resting on a brief
-  (`docs/iteration-log.md:334-335` `its plan rested entirely on the ten-line quotation`).
+  (`docs/iteration-log.md:412-413` `its plan rested entirely on the ten-line quotation`).
 - **Next review:** 2026-10-27. A plan names files that no rule can predict from the request alone.
 
 ## Step: implementation — stays agentic
@@ -130,7 +130,7 @@ When does a change need a model rather than a script?
 
 - The writing role holds no command runner and returns each change for independent test
   (`.claude/agents/implementer.md:23` `autonomy: medium`).
-- The change under gate in the last run was a two-line lint repair (`docs/iteration-log.md:402`
+- The change under gate in the last run was a two-line lint repair (`docs/iteration-log.md:480`
   `two files, 8 insertions, 2 deletions`).
 - **Next review:** 2026-10-27. The work is specifiable per change and not repeatable across changes.
 
@@ -152,7 +152,7 @@ Which step records a decision that a rule cannot make?
 - The role brackets a run and records a released status
   (`.claude/agents/project-manager.md:37` `records the released status rather than deciding it`).
 - A missing row in the grant map let a role write a checkpoint record it judged
-  (`docs/iteration-log.md:375-376` `the same role whose verdict`).
+  (`docs/iteration-log.md:453-454` `the same role whose verdict`).
 - **Next review:** 2026-12-15. Ticket state is small, and its failure mode is a wrong writer rather
   than a wrong rule.
 
@@ -174,6 +174,6 @@ Which step must keep a human in the loop?
 - The orchestrator decides loop, skip, halt and escalate, and owns no checkpoint
   (`.claude/agents/orchestrator.md:18` `The orchestrator sequences the work`).
 - Two records show why judgment stays here: a role's self-reported count drifted
-  (`docs/iteration-log.md:625` `the closing report's self-reported edit count does not reproduce`),
-  and a role called a tool its own map denies (`docs/iteration-log.md:355` `the orchestrator called`).
+  (`docs/iteration-log.md:703` `the closing report's self-reported edit count does not reproduce`),
+  and a role called a tool its own map denies (`docs/iteration-log.md:433` `the orchestrator called`).
 - **Next review:** 2026-12-15. Escalation is a judgment about a run, and no rule set settles it.

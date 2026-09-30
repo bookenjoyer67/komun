@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use super::StatusError;
 use crate::auth::{record_audit, require_superadmin, AuthUser};
 use crate::db::sessions as session_db;
 use crate::AppState;
-use super::StatusError;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -29,23 +29,33 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/admin/directory", get(list_directory))
         .route("/admin/directory/{url}", delete(remove_directory_entry))
-        .layer(middleware::from_fn_with_state(state.clone(), require_superadmin))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_superadmin,
+        ))
         .with_state(state)
 }
 
 async fn stats(State(state): State<AppState>) -> Result<Json<serde_json::Value>, StatusError> {
     let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.pool).await?;
-    let active_posts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE status = 'active'")
-        .fetch_one(&state.pool).await?;
+        .fetch_one(&state.pool)
+        .await?;
+    let active_posts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE status = 'active'")
+            .fetch_one(&state.pool)
+            .await?;
     let total_posts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts")
-        .fetch_one(&state.pool).await?;
+        .fetch_one(&state.pool)
+        .await?;
     let matches: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM matches")
-        .fetch_one(&state.pool).await?;
+        .fetch_one(&state.pool)
+        .await?;
     let messages: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages")
-        .fetch_one(&state.pool).await?;
+        .fetch_one(&state.pool)
+        .await?;
     let directory: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM directory_entries")
-        .fetch_one(&state.pool).await?;
+        .fetch_one(&state.pool)
+        .await?;
 
     Ok(Json(serde_json::json!({
         "users": users,
@@ -68,9 +78,10 @@ struct AdminUser {
 
 async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<AdminUser>>, StatusError> {
     let users = sqlx::query_as::<_, AdminUser>(
-        "SELECT id, display_name, role, last_seen, created_at FROM users ORDER BY created_at DESC"
+        "SELECT id, display_name, role, last_seen, created_at FROM users ORDER BY created_at DESC",
     )
-    .fetch_all(&state.pool).await?;
+    .fetch_all(&state.pool)
+    .await?;
     Ok(Json(users))
 }
 
@@ -89,7 +100,8 @@ async fn delete_user(
     }
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(id)
-        .execute(&state.pool).await?;
+        .execute(&state.pool)
+        .await?;
     Ok(Json(serde_json::json!({"status": "deleted"})))
 }
 
@@ -140,7 +152,10 @@ async fn change_role(
     .await?;
 
     let Some(previous) = previous else {
-        return Err(StatusError::with_status(StatusCode::NOT_FOUND, "no such user"));
+        return Err(StatusError::with_status(
+            StatusCode::NOT_FOUND,
+            "no such user",
+        ));
     };
 
     // Granting and revoking admin is the change most worth being able to reconstruct later, so it
@@ -222,7 +237,9 @@ struct AdminDirectoryEntry {
     registered_at: DateTime<Utc>,
 }
 
-async fn list_directory(State(state): State<AppState>) -> Result<Json<Vec<AdminDirectoryEntry>>, StatusError> {
+async fn list_directory(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<AdminDirectoryEntry>>, StatusError> {
     // A3.2: `directory_entries.communities_count` is not a column in the squashed schema, so
     // this SELECT was failing at runtime before the field came out.
     let entries = sqlx::query_as::<_, AdminDirectoryEntry>(
@@ -238,6 +255,7 @@ async fn remove_directory_entry(
 ) -> Result<Json<serde_json::Value>, StatusError> {
     sqlx::query("DELETE FROM directory_entries WHERE url = $1")
         .bind(&url)
-        .execute(&state.pool).await?;
+        .execute(&state.pool)
+        .await?;
     Ok(Json(serde_json::json!({"status": "removed"})))
 }

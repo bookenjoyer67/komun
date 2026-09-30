@@ -134,7 +134,9 @@ impl RateLimiter {
             last_refill: now,
         });
 
-        let elapsed = now.saturating_duration_since(bucket.last_refill).as_secs_f64();
+        let elapsed = now
+            .saturating_duration_since(bucket.last_refill)
+            .as_secs_f64();
         bucket.tokens = (bucket.tokens + elapsed * rate).min(f64::from(quota.capacity));
         bucket.last_refill = now;
 
@@ -214,7 +216,10 @@ mod tests {
         let retry = limiter
             .check(RouteClass::SignIn, who)
             .expect_err("the attempt past the burst must be refused");
-        assert!(retry.as_secs() >= 1, "Retry-After must be usable: {retry:?}");
+        assert!(
+            retry.as_secs() >= 1,
+            "Retry-After must be usable: {retry:?}"
+        );
     }
 
     #[test]
@@ -223,7 +228,9 @@ mod tests {
         let who = ip(2);
         let t0 = Instant::now();
         for _ in 0..RouteClass::SignIn.quota().capacity {
-            limiter.check_at(RouteClass::SignIn, who, t0).expect("burst");
+            limiter
+                .check_at(RouteClass::SignIn, who, t0)
+                .expect("burst");
         }
         assert!(limiter.check_at(RouteClass::SignIn, who, t0).is_err());
 
@@ -329,7 +336,9 @@ mod tests {
         limiter.sweep_at = 4;
         let t0 = Instant::now();
         for i in 0..4u8 {
-            limiter.check_at(RouteClass::SignIn, ip(i), t0).expect("first hit");
+            limiter
+                .check_at(RouteClass::SignIn, ip(i), t0)
+                .expect("first hit");
         }
         assert_eq!(limiter.len(), 4);
         // An hour later every one of those buckets is full again, so the sweep discards them

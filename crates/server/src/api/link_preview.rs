@@ -1,7 +1,4 @@
-use axum::{
-    extract::Query,
-    Json,
-};
+use axum::{extract::Query, Json};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -24,21 +21,29 @@ pub async fn link_preview(
     let url = query.url;
 
     let resp = client.get(&url).send().await.map_err(|e| {
-        (axum::http::StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": format!("fetch failed: {}", e)})))
+        (
+            axum::http::StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": format!("fetch failed: {}", e)})),
+        )
     })?;
 
     if !resp.status().is_success() {
-        return Err((axum::http::StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": "upstream returned error"}))));
+        return Err((
+            axum::http::StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": "upstream returned error"})),
+        ));
     }
 
     let html = resp.text().await.map_err(|e| {
-        (axum::http::StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": format!("read failed: {}", e)})))
+        (
+            axum::http::StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": format!("read failed: {}", e)})),
+        )
     })?;
 
-    let title = extract_meta(&html, "og:title")
-        .or_else(|| extract_tag(&html, "title"));
-    let description = extract_meta(&html, "og:description")
-        .or_else(|| extract_meta(&html, "description"));
+    let title = extract_meta(&html, "og:title").or_else(|| extract_tag(&html, "title"));
+    let description =
+        extract_meta(&html, "og:description").or_else(|| extract_meta(&html, "description"));
     let image = extract_meta(&html, "og:image");
 
     Ok(Json(LinkPreview {
@@ -65,7 +70,11 @@ fn extract_meta(html: &str, property: &str) -> Option<String> {
         .replace("&quot;", "\"")
         .replace("&#x27;", "'");
 
-    if decoded.is_empty() { None } else { Some(decoded) }
+    if decoded.is_empty() {
+        None
+    } else {
+        Some(decoded)
+    }
 }
 
 fn extract_tag(html: &str, tag: &str) -> Option<String> {
@@ -75,5 +84,9 @@ fn extract_tag(html: &str, tag: &str) -> Option<String> {
     let after = &html[start + open.len()..];
     let end = after.find(&close)?;
     let value = &after[..end];
-    if value.is_empty() { None } else { Some(value.to_string()) }
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }

@@ -1,21 +1,21 @@
-mod reports;
 mod admin;
+mod reports;
 // M1/M2: `pub(crate)` on these three only so `crate::tests::market` can unit-test their
 // validators directly. Nothing outside the crate can reach them, and the routers are still
 // mounted here.
 pub(crate) mod categories;
 pub(crate) mod conversations;
+pub mod directory;
 mod endorsements;
 mod error;
-pub(crate) mod posts;
-pub(crate) mod reviews;
+mod geocode;
 mod health;
+mod link_preview;
 mod node;
 mod notifications;
-mod geocode;
-mod link_preview;
+pub(crate) mod posts;
+pub(crate) mod reviews;
 mod search;
-pub mod directory;
 mod users;
 
 // `alliances` is gone: no `mod` declaration, no route, and no file on disk. `GET /api/alliances`
@@ -23,8 +23,8 @@ mod users;
 
 use axum::Router;
 
-use crate::AppState;
 use crate::auth;
+use crate::AppState;
 
 pub use error::StatusError;
 
@@ -59,7 +59,10 @@ pub fn router(state: AppState) -> Router {
         // A3.1: posts are a flat, server-wide collection now — no tenant segment in the path.
         .nest("/posts", posts::router(state.clone()));
 
-    r = r.route("/link-preview", axum::routing::get(link_preview::link_preview));
+    r = r.route(
+        "/link-preview",
+        axum::routing::get(link_preview::link_preview),
+    );
 
     if state.config.discovery.directory_enabled {
         r = r.merge(directory::router(state));

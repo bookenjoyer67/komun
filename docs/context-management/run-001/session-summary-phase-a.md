@@ -59,7 +59,7 @@ complete current set and `docs/DOC-STYLE.md` was unedited, its version history s
    verb-initial, the `**Never log**` bullet kept byte-identical, the five "Never commit these" bullets
    keeping their shape and gaining only citations, no nested bullets introduced.
 5. Wording changes flagged rather than decided silently: "AGPL-3.0" -> "AGPL-3.0-or-later"
-   (`Cargo.toml:8`), and "builds in ~2 min" -> "finished in 1m51s" (`docs/iteration-log.md:859`).
+   (`Cargo.toml:8`), and "builds in ~2 min" -> "finished in 1m51s" (`docs/iteration-log.md:937`).
 6. Sections excluded by the operator and deliberately untouched: "Code layout" and
    "Key architecture facts".
 
@@ -77,7 +77,7 @@ verified byte-identical to the working tree (see the table above). `docs/DOC-STY
    was left as the document had it.
 3. "AGPL-3.0" rendered as "AGPL-3.0-or-later" — operator's call if the short form is preferred.
 4. "verified" retained for the docker build claim, whose authority is a run recorded in an earlier
-   session (`docs/iteration-log.md:859-860`) and which this agent cannot re-run (no `Bash`).
+   session (`docs/iteration-log.md:937-938`) and which this agent cannot re-run (no `Bash`).
 5. Remaining R2/R3 violations in the untouched sections of `AGENTS.md` ("Code layout",
    "Key architecture facts").
 6. `docs/DEVELOPMENT.md` is in the run's scope but not started, and no boundary had been supplied for it.

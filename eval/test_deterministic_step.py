@@ -8,9 +8,9 @@ Lesson 4.3, "Implement the Deterministic Replacement", block [74] (VERBATIM):
     - At least one input that exercises the limitation you just described in the step above
 
 The holdout set is the step's own recorded work: the three calibration cycles whose artifacts the
-converted step was measured on -- the documentation-standard run (`docs/iteration-log.md:562`
-`Run 001 (workflow 4`), the three citation re-execution cycles (`docs/iteration-log.md:706` `Run 003
-(workflow 3`), and the log whose own pointers were repaired by hand (`docs/iteration-log.md:281`
+converted step was measured on -- the documentation-standard run (`docs/iteration-log.md:640`
+`Run 001 (workflow 4`), the three citation re-execution cycles (`docs/iteration-log.md:784` `Run 003
+(workflow 3`), and the log whose own pointers were repaired by hand (`docs/iteration-log.md:359`
 `Every pointer that drifted was repaired`). The tests run the real files, so a rule that stops
 finding real violations is visible as a failure.
 

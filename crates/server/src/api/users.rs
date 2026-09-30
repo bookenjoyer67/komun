@@ -1,18 +1,17 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    Json, Router, routing::get,
+    routing::get,
+    Json, Router,
 };
 use serde_json::json;
 
-use crate::AppState;
 use crate::auth;
 use crate::db::users;
+use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
-        .route("/{id}", get(profile))
-        .with_state(state)
+    Router::new().route("/{id}", get(profile)).with_state(state)
 }
 
 async fn profile(
@@ -23,9 +22,15 @@ async fn profile(
         .await
         .map_err(|e| {
             tracing::error!("profile lookup failed: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "internal error"})))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal error"})),
+            )
         })?
-        .ok_or((StatusCode::NOT_FOUND, Json(json!({"error": "user not found"}))))?;
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "user not found"})),
+        ))?;
 
     Ok(Json(json!({
         "id": row.id,

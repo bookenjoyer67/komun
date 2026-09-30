@@ -19,19 +19,19 @@ claim before a change reaches the human checkpoint. Two roles ran that step by h
 (`.claude/agents/reviewer.md:47` `Apply docs/DOC-STYLE.md to every prose file the change touches`).
 
 The record shows the step ran repeatedly with a stable outcome. The documentation-standard run scored
-`11 / 12` (`docs/iteration-log.md:628` `| **Total** | **11 / 12**`), and its consistency pass produced
+`11 / 12` (`docs/iteration-log.md:706` `| **Total** | **11 / 12**`), and its consistency pass produced
 "six numbered violations, each with its file, the rule it broke, the search that settled it and the fix"
-(`docs/iteration-log.md:627` `six numbered violations`). The citation half ran through three cycles
-that scored 14, 14 and 16 out of 16 (`docs/iteration-log.md:744` `16 / 16`).
+(`docs/iteration-log.md:705` `six numbered violations`). The citation half ran through three cycles
+that scored 14, 14 and 16 out of 16 (`docs/iteration-log.md:822` `16 / 16`).
 
 The same record shows the step is expensive and defect-prone when an agent runs it. The
-documentation-standard run cost 45 minutes of wall clock and $8.37 (`docs/iteration-log.md:639`
-`45m13s wall`; `docs/iteration-log.md:645` `$8.37`). Human review of one citation cycle took about two
-minutes with a script (`docs/iteration-log.md:757` `≈2.1 min`). Three defect classes recurred across
-cycles: a citation to the wrong file (`docs/iteration-log.md:832`
+documentation-standard run cost 45 minutes of wall clock and $8.37 (`docs/iteration-log.md:717`
+`45m13s wall`; `docs/iteration-log.md:723` `$8.37`). Human review of one citation cycle took about two
+minutes with a script (`docs/iteration-log.md:835` `≈2.1 min`). Three defect classes recurred across
+cycles: a citation to the wrong file (`docs/iteration-log.md:910`
 `The citation therefore does not resolve to the text it quotes`), a citation one line away from its
-text (`docs/iteration-log.md:774` `M6 — one citation is one line off (D2, minor).`), and a quoted
-literal that does not reproduce (`docs/iteration-log.md:675` `-> 37`).
+text (`docs/iteration-log.md:852` `M6 — one citation is one line off (D2, minor).`), and a quoted
+literal that does not reproduce (`docs/iteration-log.md:753` `-> 37`).
 
 Three of those defects survived an agent that had been told to quote its evidence, so the failure
 class is mechanical rather than motivational. The calibration log already names the pattern and the
@@ -40,7 +40,7 @@ control it argues for (`docs/calibration-log.md:62` `Unreproducible self-report`
 
 The edge case this step's own record names, restated for prose: a quoted literal that sits one line
 away from its pointer. The agent treated that as a defect rather than a pass
-(`docs/iteration-log.md:774` `M6 — one citation is one line off (D2, minor).`).
+(`docs/iteration-log.md:852` `M6 — one citation is one line off (D2, minor).`).
 
 ## Decision
 
@@ -73,8 +73,8 @@ wrong result in the running workflow."
 Which alternatives were rejected, and why?
 
 - **Keep the agentic step.** Rejected. The step's cost is recorded at 45 minutes and $8.37 per run
-  (`docs/iteration-log.md:639` `45m13s wall`), and the same three defect classes recurred across four
-  cycles (`docs/iteration-log.md:675` `-> 37`). A rule set that never changes does not need reasoning
+  (`docs/iteration-log.md:717` `45m13s wall`), and the same three defect classes recurred across four
+  cycles (`docs/iteration-log.md:753` `-> 37`). A rule set that never changes does not need reasoning
   per run.
 - **Convert the review verdict instead.** Rejected. The verdict weighs a change against the rubric and
   the acceptance criteria, so it is not specifiable as a rule set
@@ -82,7 +82,7 @@ Which alternatives were rejected, and why?
   specifiable, and that half is what this ADR converts.
 - **Keep an agent and gate it with the script.** Rejected. An advisory script beside an agent leaves
   the agent as the step the workflow runs, so the cost stays
-  (`docs/iteration-log.md:639` `45m13s wall`). Lesson 4.3, block [53] (VERBATIM): "Deterministic checks
+  (`docs/iteration-log.md:717` `45m13s wall`). Lesson 4.3, block [53] (VERBATIM): "Deterministic checks
   can gate immediately because they produce the same result for the same input."
 - **Extend `eval/test_policy.py` instead of adding a script.** Rejected. That suite checks the
   governance policy against the enforcement artifacts
@@ -94,7 +94,7 @@ Which alternatives were rejected, and why?
 What does the conversion change, and what does it leave open?
 
 - The step drops to one process launch: 0.41 to 0.90 seconds across eight runs, against 45 minutes of
-  agent cycle time (`docs/iteration-log.md:639` `45m13s wall`).
+  agent cycle time (`docs/iteration-log.md:717` `45m13s wall`).
 - The step's token cost drops to zero, because the script makes no model call.
 - The step becomes diffable: three runs over the same ten files produced one SHA-256 digest
   (`e832693c0c7845f2cdca08cd97062e36dd0d4cc1c79649593ebf1d02f0a5a111`).
@@ -140,8 +140,8 @@ Which artifacts settle this decision?
 
 - Classification: `docs/step-classification.md`, the prose and citation conformance check marked a
   strong candidate on all four signals.
-- Before-conversion measurement: `docs/iteration-log.md:639` `45m13s wall` and
-  `docs/iteration-log.md:645` `$8.37`, scored `11 / 12` (`docs/iteration-log.md:628`
+- Before-conversion measurement: `docs/iteration-log.md:717` `45m13s wall` and
+  `docs/iteration-log.md:723` `$8.37`, scored `11 / 12` (`docs/iteration-log.md:706`
   `| **Total** | **11 / 12**`).
 - After-conversion measurement in isolation: eight runs over ten files, one digest
   (`e832693c0c7845f2cdca08cd97062e36dd0d4cc1c79649593ebf1d02f0a5a111`), 0.41 to 0.90 seconds, zero
@@ -158,7 +158,7 @@ Which artifacts settle this decision?
 - Suites after the integration: `eval/test_policy.py` `75 passed`, and
   `eval/test_deterministic_step.py` `15 passed`.
 - Defect classes the script now reproduces on demand: a drifted pointer
-  (`docs/iteration-log.md:450` `pieces = chunker(section)`), a literal absent from its file
+  (`docs/iteration-log.md:528` `pieces = chunker(section)`), a literal absent from its file
   (`docs/memory-architecture.md:49` `.env*`), and a bare location
   (`docs/DOC-STYLE.md:40` `A bare location is a v1 form`).
 - Integrated end-to-end regression check: PASSED on 2026-09-29. Four runs - D1 and D2 development, H1 and

@@ -82,11 +82,7 @@ pub async fn create(pool: &PgPool, input: &CreateCategory) -> Result<Option<Cate
 /// The slug is not updatable, and [`UpdateCategory`] has no field for it: `posts.category`
 /// references this column, so a rename would either orphan posts or need a cascade the schema
 /// deliberately withholds. The label is the part that is meant to change.
-pub async fn update(
-    pool: &PgPool,
-    slug: &str,
-    input: &UpdateCategory,
-) -> Result<Option<Category>> {
+pub async fn update(pool: &PgPool, slug: &str, input: &UpdateCategory) -> Result<Option<Category>> {
     let row = sqlx::query_as::<_, CategoryRow>(&format!(
         r#"UPDATE categories SET
              label      = COALESCE($2::text, label),

@@ -14,7 +14,10 @@ pub async fn registration_loop(state: AppState) {
 
 async fn register_with_directory(state: &AppState) -> anyhow::Result<()> {
     let config = &state.config;
-    let directory_url = config.discovery.directory_url.as_ref()
+    let directory_url = config
+        .discovery
+        .directory_url
+        .as_ref()
         .ok_or_else(|| anyhow::anyhow!("no directory_url configured"))?;
 
     let payload = serde_json::json!({
@@ -29,9 +32,13 @@ async fn register_with_directory(state: &AppState) -> anyhow::Result<()> {
     });
 
     let client = reqwest::Client::new();
-    let url = format!("{}/api/directory/register", directory_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/api/directory/register",
+        directory_url.trim_end_matches('/')
+    );
 
-    let res = client.post(&url)
+    let res = client
+        .post(&url)
         .json(&payload)
         .timeout(Duration::from_secs(10))
         .send()

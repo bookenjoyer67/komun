@@ -113,7 +113,10 @@ pub fn router(state: AppState) -> Router {
         .route("/me", get(me).put(update_profile))
         .route("/me/avatar", post(upload_avatar))
         .route("/signout", post(signout))
-        .route("/sessions", get(list_sessions).delete(revoke_other_sessions))
+        .route(
+            "/sessions",
+            get(list_sessions).delete(revoke_other_sessions),
+        )
         .route("/sessions/{id}", axum::routing::delete(revoke_session))
         .route("/users/{id}/keys", get(get_user_keys))
         // A2b.1. Both re-authenticate with the current verifier rather than trusting the session:
@@ -122,7 +125,10 @@ pub fn router(state: AppState) -> Router {
         .route("/recovery/reissue", post(reissue_recovery))
         // The /me routes deliberately use the plain session check rather than `require_auth`:
         // an unverified user must be able to see who they are and ask for another mail.
-        .layer(middleware::from_fn_with_state(state.clone(), require_session));
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_session,
+        ));
 
     public.merge(protected).with_state(state)
 }
@@ -333,9 +339,7 @@ struct UserKeysResponse {
 /// The IP a rate-limit bucket is keyed by. `X-Forwarded-For` is honoured only when the connecting
 /// peer is a configured trusted proxy; see [`crate::rate_limit::client_ip`].
 fn limit_key(state: &AppState, peer: SocketAddr, headers: &axum::http::HeaderMap) -> IpAddr {
-    let forwarded = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok());
+    let forwarded = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok());
     client_ip(peer.ip(), forwarded, &state.trusted_proxies)
 }
 
@@ -500,7 +504,10 @@ async fn signup(
 
     let email = normalize_email(&input.email);
     if !email_looks_valid(&email) {
-        return Err(fail(StatusCode::BAD_REQUEST, "that is not a valid email address"));
+        return Err(fail(
+            StatusCode::BAD_REQUEST,
+            "that is not a valid email address",
+        ));
     }
 
     let display_name = input.display_name.trim().to_string();
@@ -669,12 +676,18 @@ async fn signin(
         // returns in microseconds and "wrong password" takes ~50ms, which is a reliable
         // enumeration oracle over the network.
         password::dummy_verify();
-        return Err(fail(StatusCode::UNAUTHORIZED, "incorrect email or password"));
+        return Err(fail(
+            StatusCode::UNAUTHORIZED,
+            "incorrect email or password",
+        ));
     };
 
     if !password::verify_verifier(&input.verifier, &row.password_hash) {
         // Identical message and status to the unknown-account case, on purpose.
-        return Err(fail(StatusCode::UNAUTHORIZED, "incorrect email or password"));
+        return Err(fail(
+            StatusCode::UNAUTHORIZED,
+            "incorrect email or password",
+        ));
     }
 
     // Cost factors may have been raised since this hash was written; upgrade it now that the
@@ -741,11 +754,12 @@ async fn auth_salt(
     enforce_limit(&state, RouteClass::SignIn, ip)?;
 
     let email = normalize_email(&query.email);
-    let stored: Option<Vec<u8>> = sqlx::query_scalar("SELECT auth_salt FROM users WHERE email = $1")
-        .bind(&email)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|e| internal("salt lookup failed", e))?;
+    let stored: Option<Vec<u8>> =
+        sqlx::query_scalar("SELECT auth_salt FROM users WHERE email = $1")
+            .bind(&email)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|e| internal("salt lookup failed", e))?;
 
     let salt = stored.unwrap_or_else(|| decoy_salt(&state.salt_pepper, &email));
     Ok(Json(SaltResponse {
@@ -777,25 +791,24 @@ async fn consume_verification(
 
     // Single-use and expiry are both decided by the UPDATE ... WHERE used_at IS NULL in
     // db::sessions, so two concurrent clicks cannot both win.
-    let user_id = session_db::consume_one_time_token(
-        &state.pool,
-        session_db::KIND_EMAIL_VERIFY,
-        &hash,
-    )
-    .await
-    .map_err(|e| internal("verification lookup failed", e))?
-    .ok_or_else(|| {
-        fail(
-            StatusCode::BAD_REQUEST,
-            "this verification link is invalid, already used, or expired",
-        )
-    })?;
+    let user_id =
+        session_db::consume_one_time_token(&state.pool, session_db::KIND_EMAIL_VERIFY, &hash)
+            .await
+            .map_err(|e| internal("verification lookup failed", e))?
+            .ok_or_else(|| {
+                fail(
+                    StatusCode::BAD_REQUEST,
+                    "this verification link is invalid, already used, or expired",
+                )
+            })?;
 
-    sqlx::query("UPDATE users SET email_verified_at = now() WHERE id = $1 AND email_verified_at IS NULL")
-        .bind(user_id)
-        .execute(&state.pool)
-        .await
-        .map_err(|e| internal("marking address verified failed", e))?;
+    sqlx::query(
+        "UPDATE users SET email_verified_at = now() WHERE id = $1 AND email_verified_at IS NULL",
+    )
+    .bind(user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal("marking address verified failed", e))?;
 
     // Retire the user's other verification links. Each "resend" mints a new token, so an inbox
     // can hold several; once the address is confirmed none of them should still open a door.
@@ -815,7 +828,9 @@ async fn consume_verification(
     )
     .await;
 
-    Ok(Json(serde_json::json!({ "verified": true, "user_id": user_id })))
+    Ok(Json(
+        serde_json::json!({ "verified": true, "user_id": user_id }),
+    ))
 }
 
 /// Ask for another verification mail. Answers the same way whether or not the address exists.
@@ -875,13 +890,12 @@ async fn request_password_reset(
     enforce_limit(&state, RouteClass::PasswordReset, ip)?;
 
     let email = normalize_email(&body.email);
-    let row = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT id, display_name FROM users WHERE email = $1",
-    )
-    .bind(&email)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| internal("reset lookup failed", e))?;
+    let row =
+        sqlx::query_as::<_, (Uuid, String)>("SELECT id, display_name FROM users WHERE email = $1")
+            .bind(&email)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|e| internal("reset lookup failed", e))?;
 
     if let Some((user_id, display_name)) = row {
         let recent = session_db::count_recent_one_time_tokens(
@@ -1050,19 +1064,16 @@ async fn confirm_password_reset(
     }
 
     let hash = sessions::hash_token(&body.token);
-    let user_id = session_db::consume_one_time_token(
-        &state.pool,
-        session_db::KIND_PASSWORD_RESET,
-        &hash,
-    )
-    .await
-    .map_err(|e| internal("reset token lookup failed", e))?
-    .ok_or_else(|| {
-        fail(
-            StatusCode::BAD_REQUEST,
-            "this reset link is invalid, already used, or expired",
-        )
-    })?;
+    let user_id =
+        session_db::consume_one_time_token(&state.pool, session_db::KIND_PASSWORD_RESET, &hash)
+            .await
+            .map_err(|e| internal("reset token lookup failed", e))?
+            .ok_or_else(|| {
+                fail(
+                    StatusCode::BAD_REQUEST,
+                    "this reset link is invalid, already used, or expired",
+                )
+            })?;
 
     let password_hash = password::hash_verifier(&body.verifier)
         .map_err(|e| internal("verifier hashing failed", e))?;
@@ -1102,7 +1113,9 @@ async fn confirm_password_reset(
     )
     .await;
 
-    Ok(Json(serde_json::json!({ "ok": true, "sessions_revoked": revoked })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "sessions_revoked": revoked }),
+    ))
 }
 
 /// What re-authentication needs: the stored hash, and whether there is key material at risk.
@@ -1135,7 +1148,10 @@ async fn reauthenticate(
     .ok_or_else(|| fail(StatusCode::NOT_FOUND, "user not found"))?;
 
     if !password::verify_verifier(current_verifier, &row.password_hash) {
-        return Err(fail(StatusCode::UNAUTHORIZED, "current password is incorrect"));
+        return Err(fail(
+            StatusCode::UNAUTHORIZED,
+            "current password is incorrect",
+        ));
     }
 
     state.rate_limiter.refund(RouteClass::SignIn, ip);
@@ -1222,7 +1238,9 @@ async fn change_password(
     )
     .await;
 
-    Ok(Json(serde_json::json!({ "ok": true, "sessions_revoked": revoked })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "sessions_revoked": revoked }),
+    ))
 }
 
 /// `POST /auth/recovery/reissue`.
@@ -1401,7 +1419,10 @@ async fn update_profile(
     }
     if let Some(ref pj) = input.profile_json {
         if serde_json::to_string(pj).unwrap_or_default().len() > 8192 {
-            return Err(fail(StatusCode::BAD_REQUEST, "profile_json must be under 8KB"));
+            return Err(fail(
+                StatusCode::BAD_REQUEST,
+                "profile_json must be under 8KB",
+            ));
         }
     }
 
@@ -1509,7 +1530,9 @@ async fn upload_avatar(
         .await
         .map_err(|e| internal("avatar update failed", e))?;
 
-    Ok(Json(serde_json::json!({ "avatar_url": format!("/avatars/{filename}") })))
+    Ok(Json(
+        serde_json::json!({ "avatar_url": format!("/avatars/{filename}") }),
+    ))
 }
 
 async fn get_user_keys(
@@ -1637,9 +1660,16 @@ pub async fn require_session(
 /// listings". Every one of those is a state-changing method, so the rule is enforced here by
 /// method rather than by annotating each route — which also means a route added later is covered
 /// by default instead of being forgotten.
-pub async fn require_auth(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+pub async fn require_auth(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     let bearer = bearer_from_request(&request);
-    let mutating = !matches!(*request.method(), Method::GET | Method::HEAD | Method::OPTIONS);
+    let mutating = !matches!(
+        *request.method(),
+        Method::GET | Method::HEAD | Method::OPTIONS
+    );
 
     let user = match authenticate(&state, bearer).await {
         Ok(user) => user,
@@ -1663,7 +1693,11 @@ pub async fn require_auth(State(state): State<AppState>, mut request: Request, n
 
 /// Admin *or* superadmin. The role comes from the database on this request, so a demotion that
 /// happened a second ago is already in force.
-pub async fn require_admin(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+pub async fn require_admin(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     let bearer = bearer_from_request(&request);
     let user = match authenticate(&state, bearer).await {
         Ok(user) => user,
@@ -1733,7 +1767,10 @@ mod tests {
         assert!(!email_looks_valid("ada@.com"));
         assert!(!email_looks_valid("ada@@example.com"));
         assert!(!email_looks_valid("ada example@test.com"));
-        assert!(!email_looks_valid(&format!("{}@example.com", "a".repeat(250))));
+        assert!(!email_looks_valid(&format!(
+            "{}@example.com",
+            "a".repeat(250)
+        )));
     }
 
     #[test]

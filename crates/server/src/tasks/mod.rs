@@ -1,7 +1,7 @@
-mod registration;
-mod health;
-mod expiry;
 mod bundle_cleanup;
+mod expiry;
+mod health;
+mod registration;
 
 use crate::AppState;
 

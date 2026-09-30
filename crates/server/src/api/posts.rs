@@ -16,11 +16,11 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use komun_core::models::{CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency};
 use crate::auth::{require_auth, AuthUser};
 use crate::config::is_currency_code;
 use crate::db::posts::{PostFilter, DEFAULT_LIMIT, MAX_LIMIT};
 use crate::AppState;
+use komun_core::models::{CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency};
 
 use super::categories::{bad_request, validate_slug};
 use super::StatusError;
@@ -32,7 +32,10 @@ pub fn router(state: AppState) -> Router {
 
     let protected = Router::new()
         .route("/", axum::routing::post(create_post))
-        .route("/{id}", axum::routing::patch(update_post).delete(withdraw_post))
+        .route(
+            "/{id}",
+            axum::routing::patch(update_post).delete(withdraw_post),
+        )
         .route("/{id}/images", axum::routing::post(upload_images))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
@@ -258,9 +261,7 @@ async fn create_post(
 /// that says what is wrong.
 fn validate_market_fields(input: &CreatePost) -> Result<(), StatusError> {
     if !input.kind.is_market()
-        && (input.market_listed
-            || input.price_cents.is_some()
-            || input.item_condition.is_some())
+        && (input.market_listed || input.price_cents.is_some() || input.item_condition.is_some())
     {
         return Err(bad_request(
             "price, condition and market_listed belong to 'listing' and 'want' posts only",
@@ -297,20 +298,33 @@ async fn update_post(
 ) -> Result<Json<serde_json::Value>, StatusError> {
     let post = load_post(&state, id).await?;
     if post.author_id != auth.user_id {
-        return Err(StatusError::with_status(StatusCode::FORBIDDEN, "not your post"));
+        return Err(StatusError::with_status(
+            StatusCode::FORBIDDEN,
+            "not your post",
+        ));
     }
 
     // `hidden` and `flagged` are moderation states; an author setting either on their own post
     // would either hide it from moderators' queues or fake a report outcome.
-    if matches!(input.status, Some(PostStatus::Hidden) | Some(PostStatus::Flagged)) {
+    if matches!(
+        input.status,
+        Some(PostStatus::Hidden) | Some(PostStatus::Flagged)
+    ) {
         return Err(StatusError::with_status(
             StatusCode::FORBIDDEN,
             "that status is set by moderators, not by the author",
         ));
     }
 
-    crate::db::posts::update(&state.pool, id, input.title, input.body, input.urgency, input.status)
-        .await?;
+    crate::db::posts::update(
+        &state.pool,
+        id,
+        input.title,
+        input.body,
+        input.urgency,
+        input.status,
+    )
+    .await?;
     Ok(Json(json!({"status": "updated"})))
 }
 
@@ -321,7 +335,10 @@ async fn withdraw_post(
 ) -> Result<Json<serde_json::Value>, StatusError> {
     let post = load_post(&state, id).await?;
     if post.author_id != auth.user_id {
-        return Err(StatusError::with_status(StatusCode::FORBIDDEN, "not your post"));
+        return Err(StatusError::with_status(
+            StatusCode::FORBIDDEN,
+            "not your post",
+        ));
     }
     crate::db::posts::withdraw(&state.pool, id).await?;
     Ok(Json(json!({"status": "withdrawn"})))
@@ -335,27 +352,36 @@ async fn upload_images(
 ) -> Result<Json<serde_json::Value>, StatusError> {
     let post = load_post(&state, id).await?;
     if post.author_id != auth.user_id {
-        return Err(StatusError::with_status(StatusCode::FORBIDDEN, "not your post"));
+        return Err(StatusError::with_status(
+            StatusCode::FORBIDDEN,
+            "not your post",
+        ));
     }
 
-    let current_count: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(array_length(images, 1), 0) FROM posts WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    let current_count: i64 =
+        sqlx::query_scalar("SELECT COALESCE(array_length(images, 1), 0) FROM posts WHERE id = $1")
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
     let max = state.config.media.max_post_images as i64;
     let mut filenames: Vec<String> = vec![];
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| anyhow::anyhow!("{}", e))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+    {
         if current_count + filenames.len() as i64 >= max {
             break;
         }
 
         let content_type = field.content_type().unwrap_or("").to_string();
-        if !matches!(content_type.as_str(), "image/png" | "image/jpeg" | "image/webp") {
+        if !matches!(
+            content_type.as_str(),
+            "image/png" | "image/jpeg" | "image/webp"
+        ) {
             continue;
         }
 
@@ -385,14 +411,17 @@ async fn upload_images(
         return Ok(Json(json!({"images": []})));
     }
 
-    sqlx::query("UPDATE posts SET images = array_cat(COALESCE(images, '{}'), $1::text[]) WHERE id = $2")
-        .bind(&filenames)
-        .bind(id)
-        .execute(&state.pool)
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    sqlx::query(
+        "UPDATE posts SET images = array_cat(COALESCE(images, '{}'), $1::text[]) WHERE id = $2",
+    )
+    .bind(&filenames)
+    .bind(id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let urls: Vec<String> = filenames.iter()
+    let urls: Vec<String> = filenames
+        .iter()
         .map(|f| format!("/post-images/{}", f))
         .collect();
 

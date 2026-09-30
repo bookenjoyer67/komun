@@ -6,9 +6,9 @@ use axum::{
 };
 use uuid::Uuid;
 
+use super::StatusError;
 use crate::auth::{require_auth, AuthUser};
 use crate::AppState;
-use super::StatusError;
 
 pub fn router(state: AppState) -> Router {
     Router::new()

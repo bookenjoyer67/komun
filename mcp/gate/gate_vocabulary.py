@@ -82,6 +82,14 @@ CONFIG_KEYS: tuple[str, ...] = (
     "toolchain.commands.fmt-fix.description",
     "toolchain.commands.fmt-fix.summary",
     "toolchain.commands.fmt-fix.writes",
+    "toolchain.commands.webcheck.argv",
+    "toolchain.commands.webcheck.description",
+    "toolchain.commands.webcheck.summary",
+    "toolchain.commands.webcheck.writes",
+    "toolchain.commands.webtest.argv",
+    "toolchain.commands.webtest.description",
+    "toolchain.commands.webtest.summary",
+    "toolchain.commands.webtest.writes",
     "containers.workspace",
     "containers.memory_dir",
     "containers.tools_image",
@@ -120,7 +128,7 @@ def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any
 
     Read exactly as ``guard`` is read: the config's rule when it is well formed, the embedded
     default's when the config leaves it out, and None otherwise. None is the ordinary case --
-    five of this repository's six commands declare ``"summary": null`` -- so a command with no
+    seven of this repository's eight commands declare ``"summary": null`` -- so a command with no
     rule is not an error and never becomes one.
 
     A rule is taken whole or not at all. An unrecognised mode, a missing or empty pattern, a
@@ -215,7 +223,7 @@ def _command_names() -> tuple[str, ...]:
 
     The command names are the vocabulary, so a fork adds or removes a command by editing the config
     and nothing else. A config that names no command falls back to the embedded defaults, which are
-    this repository's six names: five check-mode and one write-mode.
+    this repository's eight names: seven check-mode and one write-mode.
     """
     commands = agentic_config.get("toolchain.commands")
     if not isinstance(commands, dict) or not commands:

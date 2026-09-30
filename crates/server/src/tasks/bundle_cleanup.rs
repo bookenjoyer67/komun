@@ -15,11 +15,9 @@ pub async fn user_cleanup_loop(state: AppState) {
 }
 
 async fn cleanup_inactive_users(state: &AppState) -> anyhow::Result<()> {
-    let result = sqlx::query(
-        "DELETE FROM users WHERE last_seen < now() - interval '90 days'"
-    )
-    .execute(&state.pool)
-    .await?;
+    let result = sqlx::query("DELETE FROM users WHERE last_seen < now() - interval '90 days'")
+        .execute(&state.pool)
+        .await?;
 
     if result.rows_affected() > 0 {
         tracing::info!("deleted {} inactive user accounts", result.rows_affected());

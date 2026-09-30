@@ -167,8 +167,8 @@ Which MCP server operations may the tester call?
 - Grant `mcp__coursetools__file_read` (`.claude/agents/tester.md:11` `- mcp__coursetools__file_read`).
 - Grant `mcp__gate__run_gate`, `mcp__gate__list_gates` and `mcp__gate__read_audit_log` (`.claude/agents/tester.md:12-14` `- mcp__gate__run_gate`) — this grant answers `NM-1`, where an inert tool blocked every gate.
 - Grant `mcp__storage__read_entry`, `mcp__storage__list_entries` and `mcp__storage__write_entry` (`.claude/agents/tester.md:15-17` `- mcp__storage__write_entry`).
-- Resolve the tester-runner conflict by fixing the map: `docs/routing-and-tool-grant-map.md:18` now grants `mcp__gate__run_gate` and denies `mcp__coursetools__test_runner`. The stub is `the course's deliberately inert stub` (`docs/iteration-log.md:305-306`), and this grant answers `NM-1`.
-- Deny every command string and extra argument through the gate server (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments`) — a refused call runs nothing. The vocabulary holds six commands: the five check-mode names `test`, `clippy`, `fmt`, `policy` and `conformance`, and one write-mode name, `fmt-fix`.
+- Resolve the tester-runner conflict by fixing the map: `docs/routing-and-tool-grant-map.md:18` now grants `mcp__gate__run_gate` and denies `mcp__coursetools__test_runner`. The stub is `the course's deliberately inert stub` (`docs/iteration-log.md:383-384`), and this grant answers `NM-1`.
+- Deny every command string and extra argument through the gate server (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments`) — a refused call runs nothing. The vocabulary holds eight commands: the seven check-mode names `test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck` and `webtest`, and one write-mode name, `fmt-fix`.
 - Deny `mcp__coursetools__file_write` (`docs/routing-and-tool-grant-map.md:18` `a verifying role repairs nothing it finds`).
 - Deny `mcp__coursetools__shell` and `mcp__coursetools__task_tracker` (`docs/routing-and-tool-grant-map.md:18` `a result is a new record`).
 - Deny `mcp__retrieval__retrieve` (`docs/routing-and-tool-grant-map.md:60` `it works from the supplied acceptance criteria`).
@@ -266,7 +266,7 @@ Which MCP server operations may the project-manager call?
 - Deny `mcp__coursetools__file_write` and `mcp__coursetools__codebase_search` (`.claude/agents/project-manager.md:75-76` `the terminal role changes no artifact`).
 - Deny `mcp__coursetools__shell` and `mcp__coursetools__test_runner` (`.claude/agents/project-manager.md:77-78` `would overwrite the evidence the status rests on`) — this denial answers `NM-7`.
 - Deny `mcp__retrieval__retrieve` (`.claude/agents/project-manager.md:79` `performs no corpus lookup`).
-- Route the checkpoint record through this role (`.claude/agents/project-manager.md:71` `Owned exclusively by this role`; `docs/iteration-log.md:386` `assign checkpoint records to the project-manager`) — this rule answers `NM-4`.
+- Route the checkpoint record through this role (`.claude/agents/project-manager.md:71` `Owned exclusively by this role`; `docs/iteration-log.md:464` `assign checkpoint records to the project-manager`) — this rule answers `NM-4`.
 
 ### Skill activation scope
 

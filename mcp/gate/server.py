@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Quality-gate MCP server for the Komun repository.
 
-Exposes a fixed, allowlisted execution surface over streamable HTTP (FastMCP): six named
-commands. Five are check-mode -- ``test``, ``clippy``, ``fmt``, ``policy`` and ``conformance`` --
-and ``run_gate`` runs those; one is write-mode, ``fmt-fix``, and ``run_fix`` alone runs it. A
-caller names a command, never a command line: every argv comes from an ``agentic.config.json``
+Exposes a fixed, allowlisted execution surface over streamable HTTP (FastMCP): eight named commands.
+Seven are check-mode -- ``test``, ``clippy``, ``fmt``, ``policy``, ``conformance``, ``webcheck`` and
+``webtest`` -- and ``run_gate`` runs those; one is write-mode, ``fmt-fix``, and ``run_fix`` alone
+runs it. A caller names a command, never a command line: every argv comes from an ``agentic.config.json``
 entry, ``shell`` is never used, and no caller-supplied string reaches a command line.
 
 Each invocation returns the exit code, the captured stdout and stderr, the wall-clock duration and a

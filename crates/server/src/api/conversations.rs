@@ -11,12 +11,12 @@ use uuid::Uuid;
 
 use komun_core::models::{MatchStatus, OfferKind, PostKind};
 
+use super::categories::bad_request;
+use super::StatusError;
 use crate::auth::{require_auth, AuthUser};
 use crate::config::is_currency_code;
 use crate::db::conversations::{DealStep, OfferRow, Thread};
 use crate::AppState;
-use super::categories::bad_request;
-use super::StatusError;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -131,7 +131,8 @@ async fn get_conversation(
     // answer to "may I see this?" does not depend on which endpoint asked.
     participant_thread(&state, match_id, auth.user_id).await?;
 
-    let convo = crate::db::conversations::get_conversation(&state.pool, match_id, auth.user_id).await?;
+    let convo =
+        crate::db::conversations::get_conversation(&state.pool, match_id, auth.user_id).await?;
     Ok(Json(convo))
 }
 
@@ -326,7 +327,10 @@ async fn participant_thread(
     if !thread.is_participant(user_id) {
         // Was HTTP 200 with an `error` key in the body — the same shape A2b fixed on the admin
         // role route. A client checking the status code read this as success.
-        return Err(StatusError::with_status(StatusCode::FORBIDDEN, "not a participant"));
+        return Err(StatusError::with_status(
+            StatusCode::FORBIDDEN,
+            "not a participant",
+        ));
     }
 
     Ok(thread)
@@ -351,7 +355,12 @@ pub(crate) fn offers_allowed_on(post_kind: PostKind) -> Result<(), String> {
 /// Pure and `pub(crate)` so `tests::market` can pin every branch without a database.
 pub(crate) fn validate_offer(raw: &OfferRequest) -> Result<ValidOffer, String> {
     let kind = match trimmed(raw.kind.as_deref()) {
-        None => return Err(format!("kind is required and must be one of {}", offer_kinds())),
+        None => {
+            return Err(format!(
+                "kind is required and must be one of {}",
+                offer_kinds()
+            ))
+        }
         Some(value) => OfferKind::parse(value)
             .ok_or_else(|| format!("kind must be one of {} (got {value:?})", offer_kinds()))?,
     };
@@ -426,7 +435,10 @@ pub(crate) fn resolve_offer_currency(
 /// enum so the accepted list cannot fall behind the CHECK it is pinned to.
 pub(crate) fn parse_status(raw: &str) -> Result<MatchStatus, String> {
     let Some(value) = trimmed(Some(raw)) else {
-        return Err(format!("status is required and must be one of {}", match_statuses()));
+        return Err(format!(
+            "status is required and must be one of {}",
+            match_statuses()
+        ));
     };
     MatchStatus::parse(value)
         .ok_or_else(|| format!("status must be one of {} (got {value:?})", match_statuses()))

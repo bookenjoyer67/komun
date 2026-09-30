@@ -19,7 +19,10 @@ mod password_tests {
     #[test]
     fn the_correct_verifier_is_accepted_and_a_wrong_one_is_not() {
         let stored = hash_verifier(VERIFIER).expect("hash");
-        assert!(verify_verifier(VERIFIER, &stored), "correct verifier must pass");
+        assert!(
+            verify_verifier(VERIFIER, &stored),
+            "correct verifier must pass"
+        );
         assert!(!verify_verifier(OTHER, &stored), "wrong verifier must fail");
         assert!(!verify_verifier("", &stored));
     }
@@ -33,7 +36,10 @@ mod password_tests {
             a, b,
             "the same verifier must hash differently each time, or the salt is not random"
         );
-        assert!(!a.contains(VERIFIER), "the verifier must not appear in its own hash");
+        assert!(
+            !a.contains(VERIFIER),
+            "the verifier must not appear in its own hash"
+        );
         // Both verify: a per-hash salt does not break verification.
         assert!(verify_verifier(VERIFIER, &a));
         assert!(verify_verifier(VERIFIER, &b));
@@ -128,12 +134,18 @@ mod password_tests {
     #[test]
     fn rehash_is_requested_only_for_weaker_or_broken_hashes() {
         let current = hash_verifier(VERIFIER).expect("hash");
-        assert!(!needs_rehash(&current), "a fresh hash must not need rehashing");
+        assert!(
+            !needs_rehash(&current),
+            "a fresh hash must not need rehashing"
+        );
 
         // Weaker parameters than today's policy: 8 MiB, 1 pass.
         let weak = "$argon2id$v=19$m=8192,t=1,p=1$c29tZXNhbHRzb21lc2FsdA$\
                     DHkNPCnDoWtODzHqE5aTQCXNZAR0uKJRFWWCT8hcnBk";
-        assert!(needs_rehash(weak), "weaker parameters must trigger a rehash");
+        assert!(
+            needs_rehash(weak),
+            "weaker parameters must trigger a rehash"
+        );
 
         // A different algorithm family, and outright junk.
         let argon2i = "$argon2i$v=19$m=19456,t=2,p=1$c29tZXNhbHRzb21lc2FsdA$\
@@ -289,7 +301,10 @@ require_email_verification = true
             .validate_registration()
             .expect_err("a server that cannot send mail must not demand verification")
             .to_string();
-        assert!(err.contains("require_email_verification"), "unhelpful error: {err}");
+        assert!(
+            err.contains("require_email_verification"),
+            "unhelpful error: {err}"
+        );
         assert!(err.contains("[email]"), "unhelpful error: {err}");
     }
 
@@ -308,7 +323,9 @@ starttls = true
         let config: Config = toml::from_str(toml).expect("parse config");
         assert!(config.email.is_configured());
         assert_eq!(config.email.port(), 587);
-        config.validate_registration().expect("configured SMTP must start");
+        config
+            .validate_registration()
+            .expect("configured SMTP must start");
     }
 
     // A blank host or a blank from address is not configuration, it is a typo.
@@ -335,15 +352,26 @@ from = ""
         assert_eq!(default.registration.min_password_length, 12);
 
         for mode in ["open", "invite", "closed"] {
-            let toml = format!("[registration]\nmode = \"{mode}\"\nrequire_email_verification = false\n");
+            let toml =
+                format!("[registration]\nmode = \"{mode}\"\nrequire_email_verification = false\n");
             let config: Config = toml::from_str(&toml).expect("parse config");
-            assert!(config.validate_registration().is_ok(), "{mode} must be accepted");
+            assert!(
+                config.validate_registration().is_ok(),
+                "{mode} must be accepted"
+            );
         }
 
-        let bogus: Config =
-            toml::from_str("[registration]\nmode = \"invitation-only\"\nrequire_email_verification = false\n")
-                .expect("parse config");
-        let err = bogus.validate_registration().expect_err("bad mode must fail").to_string();
-        assert!(err.contains("open, invite, closed"), "unhelpful error: {err}");
+        let bogus: Config = toml::from_str(
+            "[registration]\nmode = \"invitation-only\"\nrequire_email_verification = false\n",
+        )
+        .expect("parse config");
+        let err = bogus
+            .validate_registration()
+            .expect_err("bad mode must fail")
+            .to_string();
+        assert!(
+            err.contains("open, invite, closed"),
+            "unhelpful error: {err}"
+        );
     }
 }

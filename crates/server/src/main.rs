@@ -14,7 +14,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use anyhow::Context;
-use axum::{http::HeaderValue, http::header, middleware, Router};
+use axum::{http::header, http::HeaderValue, middleware, Router};
 use config::Config;
 use sqlx::postgres::PgPoolOptions;
 use tower_http::{
@@ -43,8 +43,10 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "komun_server=info,tower_http=info".into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "komun_server=info,tower_http=info".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -104,8 +106,11 @@ async fn main() -> anyhow::Result<()> {
             .split(',')
             .filter_map(|s| {
                 let trimmed = s.trim();
-                if trimmed.is_empty() { None }
-                else { HeaderValue::from_str(trimmed).ok() }
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    HeaderValue::from_str(trimmed).ok()
+                }
             })
             .collect();
         CorsLayer::new()
@@ -150,8 +155,7 @@ async fn main() -> anyhow::Result<()> {
     if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
         repl::run_repl(state).await;
     } else {
-        server.await
-            .context("Server task panicked")?;
+        server.await.context("Server task panicked")?;
     }
 
     Ok(())

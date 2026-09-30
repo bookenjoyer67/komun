@@ -46,9 +46,9 @@ impl Mailer {
 
         let host = config.email.smtp_host.clone().unwrap_or_default();
         let from_raw = config.email.from.clone().unwrap_or_default();
-        let from: Mailbox = from_raw
-            .parse()
-            .map_err(|e| anyhow::anyhow!("[email] from is not a valid address ({from_raw:?}): {e}"))?;
+        let from: Mailbox = from_raw.parse().map_err(|e| {
+            anyhow::anyhow!("[email] from is not a valid address ({from_raw:?}): {e}")
+        })?;
 
         // STARTTLS on the submission port, implicit TLS otherwise. Both verify certificates
         // against the webpki roots; there is no plaintext path and no "accept any certificate"
@@ -284,7 +284,10 @@ mod tests {
         let body = decoded_body(&wire);
 
         assert!(wire.contains("To: member@example.com"), "{wire}");
-        assert!(wire.contains("Subject: Confirm your Komun account"), "{wire}");
+        assert!(
+            wire.contains("Subject: Confirm your Komun account"),
+            "{wire}"
+        );
         assert!(
             body.contains("https://komun.example.org/verify-email?token=Zm9vYmFyLXRva2VuLTEyMw"),
             "the link must be complete and clickable:\n{body}"
@@ -335,7 +338,10 @@ mod tests {
         // A token is URL-safe base64 in practice, but the encoder must not be the weak point if
         // that ever changes.
         let link = verification_link("https://example.org", "a b&c=d#e");
-        assert_eq!(link, "https://example.org/verify-email?token=a%20b%26c%3Dd%23e");
+        assert_eq!(
+            link,
+            "https://example.org/verify-email?token=a%20b%26c%3Dd%23e"
+        );
     }
 
     #[test]
@@ -346,9 +352,11 @@ mod tests {
 
     #[test]
     fn mailer_is_none_without_smtp_and_some_with_it() {
-        let unconfigured: Config = toml::from_str("[registration]\nrequire_email_verification = false\n")
-            .expect("parse");
-        assert!(Mailer::from_config(&unconfigured).expect("no error").is_none());
+        let unconfigured: Config =
+            toml::from_str("[registration]\nrequire_email_verification = false\n").expect("parse");
+        assert!(Mailer::from_config(&unconfigured)
+            .expect("no error")
+            .is_none());
 
         let configured: Config = toml::from_str(
             "[email]\nsmtp_host = \"smtp.example.org\"\nfrom = \"Komun <noreply@example.org>\"\nstarttls = true\n",
@@ -357,7 +365,10 @@ mod tests {
         let mailer = Mailer::from_config(&configured)
             .expect("no error")
             .expect("configured SMTP yields a mailer");
-        assert_eq!(mailer.from_address().email.to_string(), "noreply@example.org");
+        assert_eq!(
+            mailer.from_address().email.to_string(),
+            "noreply@example.org"
+        );
     }
 
     #[test]
@@ -366,7 +377,12 @@ mod tests {
             "[email]\nsmtp_host = \"smtp.example.org\"\nfrom = \"this is not an address\"\n",
         )
         .expect("parse");
-        let err = Mailer::from_config(&bad).expect_err("must not build").to_string();
-        assert!(err.contains("from is not a valid address"), "unhelpful: {err}");
+        let err = Mailer::from_config(&bad)
+            .expect_err("must not build")
+            .to_string();
+        assert!(
+            err.contains("from is not a valid address"),
+            "unhelpful: {err}"
+        );
     }
 }

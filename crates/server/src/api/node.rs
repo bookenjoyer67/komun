@@ -30,9 +30,7 @@ pub fn router(state: AppState) -> Router {
 
 async fn get_node_info(State(state): State<AppState>) -> Json<NodeInfo> {
     let config = &state.config;
-    let location = if config.node.location_name.is_some()
-        || config.node.location_lat.is_some()
-    {
+    let location = if config.node.location_name.is_some() || config.node.location_lat.is_some() {
         Some(NodeLocation {
             name: config.node.location_name.clone(),
             lat: config.node.location_lat,
@@ -42,9 +40,14 @@ async fn get_node_info(State(state): State<AppState>) -> Json<NodeInfo> {
         None
     };
 
-    let domain = config.node.public_url.as_ref()
-        .and_then(|url| url.strip_prefix("https://")
-            .or_else(|| url.strip_prefix("http://")))
+    let domain = config
+        .node
+        .public_url
+        .as_ref()
+        .and_then(|url| {
+            url.strip_prefix("https://")
+                .or_else(|| url.strip_prefix("http://"))
+        })
         .and_then(|rest| rest.split('/').next())
         .and_then(|host| host.split(':').next())
         .map(String::from);

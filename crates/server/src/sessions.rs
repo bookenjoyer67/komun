@@ -142,10 +142,8 @@ mod tests {
         // Not a proof of preimage resistance — just the property that matters operationally:
         // what we store is not what we accept.
         let t = generate_token();
-        let stored = base64::Engine::encode(
-            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            &t.hash,
-        );
+        let stored =
+            base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, &t.hash);
         assert_ne!(stored, t.raw);
     }
 
@@ -163,7 +161,10 @@ mod tests {
     #[test]
     fn touch_is_throttled() {
         let now = chrono::Utc::now();
-        assert!(!should_touch(now), "a just-used session must not be rewritten");
+        assert!(
+            !should_touch(now),
+            "a just-used session must not be rewritten"
+        );
         assert!(!should_touch(now - chrono::Duration::seconds(30)));
         assert!(should_touch(now - chrono::Duration::seconds(61)));
         assert!(should_touch(now - chrono::Duration::hours(2)));
@@ -182,6 +183,9 @@ mod tests {
         assert_eq!(device_label_from_user_agent(None), None);
         assert_eq!(device_label_from_user_agent(Some("   ")), None);
         let long = "x".repeat(5000);
-        assert_eq!(device_label_from_user_agent(Some(&long)).unwrap().len(), 120);
+        assert_eq!(
+            device_label_from_user_agent(Some(&long)).unwrap().len(),
+            120
+        );
     }
 }

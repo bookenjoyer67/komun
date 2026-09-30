@@ -88,6 +88,20 @@
         "guard": null,
         "summary": null,
         "writes": true
+      },
+      "webcheck": {
+        "argv": ["npm", "--prefix", "web", "run", "check"],
+        "description": "frontend type-check gate: svelte-kit sync and svelte-check over web/",
+        "guard": null,
+        "summary": null,
+        "writes": false
+      },
+      "webtest": {
+        "argv": ["npm", "--prefix", "web", "run", "test"],
+        "description": "frontend unit-test gate: the vitest suites under web/",
+        "guard": null,
+        "summary": null,
+        "writes": false
       }
     },
     "cache_dirs": [
