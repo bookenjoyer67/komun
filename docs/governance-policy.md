@@ -45,7 +45,7 @@ Which MCP server operations may the orchestrator call?
 Which skill may the orchestrator activate, and when?
 
 - Permit `summarize-session` at a phase boundary (`.claude/skills/summarize-session/SKILL.md:6` `phase is ending and new rules or new material are about to arrive`).
-- Deny every other skill, because the repository ships exactly one skill file (`find .claude/skills -name SKILL.md` -> `1`).
+- Permit `write-child-brief` before spawning any role, so the child starts from measured context (`.claude/skills/write-child-brief/SKILL.md:13` `A role reads its brief, its own definition and the artifacts it may open,`). Deny every other skill, because the repository ships two skill files (`find .claude/skills -name SKILL.md` -> `2`).
 - Carry the summary's unresolved questions into the run summary (`.claude/skills/summarize-session/SKILL.md:38` `Anything unresolved: claims that could not be verified`).
 
 ### Data classification ceiling
@@ -88,7 +88,7 @@ Which MCP server operations may the planner call?
 Which skill may the planner activate, and when?
 
 - Permit `summarize-session` at the plan-approval boundary (`.claude/skills/summarize-session/SKILL.md:7` `when the user asks for a session summary`).
-- Deny every other skill, because the repository ships exactly one skill file (`find .claude/skills -name SKILL.md` -> `1`).
+- Deny every other skill, because the repository ships two skill files (`find .claude/skills -name SKILL.md` -> `2`).
 - Name the unread artifact and halt when a rule cannot be settled from the repository (`.claude/agents/planner.md:62` `Halt and return to the orchestrator when the request cannot be planned`).
 
 ### Data classification ceiling
@@ -134,7 +134,7 @@ Which MCP server operations may the implementer call?
 Which skill may the implementer activate, and when?
 
 - Permit `summarize-session` at a repair-cycle boundary (`.claude/skills/summarize-session/SKILL.md:6-7` `when the context window is filling`).
-- Deny every other skill, because the repository ships exactly one skill file (`find .claude/skills -name SKILL.md` -> `1`).
+- Deny every other skill, because the repository ships two skill files (`find .claude/skills -name SKILL.md` -> `2`).
 - Return an unnamed file to the orchestrator rather than writing it (`.claude/agents/implementer.md:44-45` `A file the change needs that the plan does not name is a scope change`).
 
 ### Data classification ceiling
@@ -181,7 +181,7 @@ Which MCP server operations may the tester call?
 Which skill may the tester activate, and when?
 
 - Permit `summarize-session` after a gate run (`.claude/skills/summarize-session/SKILL.md:6-7` `when the context window is filling`).
-- Deny every other skill, because the repository ships exactly one skill file (`find .claude/skills -name SKILL.md` -> `1`).
+- Deny every other skill, because the repository ships two skill files (`find .claude/skills -name SKILL.md` -> `2`).
 - Name the cache-hit prerequisite as a blocker rather than touching a source file (`.claude/agents/tester.md:53` `a silent second run is a cache hit, not a clean lint`).
 
 ### Data classification ceiling
@@ -227,7 +227,7 @@ Which MCP server operations may the reviewer call?
 Which skill may the reviewer activate, and when?
 
 - Permit `summarize-session` at the review boundary (`.claude/skills/summarize-session/SKILL.md:6-7` `when the context window is filling`).
-- Deny every other skill, because the repository ships exactly one skill file (`find .claude/skills -name SKILL.md` -> `1`).
+- Deny every other skill, because the repository ships two skill files (`find .claude/skills -name SKILL.md` -> `2`).
 - Hand no part of the review to another agent (`.claude/agents/reviewer.md:40` `hands no part of the review to another agent`).
 - Apply the documentation standard from this role rather than delegating it (`.claude/agents/reviewer.md:47` `v2 is the current rule set`); its prose and citation half is converted and runs as `scripts/validate_doc_conformance_deterministic.py` (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`).
 
@@ -273,7 +273,7 @@ Which MCP server operations may the project-manager call?
 Which skill may the project-manager activate, and when?
 
 - Permit `summarize-session` at the run-closing boundary (`.claude/skills/summarize-session/SKILL.md:7` `when the user asks for a session summary`).
-- Deny every other skill, because the repository ships exactly one skill file (`find .claude/skills -name SKILL.md` -> `1`).
+- Deny every other skill, because the repository ships two skill files (`find .claude/skills -name SKILL.md` -> `2`).
 - Return an open question instead of guessing a ticket status (`.claude/agents/project-manager.md:61-63` `Guessing a status is not a ticket update.`).
 
 ### Data classification ceiling
@@ -317,7 +317,7 @@ Which MCP server operations may the researcher call?
 Which skill may the researcher activate, and when?
 
 - Permit `summarize-session` inside this role's own context (`.claude/skills/summarize-session/SKILL.md:7` `when the user asks for a session summary`).
-- Deny every other skill, because the repository ships exactly one skill file (`find .claude/skills -name SKILL.md` -> `1`).
+- Deny every other skill, because the repository ships two skill files (`find .claude/skills -name SKILL.md` -> `2`).
 - Return an unresolved point as an open question, never as a finding (`.claude/agents/researcher.md:46-47` `An unresolved point is returned as an open question, never as a finding.`).
 
 ### Data classification ceiling
