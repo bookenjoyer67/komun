@@ -11,11 +11,11 @@ Each invocation returns the exit code, the captured stdout and stderr, the wall-
 verdict, and appends one journal line naming the ``tool`` that ran it and its ``writes`` mode. A
 refused call runs nothing and journals nothing, so the journal holds only executed commands.
 
-The ``clippy`` gate carries the project's cache-hit guard, whose marker line and touched file are
-read from ``toolchain.commands.clippy.guard``. cargo's second run over an unchanged tree prints
-nothing and exits 0, which is indistinguishable from a clean lint, so the gate touches a file
-under test before invoking cargo and then requires the configured marker line in the output.
-``passed`` for clippy is therefore exit code 0 *and* a satisfied guard. This image runs cargo with
+A gate that declares a ``guard`` carries the project's cache-hit guard, and its marker line and
+touched file are read from that gate's own ``toolchain.commands.<name>.guard`` block. cargo's
+second run over an unchanged tree prints nothing and exits 0, which is indistinguishable from a
+clean run, so the gate touches a file under test before invoking cargo and then requires that
+gate's own configured marker line. ``passed`` is exit code 0 *and* a satisfied guard. This image runs cargo with
 ``CARGO_TERM_COLOR=always``, so status lines arrive wrapped in SGR escapes and the guard matches the
 output with the escapes stripped; the returned stdout and stderr are stripped for the same reason.
 
@@ -53,7 +53,7 @@ if str(_SCRIPTS) not in sys.path:
 _GATE_DIR = Path(__file__).resolve().parent
 if str(_GATE_DIR) not in sys.path:
     sys.path.insert(0, str(_GATE_DIR))
-from gate_vocabulary import (COMMANDS, FIX_COMMANDS, GATES, GUARD_MARKER_PATTERN,  # noqa: E402
+from gate_vocabulary import (COMMANDS, FIX_COMMANDS, GATES, GUARD_MARKER_PATTERNS,  # noqa: E402
                              MEMORY_DIR, SUMMARY_PATTERNS, WORKSPACE, AUDIT_PATH, TOOLS_IMAGE, print_config_if_requested)
 
 # A supported entry point: it answers before the MCP and HTTP imports, so a host without fastmcp
@@ -279,11 +279,11 @@ def apply_cache_hit_guard(command: str) -> dict[str, Any]:
     }
 
 
-def guard_satisfied(guard: dict[str, Any], combined_output: str) -> dict[str, Any]:
-    """Require the gate's marker line in the output, and record why when it is absent."""
+def guard_satisfied(command: str, guard: dict[str, Any], combined_output: str) -> dict[str, Any]:
+    """Require the gate's own marker line in the output, and record why when it is absent."""
     if not guard["applied"]:
         return guard
-    match = GUARD_MARKER_PATTERN.search(strip_ansi(combined_output))
+    match = GUARD_MARKER_PATTERNS[command].search(strip_ansi(combined_output))
     missing = (
         f"cache-hit guard not satisfied: no '{guard['marker']}' line in the output, so a clean "
         "run cannot be told apart from a cached no-op"
@@ -415,7 +415,7 @@ def execute_gate(
         raw_stderr = _decode(expired.stderr)
     duration_seconds = round(time.monotonic() - started, 3)
 
-    guard = guard_satisfied(guard, raw_stdout + "\n" + raw_stderr)
+    guard = guard_satisfied(command, guard, raw_stdout + "\n" + raw_stderr)
     # Counted on the raw capture, above the clamp below, so the counts describe the whole run and
     # not the head of it. The summary never enters `passed` or `verdict`, which follow unchanged.
     summary = compute_output_summary(command, raw_stdout, raw_stderr)
