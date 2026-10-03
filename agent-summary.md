@@ -1,6 +1,6 @@
 # Komun — Repository Summary
 
-Federated mutual aid discovery platform: communities post needs/offers/resources and match via encrypted conversations. Backend is Rust (Axum) + PostgreSQL; frontend is a SvelteKit 5 SPA; client-side crypto is compiled to WASM.
+Marketplace and mutual aid hub: people post needs, offers and resources and match via encrypted conversations. Backend is Rust (Axum) + PostgreSQL; frontend is a SvelteKit 5 SPA; client-side crypto is compiled to WASM.
 
 ## Repository structure
 
@@ -9,7 +9,7 @@ Federated mutual aid discovery platform: communities post needs/offers/resources
 ├── Cargo.toml               # Rust workspace (core, server, wasm, relay)
 ├── crates/
 │   ├── core/                # Shared data models (Community, Member, Post, MatchThread, User)
-│   ├── server/              # Axum HTTP API, JWT auth, DB queries, federation, REPL, tasks
+│   ├── server/              # Axum HTTP API, JWT auth, DB queries, REPL, tasks
 │   ├── wasm/                # Client crypto (ed25519, x25519, ChaCha20Poly1305, Argon2, BIP39)
 │   └── relay/               # piggPin WebSocket map relay (feature-gated MQTT/RNode/Reticulum bridges)
 ├── web/                     # SvelteKit 5 SPA (static adapter), Vite 6, TypeScript

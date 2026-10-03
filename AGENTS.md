@@ -7,8 +7,8 @@ disagree, fix one of them.
 
 What is Komun, what is it built from, and what has been deliberately left out of it?
 
-Komun is a **single-server** mutual-aid web app (`docs/ARCHITECTURE.md:5` `A single-server
-mutual-aid web app.`). People post needs, offers and resources, plus marketplace listings and wants
+Komun is a **single-server** marketplace and mutual aid hub (`docs/ARCHITECTURE.md:5` `A single-server
+marketplace and mutual aid hub.`). People post needs, offers and resources, plus marketplace listings and wants
 (`crates/core/src/models/post.rs:8-12` `Resource => "resource",` through `Want => "want",`). They
 search those posts (`crates/server/src/api/mod.rs:44` `.merge(search::router(state.clone()))`). They
 negotiate over conversations whose `messages` rows hold `ciphertext` and `nonce` only

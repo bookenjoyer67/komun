@@ -1,7 +1,7 @@
 # setup.md — Sandboxed agent for the Komun ("rev") Target Codebase
 
 Agentic Engineer · Module 1 · Assignment 1.1, Exercise 2
-Target Codebase: `~/rev` (Komun — federated mutual aid discovery, AGPL-3.0)
+Target Codebase: `~/rev` (Komun — marketplace and mutual aid hub, AGPL-3.0)
 Sandbox image: `agent-sandbox:komun` (built from the `Dockerfile` in this repo root)
 
 ---

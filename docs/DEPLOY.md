@@ -61,7 +61,7 @@ rc-service komun start
 
 ```ini
 [Unit]
-Description=Komun mutual aid server
+Description=Komun marketplace and mutual aid server
 After=network-online.target postgresql.service
 Wants=network-online.target
 

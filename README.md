@@ -2,7 +2,7 @@
 
 # 🫱🏾‍🫲🏼 Komun
 
-**Mutual aid for one community — needs meet resources, conversations stay encrypted.**
+**A marketplace and mutual aid hub — needs meet resources, conversations stay encrypted.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://rust-lang.org)
@@ -12,7 +12,7 @@
 
 ---
 
-Komun is a single-server mutual aid platform. People post what they need, what they can give,
+Komun is a single-server marketplace and mutual aid hub. People post what they need, what they can give,
 and what they have to offer, then match and negotiate over end-to-end encrypted conversations.
 The server is the community — there is no multi-tenant layer and no federation.
 
@@ -96,6 +96,10 @@ cd web && npm run check && npm run build && npx vitest run
 
 `docs/DEVELOPMENT.md` has the provisioning order, the migration rules, a runtime-gate recipe,
 and what a sandbox cannot verify (tiles, live SMTP, the wasm build).
+
+The agent harness has its own guide. `docs/AGENT-HARNESS.md` covers the sandbox image, the internal
+network, the MCP servers and the per-role launcher, with a prerequisite check and the failure modes
+worth expecting. Nothing in it is needed to build or run the application.
 
 ## Security model
 

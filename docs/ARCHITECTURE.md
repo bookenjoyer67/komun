@@ -2,7 +2,7 @@
 
 ## What Komun is
 
-A single-server mutual-aid web app. The server **is** the community: there is no
+A single-server marketplace and mutual aid hub. The server **is** the community: there is no
 multi-tenant `communities` table, no federation, and no relay. Users sign up with email and
 password; post needs/offers/resources and marketplace listings/wants; negotiate over
 end-to-end encrypted match threads; and, once a deal is completed, leave a star review. The

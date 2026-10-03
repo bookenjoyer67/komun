@@ -2,7 +2,7 @@
 
 ## What this workflow needs to remember
 
-This agent helps maintain **Komun** — a single-server mutual-aid web app (Rust/Axum server, SvelteKit
+This agent helps maintain **Komun** — a single-server marketplace and mutual aid hub (Rust/Axum server, SvelteKit
 SPA, client-side crypto in WASM) — by running its pre-merge quality gate and keeping the prose docs in
 sync with the code. Across sessions it needs to remember the current phase of that work, the decisions
 that constrain future edits, the measured gate baselines that reveal a regression, known environment
