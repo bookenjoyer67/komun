@@ -338,3 +338,22 @@ How far does the researcher act before a human decides?
 - Answer one question per call and return (`.claude/agents/researcher.md:61` `one question per call`).
 
 **Container permissions** — the launcher mounts this repository read-only at `/workspace` for this role (`scripts/run-agent.sh:165` `MOUNTS+=(-v "$REPO:/workspace:ro")`), and mounts `/workspace/.memory` read-write so the granted entry write lands (`scripts/run-agent.sh:168` `MOUNTS+=(-v "$REPO/.memory:/workspace/.memory")`). This role reads no file in `/workspace`, writes one `public` research entry into `/workspace/.memory`, and reaches the network only through its search tool (`.claude/agents/researcher.md:61` `The workflow's only network lookup`). The read-only `.memory/knowledge` and `.memory/reference` layers refuse this role's writes (`docs/memory-architecture.md:160` `denies any write to the read-only layers`).
+
+## Escalation and rollback
+
+What stops a run, and what is reverted when a threshold is missed?
+
+Escalation triggers on a threshold rather than on preference. Three thresholds carry that authority,
+and a miss on any one of them stops the run.
+
+- Escalate when the binary gate does not pass (`docs/rubric.md:85` `1. The binary gate G1 passes.`).
+- Escalate when the rubric total falls below 17 / 20 (`docs/rubric.md:86` `2. The rubric total is **17 / 20 or higher**.`).
+- Escalate when any single dimension scores 1 (`docs/rubric.md:87` `3. No single dimension scores 1.`), because a high total does not outvote one failed dimension.
+- Escalate after a role fails twice (`docs/governance-policy.md:65` `Escalate to the human after a role fails twice`), which is the existing review trigger.
+- Hand the escalated run to a human, who rules on it rather than the loop retrying (`docs/step-classification.md:179` `Escalation is a judgment about a run, and no rule set settles it.`).
+
+Rollback is one commit and one command, and a threshold decides it in the same way.
+
+- Revert the conversion commit when the script returns a wrong result in the running workflow (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:68` `one git revert`).
+- Close a rollback decision against the four-run regression rather than a single run (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:10` `the integrated end-to-end regression passed on 2026-09-29 across four runs`).
+- Record the revert as the next entry's change under gate, where every other change is recorded (`docs/iteration-log.md:14` `- Change under gate: ticket`).

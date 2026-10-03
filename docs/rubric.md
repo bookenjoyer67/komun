@@ -88,3 +88,9 @@ A run **passes** when all of the following hold:
 
 A run that fails the threshold is recorded as a failure and is still valid evidence.
 Scores are assigned against the PRD's intended behavior, not adjusted to fit a run.
+
+## Where are the alternatives considered during rubric design recorded?
+
+They were recorded at decision time, in `docs/adr/ADR-002-rubric-design.md`. That ADR quotes this
+file line by line, and names what was rejected: the dimensions not used, the binary criterion, and
+the threshold. This file states the rubric as adopted; the reasoning behind each choice is there.

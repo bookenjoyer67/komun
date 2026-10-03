@@ -101,6 +101,18 @@ The agent harness has its own guide. `docs/AGENT-HARNESS.md` covers the sandbox 
 network, the MCP servers and the per-role launcher, with a prerequisite check and the failure modes
 worth expecting. Nothing in it is needed to build or run the application.
 
+Check the harness prerequisites before you start. `docker info >/dev/null 2>&1 && echo up` must print
+`up`. `docker image inspect agent-sandbox:komun-m3 >/dev/null && echo image-ok` must print `image-ok`.
+If it does not, build the image from the repository root with
+`docker build -f sandbox/Dockerfile.m3 -t agent-sandbox:komun-m3 .`.
+
+Then launch one role. `./sandbox/run-agent.sh` starts a container with this repository mounted at
+`/workspace`. `./scripts/run-agent.sh --matrix` prints the per-role table without starting anything.
+
+Two failures are common, and both read as something else. `docker daemon not running` means the daemon
+is down, not the script. `No module named pytest` means the wrong image is running: the suites need
+`agent-sandbox:komun-m3`, not `agent-sandbox:komun`. `docs/AGENT-HARNESS.md` lists the rest.
+
 ## Security model
 
 - **Never leaves the client:** the x25519 secret key, the password-derived key, the recovery code, and

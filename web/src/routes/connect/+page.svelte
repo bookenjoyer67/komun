@@ -122,7 +122,7 @@
 
 		<p class="footer-note">
 			Don't have a server? Ask whoever organizes aid near you, or
-			<a href="https://git.komun.buzz/Book-Enjoyer/rev" target="_blank">run your own</a>.
+			<a href="https://github.com/bookenjoyer67/komun" target="_blank">run your own</a>.
 		</p>
 	</div>
 </div>
