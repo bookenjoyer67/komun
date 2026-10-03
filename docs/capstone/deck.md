@@ -189,7 +189,7 @@ Total 7,051s, about 1.96 hours. `fmt` stayed red in all 4 runs, pre-existing at 
 
 - $8.37 removed per conformance run, replaced by $0.00.
 - 66% off the test-gate prompt cost ($0.4845 to $0.1635) and 40% off its cycle time.
-- 90 policy tests now gate every change (75 permission plus 15 validator).
+- 95 policy tests now gate every change (75 permission, 5 cost-control, 15 validator).
 - 2 failed tests in D1 were caught before merge by the test gate.
 - 0 model calls in the converted step, and 10 citation findings surfaced.
 
@@ -199,9 +199,10 @@ Total 7,051s, about 1.96 hours. `fmt` stayed red in all 4 runs, pre-existing at 
 
 - 1 hard stop keeps the memory layers read-only, and 3 journals record every MCP call.
 - 2 human checkpoints and a `halt` ruling are the escalation path.
-- 1 `git revert` of the conversion commit is the rollback, documented in ADR-001; not yet exercised.
+- 1 `git revert` of the conversion commit is the rollback, documented in ADR-001; exercised 2026-10-03. It stops on 4 conflicts and the conformance gate then exits 2.
 - 5 CI jobs: change-type-check, policy-gate, eval-gate, advisory-review, audit-trail.
 - Limits, stated plainly: `fmt` red at HEAD (unattributed); 2 known conformance false positives; no cost figure for the four-run regression; the sandbox protects nothing if the host is compromised.
+- Cost is bounded: 6 hours per call and $25 per workflow, both read from the seam table; the launcher refuses the next call past the ceiling.
 
 ---
 

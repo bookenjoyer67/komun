@@ -274,13 +274,41 @@ printf 'memory    : %s (%s)\n' "$MEMORY_DIR" "$eff_mem"
 printf 'cache     : %s -> %s/target (%s)\n' "$TARGET_VOL" "$WORKSPACE" "$ROLE_TARGET"
 printf 'command   : docker exec -w %s %s %s\n' "$WORKSPACE" "$NAME" "$CMDLINE"
 
-# 6. The command. A TTY is used only when this shell has one, so the same invocation works from a script.
+# 6. Cost control. Both ceilings come from the seam table, and an environment variable wins over
+# both, as everywhere else in this file. A call is refused before it starts once the workflow's
+# ledger has reached its ceiling, because a budget that only warns is a budget nobody meets.
+BUDGET_SECONDS="${BUDGET_SECONDS:-$(cfg budgets.per_call_seconds '21600')}"
+BUDGET_USD="${BUDGET_USD:-$(cfg budgets.per_workflow_usd '25')}"
+LEDGER_FILE="${BUDGET_LEDGER:-$REPO/$(cfg budgets.ledger 'target/budget-ledger.json')}"
+BUDGET_TOOL="$SCRIPT_DIR/budget.py"
+
+if [ -f "$BUDGET_TOOL" ]; then
+  python3 "$BUDGET_TOOL" check --ledger "$LEDGER_FILE" --ceiling "$BUDGET_USD" --role "$ROLE" || exit $?
+fi
+
+# 7. The command. A TTY is used only when this shell has one, so the same invocation works from a
+# script. The call runs under the per-call cap, and what it cost is journalled when it returns, so
+# the next call is checked against a number rather than against somebody's memory of one. The
+# dollar figure is the CLI's own accounting, passed in as BUDGET_CALL_USD; a call that reports none
+# still records its wall clock and its exit status, so the ledger stays a complete record.
+started="$(date +%s)"
+call_status=0
 if [ "$CMDLINE" = bash ] || [ "$CMDLINE" = sh ]; then
   if [ -t 0 ] && [ "${#EXTRA[@]}" -eq 0 ]; then
-    exec docker exec -it -w "$WORKSPACE" "$NAME" "$CMDLINE"
+    timeout "${BUDGET_SECONDS}s" docker exec -it -w "$WORKSPACE" "$NAME" "$CMDLINE" || call_status=$?
+  elif [ "${#EXTRA[@]}" -gt 0 ]; then
+    timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" "${EXTRA[@]}" || call_status=$?
+  else
+    timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" || call_status=$?
   fi
+elif [ "${#EXTRA[@]}" -gt 0 ]; then
+  timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" "${EXTRA[@]}" || call_status=$?
+else
+  timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" || call_status=$?
 fi
-if [ "${#EXTRA[@]}" -gt 0 ]; then
-  exec docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" "${EXTRA[@]}"
+
+if [ -f "$BUDGET_TOOL" ]; then
+  python3 "$BUDGET_TOOL" record --ledger "$LEDGER_FILE" --role "$ROLE" --usd "${BUDGET_CALL_USD:-0}" \
+    --seconds "$(( $(date +%s) - started ))" --status "$call_status" >/dev/null 2>&1 || true
 fi
-exec docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE"
+exit "$call_status"

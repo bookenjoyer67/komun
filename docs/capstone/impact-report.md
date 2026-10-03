@@ -38,7 +38,7 @@ Projected gains, each with its assumption stated:
 
 - [PROJECTED] "with $8.37 removed per run" describes future passes; the assumption is one conformance pass per merged change, and the record carries no count of changes, so no annual figure is claimed (`docs/capstone/one-pager.md:26` `with $8.37 removed per run`).
 - [PROJECTED] The regression will be costable once the broker reports usage; today "No cost figure exists for the four-run regression, because the broker reports no usage." (`docs/capstone/one-pager.md:43` `No cost figure exists for the four-run regression, because the broker reports no usage.`).
-- [PROJECTED] Rollback safety is a design claim, not a result: "not yet exercised" (`docs/capstone/deck.md:202` `not yet exercised`); the assumption is that one `git revert` of the conversion commit undoes it.
+- [MEASURED] Rollback safety was exercised on 2026-10-03 (`docs/capstone/deck.md:202` `exercised 2026-10-03`): the revert stops on 4 conflicts, all four files the conversion added. Removing them completes it, and the conformance gate then fails (`scripts/run-conformance-gate.py:206` `is missing, so there is nothing to run`), exit 2 against exit 0 at HEAD.
 
 ## Honest limitations
 

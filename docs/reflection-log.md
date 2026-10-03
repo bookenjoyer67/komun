@@ -45,7 +45,7 @@ Which near-miss produced the skill, and what held after the addition?
 - State the change as the new skill definition (`.claude/skills/write-child-brief/SKILL.md:2` `name: write-child-brief`).
 - Record the governance update that admits the skill (`docs/governance-policy.md:48` `the repository ships two skill files`).
 - Record the after as the policy suite staying green (`docs/capstone/video/demo-runbook.md:523` `Verified on 2026-10-01: 90 passed in 1.00s`).
-- Record that suite's size (`docs/capstone/one-pager.md:31` `90 tests in the policy gate, made up of 75 permission tests plus 15 validator tests.`).
+- Record that suite's size (`docs/capstone/one-pager.md:31` `95 tests in the policy gate, made up of 75 permission tests, 5 cost-control tests and 15 validator tests.`).
 - Record no rerun for the skill's activation: not recorded at decision time.
 
 ## Entry 3 — Which memory-layer policy change hardened the write path?
@@ -95,6 +95,18 @@ What did the agentic pass cost, and what does the script cost now?
 - Record the digest that proves repeatability (`docs/calibration-log.md:118` `15f1c690dbfdb0e1c19f78237836ce1669b47de47c176a98dfe56a943cc61af5`).
 - Record the integration result, four runs passing (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:10` `the integrated end-to-end regression passed on 2026-09-29 across four runs`).
 - Record the coverage of the integrated runs (`docs/calibration-log.md:119` `299 citations checked, 289 resolved at the cited line`).
+
+## Entry 6 — Which rollback claim did exercising it correct?
+
+What did running the rollback actually do, and what changed because of it?
+
+- Read the rollback requirement as it was written (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:68` `it can be undone with one git revert if the script produces a`).
+- Record what exercising it found: the revert does not complete on its own. It stops on four conflicts, because every file the conversion added was edited afterwards.
+- Record the state it reaches once those conflicts are resolved (`docs/capstone/deck.md:202` `exercised 2026-10-03`).
+- Record what the rollback restores, quoted from the gate that loses its checker (`scripts/run-conformance-gate.py:206` `is missing, so there is nothing to run`).
+- Record the same command before and after: exit 0 at HEAD, exit 2 once the rollback has landed.
+- Record the correction this forced, so the claim matches the drill (`docs/capstone/impact-report.md:41` `[MEASURED] Rollback safety was exercised on 2026-10-03`).
+- Note that the drill ran in a separate git worktree, so no shipped file was touched and no revert commit was published.
 
 ## What is this log's provenance?
 

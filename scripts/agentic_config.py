@@ -460,6 +460,21 @@ DEFAULT: dict[str, Any] = {
             "gate_allowlist": 30,
         },
     },
+    "budgets": {
+        "per_call_seconds": 21600,
+        "per_workflow_usd": 25,
+        "ledger": "target/budget-ledger.json",
+        "_purpose": [
+            "The two ceilings a workflow runs under, because a run that is not bounded by a number is",
+            "bounded by the operator's patience instead. per_call_seconds caps one call by wall clock;",
+            "the launcher wraps every call in timeout with it. per_workflow_usd caps the sum of the",
+            "spend a workflow has recorded; the launcher refuses to start a call once the ledger at",
+            "`ledger` has reached it. The ledger sits under target/, which is gitignored, because a",
+            "running spend total is state and not source. 21600s is 6h against the longest observed",
+            "run of 4h30m (docs/iteration-log.md), and 25 USD is about three times the largest",
+            "observed single-run spend of $8.37 (docs/calibration-log.md)."
+        ]
+    },
 }
 
 _CACHE: dict[str, Any] | None = None

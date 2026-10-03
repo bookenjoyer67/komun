@@ -103,3 +103,20 @@ Which document holds what?
 | How is the application itself built and provisioned? | `docs/DEVELOPMENT.md` |
 | Who may call which MCP tool? | `docs/routing-and-tool-grant-map.md` |
 | What does each role hold? | `docs/governance-policy.md` |
+
+## What bounds a workflow's cost?
+
+Two ceilings, and both come from the seam table rather than from the launcher. `agentic.config.json:426` carries `"per_call_seconds": 21600,` and `agentic.config.json:427` carries `"per_workflow_usd": 25,`. An environment variable wins over each, as everywhere else in the launcher.
+
+The per-call ceiling is a hard bound. Every call runs under `timeout` with that many seconds, so a hung tool cannot hold a role forever. The per-workflow ceiling refuses rather than warns, because a budget that only warns is a budget nobody meets. `scripts/budget.py` keeps the workflow's ledger at `target/budget-ledger.json`, which is gitignored, and `scripts/run-agent.sh` asks it to check before each call. Once the ledger reaches the ceiling the launcher exits 3 and the call never runs:
+
+```text
+budget refused: researcher may not start a call. The workflow has spent $28.3700 of its $25.00 ceiling over 2 calls.
+  ledger : /home/computing/komun/target/budget-ledger.json
+  reset  : rm -f /home/computing/komun/target/budget-ledger.json
+  or raise budgets.per_workflow_usd in agentic.config.json, which is a deliberate act
+```
+
+The refusal happens after the container is ensured and before the command runs, so a refused call costs a container start and nothing else. There are two deliberate ways out: delete the ledger, or raise the ceiling.
+
+The dollar figure is the CLI's own accounting, passed in as `BUDGET_CALL_USD`. A call that reports none still records its wall clock and its exit status, so the ledger stays a complete record of the workflow even when the spend is not attributable. `python3 scripts/budget.py show --ledger target/budget-ledger.json` prints it.

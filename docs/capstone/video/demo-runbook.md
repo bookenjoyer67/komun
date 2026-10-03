@@ -23,7 +23,7 @@ Run these in order about fifteen minutes before recording. All are HOST-SIDE.
 | 2. Toolchain image | `docker image inspect agent-sandbox:komun-m3 >/dev/null && echo image-ok` | `image-ok` |
 | 3. Internal network | `docker network inspect agent-internal --format '{{.Name}} {{.Driver}} internal={{.Internal}}'` | `agent-internal bridge internal=true` |
 | 4. Broker network | `docker network inspect agent-net --format '{{.Name}} {{.Driver}} internal={{.Internal}}'` | `agent-net bridge internal=true` |
-| 5. Reference container | `docker inspect agent-rev-m3 --format '{{.State.Running}}'` | `true` |
+| 5. Reference container | `docker inspect agent-rev-m3 --format '{{.State.Running}}'` | `true` — if not, create it as the closing section shows |
 | 6. Credential broker | `docker inspect rev-broker --format '{{.State.Running}}'` | `true` |
 | 7. Console binary | `test -x console/target/release/agentic-console && echo console-ok` | `console-ok` |
 | 8. tmux | `tmux -V` | `tmux 3.7c` or later |
@@ -51,7 +51,7 @@ INSIDE CONTAINER. The suite lives in the container's Python, not the host's, so 
 docker exec -w /workspace agent-rev-m3 python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q
 ```
 
-Observed output on 2026-10-01:
+Observed output on 2026-10-01 (95 since the cost-control tests):
 
 ```
 ........................................................................ [ 80%]
@@ -520,7 +520,7 @@ re-executed on 2026-10-01, so each is marked with what would settle it.
 | clippy exit 0 with warnings as errors | `cargo clippy --release -- -D warnings` | [UNVERIFIED] today. Settle it by running it in the container. Note the gate also requires its cache-hit guard to be satisfied, so the gate's verdict is exit 0 plus the marker line `Checking komun-server`. |
 | 0 errors, 0 warnings | `npm run check` inside `web/` | [UNVERIFIED] today. Settle it with `docker exec -w /workspace agent-rev-m3 npm --prefix web run check`. |
 | 82 tests in 7 files, all passing | `npx vitest run` inside `web/` | [UNVERIFIED] today. Settle it with `docker exec -w /workspace agent-rev-m3 npm --prefix web run test`. |
-| policy gate 90 tests | `docker exec -w /workspace agent-rev-m3 python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q` | Verified on 2026-10-01: `90 passed in 1.00s`. The 75 and 15 split was verified separately with `-v`. |
+| policy gate 95 tests | `docker exec -w /workspace agent-rev-m3 python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q` | Verified on 2026-10-01: `90 passed in 1.00s`; `95 passed` since the cost-control tests. The split was verified separately with `-v`. |
 
 Run every one of these in the container rather than on the host. The container is the toolchain the
 baseline was measured with, and the host's own Python has no pytest at all.
@@ -548,3 +548,21 @@ The capture is described in full in `capture.md`, beside this file. Two things m
 | `bash /workspace/scripts/start-mcp-servers.sh` | [UNVERIFIED] in this session | Run it in the container. It starts the storage and retrieval servers and creates `.memory/reference/`, so it changes `.memory` state. |
 | Building `agent-sandbox:komun-m3` | [UNVERIFIED] in this session | The image is already present on this host, so the build was not re-run. Settle it with `docker build -f sandbox/Dockerfile.m3 -t agent-sandbox:komun-m3 .`. |
 | The four-run end to end regression | Cannot be re-run cheaply | It needs four full agentic runs. Its evidence is on screen from `docs/calibration-log.md` and the gate journal. |
+
+## How do I create the reference container if it is missing?
+
+Create it once, detached, from the Module 3 image. The container is documented at `sandbox/README-m3.md:51` (`How do I run the Module 3 container?`); this is that container run detached, so `docker exec` can reach it.
+
+```bash
+docker run -d --name agent-rev-m3 --network agent-internal \
+  -v "$HOME/komun":/workspace \
+  -v "$HOME/komun/.memory":/workspace/.memory \
+  agent-sandbox:komun-m3 sleep infinity
+docker network connect agent-net agent-rev-m3
+```
+
+The second command attaches the broker network. Every segment that reads the journal expects `/workspace/.memory` to be the host's `~/komun/.memory`, which the bind gives it.
+
+If it already exists but is stopped, `docker start agent-rev-m3` is enough. If it exists with the wrong mounts, remove it with `docker rm -f agent-rev-m3` and create it again.
+
+The container is deleted, not restarted, whenever the repository moves. A stopped container keeps the bind paths it was created with. Starting it after a move mounts an empty directory over `/workspace`, and the failure looks like a missing checkout rather than a stale mount.

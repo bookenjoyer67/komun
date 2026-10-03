@@ -389,7 +389,7 @@
 <ul>
 <li>$8.37 removed per conformance run, replaced by $0.00.</li>
 <li>66% off the test-gate prompt cost ($0.4845 to $0.1635) and 40% off its cycle time.</li>
-<li>90 policy tests now gate every change (75 permission plus 15 validator).</li>
+<li>95 policy tests now gate every change (75 permission, 5 cost-control, 15 validator).</li>
 <li>2 failed tests in D1 were caught before merge by the test gate.</li>
 <li>0 model calls in the converted step, and 10 citation findings surfaced.</li>
 </ul>
@@ -400,9 +400,10 @@
 <ul>
 <li>1 hard stop keeps the memory layers read-only, and 3 journals record every MCP call.</li>
 <li>2 human checkpoints and a <code>halt</code> ruling are the escalation path.</li>
-<li>1 <code>git revert</code> of the conversion commit is the rollback, documented in ADR-001; not yet exercised.</li>
+<li>1 <code>git revert</code> of the conversion commit is the rollback, documented in ADR-001; exercised 2026-10-03. It stops on 4 conflicts and the conformance gate then exits 2.</li>
 <li>5 CI jobs: change-type-check, policy-gate, eval-gate, advisory-review, audit-trail.</li>
 <li>Limits, stated plainly: <code>fmt</code> red at HEAD (unattributed); 2 known conformance false positives; no cost figure for the four-run regression; the sandbox protects nothing if the host is compromised.</li>
+<li>Cost is bounded: 6 hours per call and $25 per workflow, both read from the seam table; the launcher refuses the next call past the ceiling.</li>
 </ul>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="20" data-paginate="true" data-header="Komun Pre-Merge Quality Gate" data-theme="default" lang="en-US" data-marpit-pagination="20" style="--paginate:true;--header:Komun Pre-Merge Quality Gate;--theme:default;" data-marpit-pagination-total="20" data-size="16:9">

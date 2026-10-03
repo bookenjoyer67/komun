@@ -1203,3 +1203,106 @@ def test_every_role_is_defined_in_a_definition() -> None:
         f"{ungoverned} carry gate tools or an autonomy level but have no entry in "
         f"{_rel(POLICY)}, so nothing scopes them"
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# Cost control. `budgets` is the one block in the seam table whose whole job is to be two numbers,
+# so these check the numbers, the script that enforces them, and the wiring between the two. A
+# ceiling in the config that no consumer reads is a comment, not a control.
+# ---------------------------------------------------------------------------------------------
+
+
+def test_budget_ceilings_are_in_the_seam_table() -> None:
+    """Both ceilings and the ledger come from the config, so a fork changes them in one place."""
+    per_call = agentic_config.get("budgets.per_call_seconds")
+    per_workflow = agentic_config.get("budgets.per_workflow_usd")
+    ledger = agentic_config.get("budgets.ledger")
+    assert isinstance(per_call, int) and per_call > 0, f"budgets.per_call_seconds is {per_call!r}"
+    assert isinstance(per_workflow, (int, float)) and per_workflow > 0, (
+        f"budgets.per_workflow_usd is {per_workflow!r}"
+    )
+    assert isinstance(ledger, str) and ledger.startswith("target/"), (
+        f"budgets.ledger is {ledger!r}; a running spend total is state, so it belongs under the "
+        f"gitignored target/ rather than in history"
+    )
+
+
+def test_budget_ceilings_match_the_embedded_defaults() -> None:
+    """scripts/agentic_config.py carries the same block, because the loader falls back to it."""
+    embedded = agentic_config.DEFAULT["budgets"]
+    on_disk = json.loads((REPO / "agentic.config.json").read_text(encoding="utf-8"))["budgets"]
+    assert embedded == on_disk, (
+        "budgets differs between scripts/agentic_config.py's DEFAULT and agentic.config.json, so "
+        "the loader would enforce one ceiling and report another"
+    )
+
+
+def test_launcher_reads_both_ceilings_and_bounds_the_call() -> None:
+    """The binding, not just the number: a ceiling no consumer reads is a comment."""
+    launcher = (REPO / "scripts" / "run-agent.sh").read_text(encoding="utf-8")
+    assert "cfg budgets.per_call_seconds" in launcher, (
+        "scripts/run-agent.sh does not read budgets.per_call_seconds, so the per-call ceiling is "
+        "decorative"
+    )
+    assert "cfg budgets.per_workflow_usd" in launcher, (
+        "scripts/run-agent.sh does not read budgets.per_workflow_usd, so the per-workflow ceiling "
+        "is decorative"
+    )
+    assert "budget.py" in launcher and "--ceiling" in launcher, (
+        "the launcher must ask scripts/budget.py to check the ledger before a call starts"
+    )
+    assert "timeout" in launcher, (
+        "the per-call ceiling has to be a timeout on the call, not a sentence in a document"
+    )
+
+
+def test_budget_refuses_a_call_once_the_ledger_reaches_the_ceiling(tmp_path: Path) -> None:
+    """Exercised as behaviour: under the ceiling the call runs, at the ceiling it is refused."""
+    import subprocess  # noqa: PLC0415 - imported here so this file's line numbers do not move
+
+    ledger = tmp_path / "budget-ledger.json"
+    script = REPO / "scripts" / "budget.py"
+
+    def run(*args: str):
+        return subprocess.run(
+            [sys.executable, str(script), *args, "--ledger", str(ledger)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert run("check", "--ceiling", "25").returncode == 0, "an unspent workflow must be allowed"
+    assert run("record", "--role", "tester", "--usd", "30", "--seconds", "5").returncode == 0
+    refused = run("check", "--ceiling", "25", "--role", "tester")
+    assert refused.returncode == 3, (
+        "a workflow that has spent its ceiling must be refused, not warned; a budget that only "
+        f"warns is a budget nobody meets (exit was {refused.returncode})"
+    )
+    assert "may not start a call" in refused.stderr
+
+
+def test_budget_treats_an_unreadable_ledger_as_nothing_spent(tmp_path: Path) -> None:
+    """A bookkeeping fault must not become an outage, so a corrupt ledger blocks no work."""
+    import subprocess  # noqa: PLC0415 - imported here so this file's line numbers do not move
+
+    ledger = tmp_path / "budget-ledger.json"
+    ledger.write_text("{ this is not json", encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO / "scripts" / "budget.py"),
+            "check",
+            "--ledger",
+            str(ledger),
+            "--ceiling",
+            "25",
+            "--role",
+            "tester",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"a corrupt ledger must read as nothing spent, not as a refusal: {result.stderr}"
+    )

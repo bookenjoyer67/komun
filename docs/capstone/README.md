@@ -90,7 +90,7 @@ is a record of a decision at a point in time.
 * `fmt` is red at `HEAD` and is unattributed to either change; it is pre-existing.
 * The conformance checker has a known false positive: a quoted literal that wraps to the next line can
   pair with a neighbouring literal, so a correct citation can read as drift.
-* Rollback is documented in `ADR-001` and was never exercised.
+* Rollback is documented in `ADR-001` and exercised on 2026-10-03. It stops on 4 conflicts; the conformance gate then exits 2, against exit 0 at HEAD.
 * The Module 1 plans under `.hermes/plans/` are gitignored and do not travel with the repository, so
   the citations to them in `scoping.md` resolve only on the machine that holds the directory. The
   capstone plan is not affected: it is tracked here as `plan-pipeline-validation.md`.

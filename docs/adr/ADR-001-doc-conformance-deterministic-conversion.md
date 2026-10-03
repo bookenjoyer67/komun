@@ -170,3 +170,16 @@ Which artifacts settle this decision?
   The wrapper fails only on new drift against `HEAD`, so the repository's pre-existing findings never
   make it red (`scripts/run-conformance-gate.py:2` `fail on NEW drift only.`).
 
+## Has the rollback been exercised?
+
+Yes, on 2026-10-03, and it is not the single clean command the Decision section assumed.
+
+- Read the date this was measured on (`docs/capstone/deck.md:202` `exercised 2026-10-03`).
+- Run the revert as written and observe where it stops: `git revert d12c366` halts on four conflicts, one per file the conversion added.
+- Name why each one conflicts: all four of those files were edited after the conversion landed, so the revert cannot delete them cleanly.
+- Record what completes it: removing those four files resolves every conflict, and the revert then commits.
+- Record what the rollback restores, quoted from the gate that loses its checker (`scripts/run-conformance-gate.py:206` `is missing, so there is nothing to run`).
+- Record the before and after of that one command: exit 0 at `HEAD`, and exit 2 once the rollback has landed.
+- Note that the drill ran in a separate git worktree, so no shipped file was touched and no revert commit was published.
+- Carry the result into the entries that claimed otherwise (`docs/reflection-log.md:99` `Which rollback claim did exercising it correct?`).
+

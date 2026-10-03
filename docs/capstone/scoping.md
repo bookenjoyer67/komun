@@ -34,7 +34,7 @@ Acceptance criteria, each tied to its enforcer:
 - Containment (binary gate): `docs/clippy-gate/rubric.md:8` ``No path under `/workspace` other than `docs/clippy-report.md` was``.
 - Threshold: `docs/rubric.md:86` `17 / 20 or higher`.
 - Conformance coverage, enforced by the gate (`agentic.config.json:79` `"argv": ["python3", "scripts/run-conformance-gate.py"],`): `docs/calibration-log.md:119` `299 citations checked, 289 resolved at the cited line`.
-- Policy compliance: `docs/capstone/one-pager.md:31` `90 tests in the policy gate, made up of 75 permission tests plus 15 validator tests.`
+- Policy compliance: `docs/capstone/one-pager.md:31` `95 tests in the policy gate, made up of 75 permission tests, 5 cost-control tests and 15 validator tests.`
 - Boundary enforcement: `docs/capstone/one-pager.md:37` `8 were blocked on the first run; P7 and P10 were not.`
 
 The workflow reduces what a reviewer must read; it does not remove review. Before it, a check meant `docs/capstone/one-pager.md:7` `pulling a human or a general-purpose agent through a long review.`

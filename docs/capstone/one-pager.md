@@ -28,7 +28,7 @@ Baseline, Komun at HEAD measured 2026-09-25: `cargo test --workspace` 158 passed
 - Earlier test-gate prompt revision: cycle time 4m14s to 2m33s (down 40%); cost $0.4845 to $0.1635 (down 66%); model requests 10 to 5.
 - Four-run end-to-end regression (2026-09-29): D1 2323s, D2 1592s, H1 1698s, H2 1438s, a total of 7,051s, about 1.96 hours. Each run reached a reviewer verdict with the conformance gate run by the tester.
 - Defects caught: D1's test gate exited 101 (156 passed, 2 failed) and the harness caught it before merge. The conformance script also surfaced 10 citation and rule findings.
-- Governance suite: 90 tests in the policy gate, made up of 75 permission tests plus 15 validator tests.
+- Governance suite: 95 tests in the policy gate, made up of 75 permission tests, 5 cost-control tests and 15 validator tests.
 
 ## Risk and governance
 
@@ -42,6 +42,7 @@ Red team: 10 probes (P1 to P10) were run against the enforcement boundaries. 8 w
 - `fmt` is red at HEAD and is not attributable to either change.
 - No cost figure exists for the four-run regression, because the broker reports no usage.
 - The sandbox protects nothing if the host is compromised, because the broker runs as a normal user on that host.
+- Cost is bounded rather than reported: `agentic.config.json:426` `"per_call_seconds": 21600,` caps each call, and `agentic.config.json:427` `"per_workflow_usd": 25,` refuses the next call once the ledger reaches it. The broker still reports no usage, so a spend figure is entered rather than measured.
 
 ## Next steps
 
