@@ -13,9 +13,13 @@ db_enum!(
 
 impl MatchStatus {
     /// The two terminal statuses. A thread that reached either one is over: `resolved_at` is set
-    /// for it, and no further offer may be appended to it.
+    /// for it, and no further offer may be appended to it. No wildcard arm, so a new status does
+    /// not compile until it is placed on one side.
     pub fn is_resolved(&self) -> bool {
-        matches!(self, MatchStatus::Completed | MatchStatus::Withdrawn)
+        match self {
+            MatchStatus::Completed | MatchStatus::Withdrawn => true,
+            MatchStatus::Proposed | MatchStatus::Accepted => false,
+        }
     }
 }
 

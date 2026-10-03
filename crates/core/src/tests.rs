@@ -351,8 +351,8 @@ mod schema_contract {
         }
     }
 
-    /// The set, not the predicate's own body: a fifth status lands on one side of this line by
-    /// being named here, and a status that quietly starts resolving threads fails this test.
+    /// The set, not the predicate's own body: the compiler makes a fifth status pick a side in
+    /// `is_resolved`, and a status that quietly starts resolving threads fails this test.
     #[test]
     fn only_the_terminal_statuses_are_resolved() {
         let resolved: Vec<MatchStatus> = MatchStatus::ALL
