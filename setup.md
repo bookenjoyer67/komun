@@ -1,7 +1,7 @@
 # setup.md — Sandboxed agent for the Komun ("rev") Target Codebase
 
 Agentic Engineer · Module 1 · Assignment 1.1, Exercise 2
-Target Codebase: `~/rev` (Komun — marketplace and mutual aid hub, AGPL-3.0)
+Target Codebase: `~/komun` (Komun — marketplace and mutual aid hub, AGPL-3.0)
 Sandbox image: `agent-sandbox:komun` (built from the `Dockerfile` in this repo root)
 
 ---
@@ -33,7 +33,7 @@ own API credentials are **not in the container at all** — see §4.
 
 **Smallest safe mount**
 
-The repo root: `/home/computing/rev` → `/workspace`. That is one project directory —
+The repo root: `/home/computing/komun` → `/workspace`. That is one project directory —
 not `$HOME`, not `~/.ssh`, not `~/.config`, not `~/Documents`.
 
 **Does the agent need network access?**
@@ -88,7 +88,7 @@ repo's root and adapted (the course copy was left untouched). What changed and w
 | `COPY settings.json` / `statusline.sh` / `docker-entrypoint.sh` | kept, unmodified | Course scaffolding: Claude Code status line and the credential-persistence entrypoint (now idle — the sandbox holds no Claude login). |
 
 ```bash
-cd ~/rev
+cd ~/komun
 docker build -t agent-sandbox:komun .
 ```
 
@@ -133,7 +133,7 @@ sandbox/broker/Dockerfile       broker image
 One command starts both halves — broker and agent:
 
 ```bash
-~/rev/sandbox/run-agent.sh
+~/komun/sandbox/run-agent.sh
 ```
 
 What it does:
@@ -148,7 +148,7 @@ The equivalent by hand:
 
 ```bash
 docker network create --internal agent-net
-docker build -t komun-sandbox-broker:local ~/rev/sandbox/broker      # once
+docker build -t komun-sandbox-broker:local ~/komun/sandbox/broker      # once
 
 docker run -d --name rev-broker --network agent-net --user 1000:1000 \
   -v ~/.claude:/secrets/claude \
@@ -163,10 +163,10 @@ docker run -dit --name rev-agent --network agent-net \
   -e ANTHROPIC_BASE_URL=http://rev-broker:4000 \
   -e ANTHROPIC_AUTH_TOKEN=sandbox-dummy-token \
   -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-  -v /home/computing/rev:/workspace \
+  -v /home/computing/komun:/workspace \
   -v komun-cargo-target:/workspace/target \
   -v komun-cargo-registry:/usr/local/cargo/registry \
-  -v /home/computing/rev/sandbox/opencode-sandbox.json:/root/.config/opencode/opencode.json:ro \
+  -v /home/computing/komun/sandbox/opencode-sandbox.json:/root/.config/opencode/opencode.json:ro \
   agent-sandbox:komun
 ```
 
@@ -257,9 +257,9 @@ Filesystem:
 
 ```
 $ docker inspect rev-agent --format '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}} rw={{.RW}}{{println}}{{end}}nets={{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
-bind   /home/computing/rev -> /workspace rw=true
+bind   /home/computing/komun -> /workspace rw=true
 volume /var/lib/docker/volumes/komun-cargo-target/_data -> /workspace/target rw=true
-bind   /home/computing/rev/sandbox/opencode-sandbox.json -> /root/.config/opencode/opencode.json rw=false
+bind   /home/computing/komun/sandbox/opencode-sandbox.json -> /root/.config/opencode/opencode.json rw=false
 volume /var/lib/docker/volumes/komun-cargo-registry/_data -> /usr/local/cargo/registry rw=true
 nets=agent-net
 ```
@@ -305,8 +305,8 @@ WROTE /workspace/agent-summary.md
 **Did it persist on the host?**
 
 ```
-$ ls -l ~/rev/agent-summary.md
--rw-r--r-- 1 computing computing 4753 Sep 22 19:06 /home/computing/rev/agent-summary.md
+$ ls -l ~/komun/agent-summary.md
+-rw-r--r-- 1 computing computing 4753 Sep 22 19:06 /home/computing/komun/agent-summary.md
 ```
 
 Yes — the agent wrote inside `/workspace` (backed by the host bind mount) and the file is on the
@@ -328,7 +328,7 @@ C /root/.cache …
 ```
 
 Every write outside `/workspace` is container-local state — the agent's own database, logs and
-lock files, plus `/tmp` scratch. No host path outside `~/rev` received a byte.
+lock files, plus `/tmp` scratch. No host path outside `~/komun` received a byte.
 
 **Both agents verified end to end, holding no credential:**
 
@@ -405,7 +405,7 @@ Normalising every header name to lowercase fixed it.
 ## 6. Security decisions
 
 **Q1 — Why did you mount only this folder?**
-The project is the only thing the agent needs. `/home/computing/rev` is mounted at `/workspace`
+The project is the only thing the agent needs. `/home/computing/komun` is mounted at `/workspace`
 and nothing else host-side is: no `$HOME`, no `~/.ssh`, no `~/.config`, no `~/.hermes` (agent
 memory, cron, credentials), no `~/.aws`, no browser profile — and, in the final design, no API
 credentials either. Docker enforces this rather than the agent's good behaviour: `docker inspect`

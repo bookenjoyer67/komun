@@ -69,7 +69,7 @@ boundary really failed:
 
 ```
 $ ./scripts/run-agent.sh implementer bash -c 'python3 /tmp/rt_grant_widen.py'
-workspace : /home/computing/rev -> /workspace (read-write)
+workspace : /home/computing/komun -> /workspace (read-write)
 STORAGE_ALLOW_LIST_WRITTEN -> implementer = ['read_entry', 'list_entries', 'write_entry', 'update_entry', 'delete_entry']
 ROUTING_MAP_WRITTEN -> implementer ceiling = secret
 READBACK allow-list now grants implementer: ['read_entry', 'list_entries', 'write_entry', 'update_entry', 'delete_entry']
@@ -123,7 +123,7 @@ role      : implementer
 image     : agent-sandbox:komun-m3
 container : agent-rev-m4-implementer
 networks  : agent-internal (no egress) + agent-net (broker rev-broker:4000 only)
-workspace : /home/computing/rev -> /workspace (read-write)
+workspace : /home/computing/komun -> /workspace (read-write)
 memory    : /workspace/.memory (mounted read-write)
 cache     : rev-cargo-target -> /workspace/target (ro)
 command   : docker exec -w /workspace agent-rev-m4-implementer bash
@@ -146,7 +146,7 @@ role      : reviewer
 image     : agent-sandbox:komun-m3
 container : agent-rev-m4-reviewer
 networks  : agent-internal (no egress) + agent-net (broker rev-broker:4000 only)
-workspace : /home/computing/rev -> /workspace (read-only)
+workspace : /home/computing/komun -> /workspace (read-only)
 memory    : /workspace/.memory (mounted read-write)
 cache     : rev-cargo-target -> /workspace/target (ro)
 command   : docker exec -w /workspace agent-rev-m4-reviewer bash

@@ -1,7 +1,7 @@
 # Demo runbook: exact commands for every live segment
 
 Every command in this file is labelled either HOST-SIDE, which means it runs in the presenter's
-terminal in `/home/computing/rev`, or INSIDE CONTAINER, which means it runs in the sandbox container
+terminal in `/home/computing/komun`, or INSIDE CONTAINER, which means it runs in the sandbox container
 through `docker exec`. Nothing here needs the presenter to move the mouse.
 
 Focus safety rule, which applies to every line below: no command in this runbook starts a graphical
@@ -97,7 +97,7 @@ Observed on 2026-10-01: a JSON report on stdout. The summary keys read:
 {
   "base_revision": "HEAD",
   "config_key": "gates.conformance.files",
-  "config_source": "/home/computing/rev/agentic.config.json",
+  "config_source": "/home/computing/komun/agentic.config.json",
   "gate": "conformance",
   "reason": "no rule's finding count rose against HEAD",
   "totals": {
@@ -134,7 +134,7 @@ Observed output on 2026-10-01:
 
 ```
 == 1. the loader ==
-  ok    loader resolves its source: /home/computing/rev/agentic.config.json
+  ok    loader resolves its source: /home/computing/komun/agentic.config.json
   ok    loader emits valid JSON carrying schema_version
 == 2. consumers read the config (mutation proof) ==
   ok    mcp/gate/server.py follows the config
@@ -203,7 +203,7 @@ role      : implementer
 image     : agent-sandbox:komun-m3
 container : agent-rev-m4-implementer
 networks  : agent-internal (no egress) + agent-net (broker rev-broker:4000 only)
-workspace : /home/computing/rev -> /workspace (read-write)
+workspace : /home/computing/komun -> /workspace (read-write)
 memory    : /workspace/.memory (mounted read-write)
 cache     : rev-cargo-target -> /workspace/target (ro)
 command   : docker exec -w /workspace agent-rev-m4-implementer bash
@@ -226,7 +226,7 @@ role      : reviewer
 image     : agent-sandbox:komun-m3
 container : agent-rev-m4-reviewer
 networks  : agent-internal (no egress) + agent-net (broker rev-broker:4000 only)
-workspace : /home/computing/rev -> /workspace (read-only)
+workspace : /home/computing/komun -> /workspace (read-only)
 memory    : /workspace/.memory (mounted read-write)
 cache     : rev-cargo-target -> /workspace/target (ro)
 command   : docker exec -w /workspace agent-rev-m4-reviewer bash
@@ -469,7 +469,7 @@ The plain state dump, which is what the runbook recommends for the video because
 and cannot hold the terminal open:
 
 ```
-./console/target/release/agentic-console --repo /home/computing/rev --dump
+./console/target/release/agentic-console --repo /home/computing/komun --dump
 ```
 
 Observed on 2026-10-01: a plain-text report that opens with the repository, config and container

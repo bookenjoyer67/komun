@@ -69,7 +69,7 @@ How is the run reproduced?
 
 Run the harness inside the sandbox, with the model and prefix set, and no network:
 
-    docker run --rm --network none -v "$HOME/rev:/workspace" \
+    docker run --rm --network none -v "$HOME/komun:/workspace" \
       -e RETRIEVAL_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5 \
       -e RETRIEVAL_QUERY_PREFIX='Represent this sentence for searching relevant passages: ' \
       --entrypoint bash agent-sandbox:komun-m3 \

@@ -155,7 +155,7 @@ This is the right tool for a long running command that is already sitting in a p
 console session. It takes a snapshot of the pane's contents rather than recording the stream.
 
 ```
-tmux -L capdemo new-session -d -s cap -x 205 -y 54 "bash -lc 'cd /home/computing/rev && ./scripts/run-agent.sh --matrix; echo MATRIX-DONE; sleep 120'"
+tmux -L capdemo new-session -d -s cap -x 205 -y 54 "bash -lc 'cd /home/computing/komun && ./scripts/run-agent.sh --matrix; echo MATRIX-DONE; sleep 120'"
 sleep 8
 tmux -L capdemo capture-pane -p -e -S -400 -t cap > "$S/pane.txt"
 tmux -L capdemo kill-server
@@ -248,7 +248,7 @@ broker.
 ```
 S=/home/computing/.hermes/profiles/dev/cache/scratch/video
 mkdir -p "$S"
-cd /home/computing/rev
+cd /home/computing/komun
 script -q -T "$S/smoke.timing" -c "./scripts/run-agent.sh implementer bash -c 'python3 /workspace/eval/red-team/rt_grant_widen_files.py'" "$S/smoke.typescript"
 ```
 

@@ -57,8 +57,8 @@ Start the workspace container on the internal network (`sandbox/Dockerfile.m3:71
 docker run -it --rm \
   --name agent-rev-m3 \
   --network agent-internal \
-  -v "$HOME/rev":/workspace \
-  -v "$HOME/rev/.memory":/workspace/.memory \
+  -v "$HOME/komun":/workspace \
+  -v "$HOME/komun/.memory":/workspace/.memory \
   agent-sandbox:komun-m3 bash
 ```
 

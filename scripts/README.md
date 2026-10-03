@@ -82,7 +82,7 @@ role      : reviewer
 image     : agent-sandbox:komun-m3
 container : agent-rev-m4-reviewer
 networks  : agent-internal (no egress) + agent-net (broker rev-broker:4000 only)
-workspace : /home/computing/rev -> /workspace (read-only)
+workspace : /home/computing/komun -> /workspace (read-only)
 memory    : /workspace/.memory (mounted read-write)
 cache     : rev-cargo-target -> /workspace/target (ro)
 command   : docker exec -w /workspace agent-rev-m4-reviewer bash
@@ -98,8 +98,8 @@ Which path does the reviewer's granted review entry write land on?
 ```
 $ docker inspect agent-rev-m4-reviewer -f '{{range .Mounts}}{{if or (eq .Destination "/workspace") (eq .Destination "/workspace/.memory")}}{{.Destination}} RW={{.RW}} source={{.Source}}
 {{end}}{{end}}'
-/workspace RW=false source=/home/computing/rev
-/workspace/.memory RW=true source=/home/computing/rev/.memory
+/workspace RW=false source=/home/computing/komun
+/workspace/.memory RW=true source=/home/computing/komun/.memory
 
 $ docker exec agent-rev-m4-reviewer sh -c "grep ' /workspace/.memory ' /proc/mounts"
 /dev/nvme0n1p2 /workspace/.memory btrfs rw,noatime,compress=zstd:1,ssd,discard=async,space_cache=v2,subvolid=257,subvol=/@home 0 0
@@ -142,7 +142,7 @@ researcher memory entry write+remove OK
 ```
 
 The writable memory bind narrows nothing outside its own path: each of the three prints
-`workspace : /home/computing/rev -> /workspace (read-only)` on the same launch.
+`workspace : /home/computing/komun -> /workspace (read-only)` on the same launch.
 
 ### Proof (d) — the implementer's writes
 
@@ -156,7 +156,7 @@ role      : implementer
 image     : agent-sandbox:komun-m3
 container : agent-rev-m4-implementer
 networks  : agent-internal (no egress) + agent-net (broker rev-broker:4000 only)
-workspace : /home/computing/rev -> /workspace (read-write)
+workspace : /home/computing/komun -> /workspace (read-write)
 memory    : /workspace/.memory (mounted read-write)
 cache     : rev-cargo-target -> /workspace/target (ro)
 command   : docker exec -w /workspace agent-rev-m4-implementer bash
@@ -177,14 +177,14 @@ project-manager finds no memory mount at all.
 
 ```
 $ ./scripts/run-agent.sh orchestrator bash -c 'touch /workspace/orchestrator-ok.txt && rm /workspace/orchestrator-ok.txt && echo "workspace write+remove OK"'
-workspace : /home/computing/rev -> /workspace (read-write)
+workspace : /home/computing/komun -> /workspace (read-write)
 memory    : /workspace/.memory (mounted read-only)
 workspace write+remove OK
 $ ./scripts/run-agent.sh orchestrator bash -c 'touch /workspace/.memory/orchestrator-should-fail.txt'
 touch: cannot touch '/workspace/.memory/orchestrator-should-fail.txt': Read-only file system
 
 $ ./scripts/run-agent.sh project-manager bash -c 'touch /workspace/should-fail.txt'
-workspace : /home/computing/rev -> /workspace (read-only)
+workspace : /home/computing/komun -> /workspace (read-only)
 memory    : /workspace/.memory (not mounted (visible read-only through the /workspace bind))
 touch: cannot touch '/workspace/should-fail.txt': Read-only file system
 $ ./scripts/run-agent.sh project-manager bash -c 'touch /workspace/.memory/pm-should-fail.txt'

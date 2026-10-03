@@ -12,14 +12,14 @@
 # different REPO values (e.g. two git worktrees of the same repo); each container
 # sees its own checkout as /workspace and shares nothing but the broker.
 #
-#   ~/rev/sandbox/run-agent.sh                                  # ~/rev        -> agent-rev
-#   REPO=$HOME/repo-agent-a ~/rev/sandbox/run-agent.sh          # worktree     -> agent-repo-agent-a
-#   REPO=$HOME/repo-agent-b ~/rev/sandbox/run-agent.sh
+#   ~/komun/sandbox/run-agent.sh                                  # ~/komun        -> agent-komun
+#   REPO=$HOME/repo-agent-a ~/komun/sandbox/run-agent.sh          # worktree     -> agent-repo-agent-a
+#   REPO=$HOME/repo-agent-b ~/komun/sandbox/run-agent.sh
 #   AGENT_NAME=my-name REPO=... run-agent.sh                    # override the container name
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "${REPO:-$HOME/rev}" && pwd)"
+REPO="$(cd "${REPO:-$HOME/komun}" && pwd)"
 STATE="${HOME}/.config/komun-sandbox"
 NET=agent-net
 IMAGE="${IMAGE:-agent-sandbox:komun}"
