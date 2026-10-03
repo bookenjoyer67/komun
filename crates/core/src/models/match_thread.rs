@@ -11,6 +11,14 @@ db_enum!(
     }
 );
 
+impl MatchStatus {
+    /// The two terminal statuses. A thread that reached either one is over: `resolved_at` is set
+    /// for it, and no further offer may be appended to it.
+    pub fn is_resolved(&self) -> bool {
+        matches!(self, MatchStatus::Completed | MatchStatus::Withdrawn)
+    }
+}
+
 db_enum!(
     /// A step in a marketplace negotiation, carried on the same thread as the messages.
     OfferKind {

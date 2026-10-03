@@ -604,8 +604,10 @@ async fn insert_offer(
 pub fn check_offer_allowed(current: MatchStatus) -> Result<(), String> {
     match current {
         MatchStatus::Proposed | MatchStatus::Accepted => Ok(()),
-        // Names the status for the same reason `check_transition` does: it is the one fact the
-        // caller does not have.
+        // Listed as the live set rather than written as `!current.is_resolved()`: a fifth status
+        // is then refused until someone decides it is live, so offers fail closed. Names the
+        // status for the same reason `check_transition` does: it is the one fact the caller
+        // does not have.
         _ => Err(format!(
             "this conversation is '{current}' and can no longer take new offers"
         )),
@@ -828,9 +830,10 @@ pub async fn update_status(pool: &PgPool, match_id: Uuid, to: MatchStatus) -> Re
     }
 
     // `resolved_at` marks the end of a thread, so only the two terminal statuses set it.
-    let resolved_at = match to {
-        MatchStatus::Completed | MatchStatus::Withdrawn => Some(Utc::now()),
-        MatchStatus::Proposed | MatchStatus::Accepted => None,
+    let resolved_at = if to.is_resolved() {
+        Some(Utc::now())
+    } else {
+        None
     };
 
     sqlx::query("UPDATE matches SET status = $2, resolved_at = $3 WHERE id = $1")
