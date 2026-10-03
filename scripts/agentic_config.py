@@ -65,7 +65,15 @@ DEFAULT: dict[str, Any] = {
             "test": {
                 "argv": ["cargo", "test", "--workspace"],
                 "description": "unit-test gate: the workspace test suites",
-                "guard": None,
+                "guard": {
+                    "marker": "Compiling komun-core",
+                    "marker_regex": "\\bCompiling\\b\\s+(?P<marker>komun-core)\\b",
+                    "touch_file": "crates/core/src/tests.rs",
+                    "reason": (
+                        "cargo reuses a test binary compiled before the workspace moved, and env!(CARGO_MANIF"
+                        "EST_DIR) is baked in at compile time, so a stale binary fails a suite the source passes; the touched file forces that crate to rebuild"
+                    ),
+                },
                 "summary": None,
                 "writes": False,
             },
@@ -279,6 +287,11 @@ DEFAULT: dict[str, Any] = {
                 "\\bChecking\\b\\s+(?P<marker>komun-server)\\b"
             ),
             "toolchain.commands.clippy.guard.touch_file": "crates/server/src/main.rs",
+            "toolchain.commands.test.guard.marker": "Compiling komun-core",
+            "toolchain.commands.test.guard.marker_regex": (
+                "\\bCompiling\\b\\s+(?P<marker>komun-core)\\b"
+            ),
+            "toolchain.commands.test.guard.touch_file": "crates/core/src/tests.rs",
             "containers.base_image": "agent-sandbox:komun",
             "containers.tools_image": "agent-sandbox:komun-m3",
             "containers.registry_volume": "komun-cargo-registry",

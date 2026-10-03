@@ -286,7 +286,7 @@ def guard_satisfied(guard: dict[str, Any], combined_output: str) -> dict[str, An
     match = GUARD_MARKER_PATTERN.search(strip_ansi(combined_output))
     missing = (
         f"cache-hit guard not satisfied: no '{guard['marker']}' line in the output, so a clean "
-        "lint cannot be told apart from a cached no-op"
+        "run cannot be told apart from a cached no-op"
     )
     guard["satisfied"] = bool(match)
     guard["detail"] = f"found '{guard['marker']}' in the cargo output" if match else missing
