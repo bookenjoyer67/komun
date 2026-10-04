@@ -996,13 +996,14 @@ async fn confirm_password_reset(
     let encryption_pk = decode_b64_opt(&body.encryption_public_key)?;
     let recovery_bundle = decode_b64_opt(&body.encrypted_recovery_bundle)?;
     let recovery_salt = decode_b64_opt(&body.recovery_bundle_salt)?;
-    key_coherence::check_pairs(&key_change::KeyColumns {
+    let requested = key_change::KeyColumns {
         encryption_public_key: encryption_pk.clone(),
         encrypted_key_bundle: bundle.clone(),
         bundle_salt: bundle_salt.clone(),
         encrypted_recovery_bundle: recovery_bundle.clone(),
         recovery_bundle_salt: recovery_salt.clone(),
-    })?;
+    };
+    key_coherence::check_pairs(&requested)?;
 
     // Rotating the identity key is all-or-nothing: a new public key with an old recovery bundle
     // gives a code that unwraps a secret no longer matching the published key.
@@ -1033,6 +1034,16 @@ async fn confirm_password_reset(
     let password_hash = password::hash_verifier(&body.verifier)
         .map_err(|e| internal("verifier hashing failed", e))?;
 
+    // A request that sends only some of the five key columns is coherent only if the row already
+    // holds the rest, so the row is read FOR UPDATE and the check shares this transaction with the
+    // update it authorises.
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| internal("reset transaction failed", e))?;
+    key_change::check_stored(&mut tx, user_id, &requested).await?;
+
     sqlx::query(
         "UPDATE users SET password_hash = $1, auth_salt = $2,
                 encrypted_key_bundle = COALESCE($3, encrypted_key_bundle),
@@ -1050,9 +1061,12 @@ async fn confirm_password_reset(
     .bind(&recovery_bundle)
     .bind(&recovery_salt)
     .bind(user_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| internal("password reset failed", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| internal("reset commit failed", e))?;
 
     // Whoever held a session before the reset may be the reason it was requested.
     let revoked = session_db::revoke_all(&state.pool, user_id)
@@ -1139,11 +1153,12 @@ async fn change_password(
     }
     let bundle = decode_b64_opt(&body.encrypted_key_bundle)?;
     let bundle_salt = decode_b64_opt(&body.bundle_salt)?;
-    key_coherence::check_pairs(&key_change::KeyColumns {
+    let requested = key_change::KeyColumns {
         encrypted_key_bundle: bundle.clone(),
         bundle_salt: bundle_salt.clone(),
         ..Default::default()
-    })?;
+    };
+    key_coherence::check_pairs(&requested)?;
 
     let row = reauthenticate(&state, auth.user_id, ip, &body.current_verifier).await?;
 
@@ -1160,6 +1175,15 @@ async fn change_password(
     let password_hash = password::hash_verifier(&body.verifier)
         .map_err(|e| internal("verifier hashing failed", e))?;
 
+    // The new wrap replaces one that is already stored, so the row must already hold the rest of
+    // the key set: read it FOR UPDATE, and keep the check and the write in one transaction.
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| internal("password change transaction failed", e))?;
+    key_change::check_stored(&mut tx, auth.user_id, &requested).await?;
+
     // The identity key does not change when the password does — only the wrapping around it — so
     // old messages stay readable and the existing recovery code stays valid.
     sqlx::query(
@@ -1173,9 +1197,12 @@ async fn change_password(
     .bind(&bundle)
     .bind(&bundle_salt)
     .bind(auth.user_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| internal("password change failed", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| internal("password change commit failed", e))?;
 
     // Other sessions go; this one stays. The usual reason to change a password is that someone
     // else may have it, and whoever that is may be signed in right now.
@@ -1224,6 +1251,21 @@ async fn reissue_recovery(
 
     reauthenticate(&state, auth.user_id, ip, &body.current_verifier).await?;
 
+    // A recovery pair is only usable beside the public key and the wraps that carry the same
+    // secret, so the row has to already hold them: read it FOR UPDATE, and check it in the same
+    // transaction as the write.
+    let requested = key_change::KeyColumns {
+        encrypted_recovery_bundle: Some(recovery_bundle.clone()),
+        recovery_bundle_salt: Some(recovery_salt.clone()),
+        ..Default::default()
+    };
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| internal("recovery reissue transaction failed", e))?;
+    key_change::check_stored(&mut tx, auth.user_id, &requested).await?;
+
     // Overwrite, not append: the old wrapping is gone the moment this row is written.
     sqlx::query(
         "UPDATE users SET encrypted_recovery_bundle = $1, recovery_bundle_salt = $2 WHERE id = $3",
@@ -1231,9 +1273,12 @@ async fn reissue_recovery(
     .bind(&recovery_bundle)
     .bind(&recovery_salt)
     .bind(auth.user_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| internal("recovery reissue failed", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| internal("recovery reissue commit failed", e))?;
 
     record_audit(
         &state.pool,

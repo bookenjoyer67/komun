@@ -35,6 +35,10 @@ const VERIFIER_REQUIRED: &str = "changing existing encryption keys requires curr
 /// The audit action a successful replacement records.
 const KEYS_REPLACED: &str = "auth.keys_replaced";
 
+/// The refusal for a key write that would leave the five key columns partly set.
+const INCOMPLETE_STORED_KEYS: &str =
+    "the stored encryption keys are incomplete: a key update must send all five key columns";
+
 /// The five key columns of `users`, in schema order, as raw bytes. `None` is a column that is not
 /// stored, or a field the request did not send.
 ///
@@ -107,6 +111,51 @@ pub(super) fn classify(stored: &KeyColumns, requested: &KeyColumns) -> KeyChange
     }
 }
 
+/// The columns a `COALESCE` key write leaves behind: a requested column wins, a stored column
+/// survives when the request does not send it. Pure.
+pub(super) fn merged(stored: &KeyColumns, requested: &KeyColumns) -> KeyColumns {
+    let pick = |requested: &Option<Vec<u8>>, stored: &Option<Vec<u8>>| {
+        requested.clone().or_else(|| stored.clone())
+    };
+    KeyColumns {
+        encryption_public_key: pick(
+            &requested.encryption_public_key,
+            &stored.encryption_public_key,
+        ),
+        encrypted_key_bundle: pick(
+            &requested.encrypted_key_bundle,
+            &stored.encrypted_key_bundle,
+        ),
+        bundle_salt: pick(&requested.bundle_salt, &stored.bundle_salt),
+        encrypted_recovery_bundle: pick(
+            &requested.encrypted_recovery_bundle,
+            &stored.encrypted_recovery_bundle,
+        ),
+        recovery_bundle_salt: pick(
+            &requested.recovery_bundle_salt,
+            &stored.recovery_bundle_salt,
+        ),
+    }
+}
+
+/// The rule the three writers that update part of the key set share: a wrapped bundle is useless
+/// without the public key it belongs to, and a public key is useless without both bundles that
+/// carry its secret, so every write must leave all five columns set or none of them. A request that
+/// sends some of the columns is therefore coherent only over a row that already holds the rest.
+///
+/// Refused with 409 rather than 400: the request is well formed, and it is the stored row it
+/// conflicts with. A request that sends no key column writes none, so a row that is already
+/// incomplete is not a reason to refuse a password-only change. Pure: no database, no rate limiter.
+pub(super) fn check_merge_is_coherent(
+    stored: &KeyColumns,
+    requested: &KeyColumns,
+) -> Result<(), ApiError> {
+    if requested.present() == 0 || merged(stored, requested).present() == KEY_COLUMNS {
+        return Ok(());
+    }
+    Err(fail(StatusCode::CONFLICT, INCOMPLETE_STORED_KEYS))
+}
+
 /// The verifier a replacement needs. A missing one is refused before any rate-limit token is
 /// spent, because no password was guessed.
 fn require_verifier(current_verifier: Option<&str>) -> Result<&str, ApiError> {
@@ -121,6 +170,44 @@ type StoredRow = (
     Option<Vec<u8>>,
     Option<Vec<u8>>,
 );
+
+/// Reads `user_id`'s stored key columns inside `tx`, `FOR UPDATE`, so the decision below and the
+/// write it authorises cannot be split by a concurrent key upload.
+pub(super) async fn read_stored(
+    tx: &mut Transaction<'_, Postgres>,
+    user_id: Uuid,
+) -> Result<KeyColumns, ApiError> {
+    let row = sqlx::query_as::<_, StoredRow>(
+        "SELECT encryption_public_key, encrypted_key_bundle, bundle_salt,
+                encrypted_recovery_bundle, recovery_bundle_salt
+         FROM users WHERE id = $1
+         FOR UPDATE",
+    )
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|e| internal("key read failed", e))?
+    .ok_or_else(|| fail(StatusCode::NOT_FOUND, "user not found"))?;
+    Ok(KeyColumns {
+        encryption_public_key: row.0,
+        encrypted_key_bundle: row.1,
+        bundle_salt: row.2,
+        encrypted_recovery_bundle: row.3,
+        recovery_bundle_salt: row.4,
+    })
+}
+
+/// Reads the stored key columns and refuses a request that would leave them partly set. Every
+/// writer that updates some of the five columns and not all of them calls this in the same
+/// transaction as its `UPDATE`.
+pub(super) async fn check_stored(
+    tx: &mut Transaction<'_, Postgres>,
+    user_id: Uuid,
+    requested: &KeyColumns,
+) -> Result<(), ApiError> {
+    let stored = read_stored(tx, user_id).await?;
+    check_merge_is_coherent(&stored, requested)
+}
 
 /// Applies the requested key set to `user_id`'s row inside `tx`, and returns what it did.
 ///
@@ -144,24 +231,7 @@ pub(super) async fn apply(
     }
     keys.check_complete()?;
 
-    let row = sqlx::query_as::<_, StoredRow>(
-        "SELECT encryption_public_key, encrypted_key_bundle, bundle_salt,
-                encrypted_recovery_bundle, recovery_bundle_salt
-         FROM users WHERE id = $1
-         FOR UPDATE",
-    )
-    .bind(user_id)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|e| internal("key read failed", e))?
-    .ok_or_else(|| fail(StatusCode::NOT_FOUND, "user not found"))?;
-    let stored = KeyColumns {
-        encryption_public_key: row.0,
-        encrypted_key_bundle: row.1,
-        bundle_salt: row.2,
-        encrypted_recovery_bundle: row.3,
-        recovery_bundle_salt: row.4,
-    };
+    let stored = read_stored(tx, user_id).await?;
 
     let outcome = classify(&stored, keys);
     match outcome {
@@ -391,5 +461,73 @@ mod tests {
     #[test]
     fn a_sent_verifier_is_passed_through_unchanged() {
         assert!(matches!(require_verifier(Some("v")), Ok("v")));
+    }
+
+    /// The recovery pair: the two columns `reissue_recovery` writes.
+    const RECOVERY_PAIR_ALONE: u8 = 0b11000;
+
+    #[test]
+    fn merged_keeps_a_stored_column_the_request_does_not_send() {
+        let requested = subset(2, BUNDLES_ALONE);
+        let left = merged(&full(1), &requested);
+        assert_eq!(left.encryption_public_key, full(1).encryption_public_key);
+        assert_eq!(left.encrypted_key_bundle, requested.encrypted_key_bundle);
+        assert_eq!(left.recovery_bundle_salt, full(1).recovery_bundle_salt);
+        assert_eq!(merged(&nothing_stored(), &requested).present(), 2);
+    }
+
+    #[test]
+    fn a_request_that_sends_no_key_column_is_coherent_over_any_stored_row() {
+        for stored in 0..=ALL {
+            assert!(
+                check_merge_is_coherent(&subset(1, stored), &nothing_stored()).is_ok(),
+                "stored mask {stored:#07b}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_full_set_is_coherent_over_any_stored_row() {
+        for stored in 0..=ALL {
+            assert!(
+                check_merge_is_coherent(&subset(1, stored), &full(2)).is_ok(),
+                "stored mask {stored:#07b}"
+            );
+        }
+    }
+
+    // The two shapes a partial writer sends are coherent exactly when they leave no column unset:
+    // a pair over a complete row, or a pair that happens to complete a legacy row.
+    #[test]
+    fn a_pair_is_coherent_exactly_when_it_fills_the_row() {
+        for requested_mask in [BUNDLES_ALONE, RECOVERY_PAIR_ALONE] {
+            let requested = subset(2, requested_mask);
+            for stored_mask in 0..=ALL {
+                let expected = (stored_mask | requested_mask).count_ones() == KEY_COLUMNS as u32;
+                assert_eq!(
+                    check_merge_is_coherent(&subset(1, stored_mask), &requested).is_ok(),
+                    expected,
+                    "stored {stored_mask:#07b} requested {requested_mask:#07b}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_bundle_pair_over_a_keyless_row_is_refused_with_409() {
+        let (status, body) = check_merge_is_coherent(&nothing_stored(), &subset(2, BUNDLES_ALONE))
+            .expect_err("two of five columns is not a key set");
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0["error"], INCOMPLETE_STORED_KEYS);
+        assert_eq!(
+            INCOMPLETE_STORED_KEYS,
+            "the stored encryption keys are incomplete: a key update must send all five key columns"
+        );
+    }
+
+    #[test]
+    fn a_pair_over_a_complete_row_stays_coherent() {
+        assert!(check_merge_is_coherent(&full(1), &subset(2, BUNDLES_ALONE)).is_ok());
+        assert!(check_merge_is_coherent(&full(1), &subset(2, RECOVERY_PAIR_ALONE)).is_ok());
     }
 }
