@@ -4,7 +4,7 @@
 Calls the running server over streamable HTTP and asserts the behaviours the server claims: the tool
 surface, the eight-command allowlist and the mode published for each, refusal of a free-form command,
 a passthrough and a shell-injection string on three of the seven check-mode names, refusal in both
-directions across the mode boundary, the clippy cache-hit guard, real exit codes from the three Rust
+directions across the mode boundary, the clippy cache-hit guard (the test guard is not asserted here), real exit codes from the three Rust
 gates, and one audit-journal line per executed invocation. Every check prints PASS or FAIL with its
 evidence; any FAIL makes the process exit non-zero, and the output is the record of a real run.
 

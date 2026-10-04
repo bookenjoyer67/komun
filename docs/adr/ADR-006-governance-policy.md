@@ -50,7 +50,7 @@ Enforcement lives in configuration and in named artifacts. Prose holds no rule a
 - Fix the layer that failed and re-run the same prompt (`eval/red-team-results.md:7` `Eight prompts were blocked on their first run.`).
 - Gate a governed change with five CI jobs named for the lesson's rows (`/.github/workflows/ci.yml:4` `change-type-check, policy-gate, eval-gate, advisory-review`).
 - Keep the deterministic gates binding and the agentic ones advisory (`/.github/workflows/ci.yml:17` `policy-gate carries no`).
-- Mark the four advisory or report jobs continue-on-error, so a review cannot fail a merge (`/.github/workflows/ci.yml:485` `continue-on-error: true`).
+- Mark the four advisory or report jobs continue-on-error, so a review cannot fail a merge (`/.github/workflows/ci.yml:486` `continue-on-error: true`).
 - Run the policy suite in the sandbox with the workspace read-only (`/.github/workflows/ci.yml:137` `python -m pytest eval/test_policy.py -v`).
 - Run the eval gate only on a governed change (`/.github/workflows/ci.yml:160` `if: needs.change-type-check.outputs.requires-governed-check == 'true'`).
 - Decide which changes are governed from two glob tables in one config file (`scripts/classify-change.py:129` `classification.governed_globs`).

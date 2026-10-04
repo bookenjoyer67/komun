@@ -19,6 +19,8 @@
 //! secret, so the server cannot read private messages even with full database access.
 
 pub mod email;
+mod key_change;
+mod key_coherence;
 pub mod password;
 
 use std::net::{IpAddr, SocketAddr};
@@ -206,6 +208,7 @@ pub struct UpdateProfileRequest {
     bundle_salt: Option<String>,
     encrypted_recovery_bundle: Option<String>,
     recovery_bundle_salt: Option<String>,
+    current_verifier: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -538,6 +541,13 @@ async fn signup(
     let bundle_salt = decode_b64_opt(&input.bundle_salt)?;
     let recovery_bundle = decode_b64_opt(&input.encrypted_recovery_bundle)?;
     let recovery_salt = decode_b64_opt(&input.recovery_bundle_salt)?;
+    key_coherence::check_signup(&key_change::KeyColumns {
+        encryption_public_key: encryption_pk.clone(),
+        encrypted_key_bundle: bundle.clone(),
+        bundle_salt: bundle_salt.clone(),
+        encrypted_recovery_bundle: recovery_bundle.clone(),
+        recovery_bundle_salt: recovery_salt.clone(),
+    })?;
 
     // Invite mode: claim a use before creating anything, so a failed claim cannot leave an
     // account behind.
@@ -1047,6 +1057,13 @@ async fn confirm_password_reset(
     let encryption_pk = decode_b64_opt(&body.encryption_public_key)?;
     let recovery_bundle = decode_b64_opt(&body.encrypted_recovery_bundle)?;
     let recovery_salt = decode_b64_opt(&body.recovery_bundle_salt)?;
+    key_coherence::check_pairs(&key_change::KeyColumns {
+        encryption_public_key: encryption_pk.clone(),
+        encrypted_key_bundle: bundle.clone(),
+        bundle_salt: bundle_salt.clone(),
+        encrypted_recovery_bundle: recovery_bundle.clone(),
+        recovery_bundle_salt: recovery_salt.clone(),
+    })?;
 
     // Rotating the identity key is all-or-nothing. A client that sends a new public key but keeps
     // the old recovery bundle leaves a code that unwraps a secret no longer matching the published
@@ -1188,6 +1205,11 @@ async fn change_password(
     }
     let bundle = decode_b64_opt(&body.encrypted_key_bundle)?;
     let bundle_salt = decode_b64_opt(&body.bundle_salt)?;
+    key_coherence::check_pairs(&key_change::KeyColumns {
+        encrypted_key_bundle: bundle.clone(),
+        bundle_salt: bundle_salt.clone(),
+        ..Default::default()
+    })?;
 
     let row = reauthenticate(&state, auth.user_id, ip, &body.current_verifier).await?;
 
@@ -1407,6 +1429,8 @@ async fn revoke_other_sessions(
 async fn update_profile(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
     Json(input): Json<UpdateProfileRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if let Some(ref name) = input.display_name {
@@ -1426,36 +1450,59 @@ async fn update_profile(
         }
     }
 
-    let encryption_pk = decode_b64_opt(&input.encryption_public_key)?;
-    let bundle = decode_b64_opt(&input.encrypted_key_bundle)?;
-    let bundle_salt = decode_b64_opt(&input.bundle_salt)?;
-    let recovery_bundle = decode_b64_opt(&input.encrypted_recovery_bundle)?;
-    let recovery_salt = decode_b64_opt(&input.recovery_bundle_salt)?;
+    let ip = limit_key(&state, peer, &headers);
 
-    sqlx::query(
-        "UPDATE users SET display_name = COALESCE($1, display_name),
-                bio = COALESCE($2, bio),
-                profile_json = COALESCE($3, profile_json),
-                encryption_public_key = COALESCE($4, encryption_public_key),
-                encrypted_key_bundle = COALESCE($5, encrypted_key_bundle),
-                bundle_salt = COALESCE($6, bundle_salt),
-                encrypted_recovery_bundle = COALESCE($7, encrypted_recovery_bundle),
-                recovery_bundle_salt = COALESCE($8, recovery_bundle_salt),
-                last_seen = now()
-         WHERE id = $9",
+    // The key fields are decided before any query: a partial set is refused here, whole, so a
+    // request that also carries profile fields writes nothing (secaudit R2 / VA01).
+    let keys = key_change::KeyColumns {
+        encryption_public_key: decode_b64_opt(&input.encryption_public_key)?,
+        encrypted_key_bundle: decode_b64_opt(&input.encrypted_key_bundle)?,
+        bundle_salt: decode_b64_opt(&input.bundle_salt)?,
+        encrypted_recovery_bundle: decode_b64_opt(&input.encrypted_recovery_bundle)?,
+        recovery_bundle_salt: decode_b64_opt(&input.recovery_bundle_salt)?,
+    };
+    keys.check_complete()?;
+
+    // The key change and the profile fields commit together. Every refusal returns before the
+    // commit, and dropping the transaction rolls it back, so a refused request moves nothing.
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| internal("profile update failed", e))?;
+    let outcome = key_change::apply(
+        &mut tx,
+        &state,
+        auth.user_id,
+        ip,
+        &keys,
+        input.current_verifier.as_deref(),
     )
-    .bind(input.display_name.as_deref().map(str::trim))
-    .bind(&input.bio)
-    .bind(&input.profile_json)
-    .bind(&encryption_pk)
-    .bind(&bundle)
-    .bind(&bundle_salt)
-    .bind(&recovery_bundle)
-    .bind(&recovery_salt)
-    .bind(auth.user_id)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| internal("profile update failed", e))?;
+    .await?;
+
+    // A request with no profile field writes no profile column, so an identical key re-upload
+    // leaves every column of the row as it was.
+    if input.display_name.is_some() || input.bio.is_some() || input.profile_json.is_some() {
+        sqlx::query(
+            "UPDATE users SET display_name = COALESCE($1, display_name),
+                              bio = COALESCE($2, bio),
+                              profile_json = COALESCE($3, profile_json),
+                              last_seen = now()
+             WHERE id = $4",
+        )
+        .bind(input.display_name.as_deref().map(str::trim))
+        .bind(&input.bio)
+        .bind(&input.profile_json)
+        .bind(auth.user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| internal("profile update failed", e))?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| internal("profile update failed", e))?;
+    key_change::audit(&state, auth.user_id, outcome).await;
 
     Ok(Json(serde_json::json!({ "ok": true })))
 }
