@@ -254,9 +254,9 @@
       "artifacts.style_rules": "docs/DOC-STYLE.md"
     },
     "language_specific_note": [
-      "The cargo toolchain commands, the clippy cache guard and the build cache are Rust and cargo",
-      "specific. A Node or Python fork replaces the whole `toolchain` block and drops the guard, or",
-      "writes a guard of its own: the guard exists only because a cached linter prints nothing."
+      "The cargo toolchain commands, the cache-hit guards and the build cache are Rust and cargo",
+      "specific. A Node or Python fork replaces the whole `toolchain` block and drops each guard, or",
+      "writes guards of its own: each guard exists because a cached cargo run can mislead its gate."
     ]
   },
   "gates": {

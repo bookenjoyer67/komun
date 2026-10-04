@@ -20,12 +20,12 @@ Runtime file inside the sandbox container:
 
 | File | Default path | Authority |
 | --- | --- | --- |
-| Audit journal | `/workspace/.memory/gate-audit.log` | `mcp/gate/gate_vocabulary.py:101` `AUDIT_PATH = os.getenv("GATE_AUDIT_PATH", str(Path(MEMORY_DIR) / "gate-audit.log"))` |
+| Audit journal | `/workspace/.memory/gate-audit.log` | `mcp/gate/gate_vocabulary.py:105` `AUDIT_PATH = os.getenv("GATE_AUDIT_PATH", str(Path(MEMORY_DIR) / "gate-audit.log"))` |
 
 The path follows `MEMORY_DIR`, which defaults to `/workspace/.memory`, the config's `containers.memory_dir`
-(`mcp/gate/gate_vocabulary.py:100` `MEMORY_DIR = os.getenv("MEMORY_DIR", str(agentic_config.get("containers.memory_dir")))`).
+(`mcp/gate/gate_vocabulary.py:104` `MEMORY_DIR = os.getenv("MEMORY_DIR", str(agentic_config.get("containers.memory_dir")))`).
 Override `GATE_AUDIT_PATH` and `GATE_WORKSPACE` for a local run
-(`mcp/gate/gate_vocabulary.py:99` `WORKSPACE = os.getenv("GATE_WORKSPACE", str(agentic_config.get("containers.workspace")))`).
+(`mcp/gate/gate_vocabulary.py:103` `WORKSPACE = os.getenv("GATE_WORKSPACE", str(agentic_config.get("containers.workspace")))`).
 
 Which command starts the server, and how is it registered?
 
@@ -47,11 +47,11 @@ Where do the eight command names come from?
 
 Eight commands exist: seven are check-mode and one is write-mode. The names are the
 `toolchain.commands` keys in `agentic.config.json`, and `gate_vocabulary.py` builds one table from
-them (`mcp/gate/gate_vocabulary.py:244` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
+them (`mcp/gate/gate_vocabulary.py:248` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
 
 That table is then split by each command's declared `writes` boolean into two disjoint vocabularies
-(`mcp/gate/gate_vocabulary.py:245` `GATES: dict[str, dict[str, Any]] = {` and
-`mcp/gate/gate_vocabulary.py:248` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`). `run_gate` resolves a
+(`mcp/gate/gate_vocabulary.py:249` `GATES: dict[str, dict[str, Any]] = {` and
+`mcp/gate/gate_vocabulary.py:252` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`). `run_gate` resolves a
 name against `GATES` only, and `run_fix` resolves a name against `FIX_COMMANDS` only.
 
 | Command | Mode | Exact argv | Authority |
@@ -222,17 +222,19 @@ Not in any run recorded in this document. It rewrites the tree, so the self-test
 executes it, and the evidence here is refusal evidence only. Treat every claim about what `fmt-fix`
 would produce as unmeasured until a run appears in the journal.
 
-## How does the clippy cache-hit guard work?
+## How does each gate's cache-hit guard work?
 
-Which two steps make up the guard?
+Which steps make up each guard?
 
-The gate touches a file under test, then requires cargo's status line for that crate in the output.
+Each guarded gate touches its own file under test, then requires cargo's status line for that crate in the output.
 
-1. Touch `crates/server/src/main.rs` before running cargo
-   (`agentic.config.json:44` `"touch_file": "crates/server/src/main.rs",`,
+1. Touch the gate's own file before running cargo. `test` touches `crates/core/src/tests.rs`
+   (`agentic.config.json:26` `"touch_file": "crates/core/src/tests.rs"`), and `clippy` touches
+   `crates/server/src/main.rs` (`agentic.config.json:44` `"touch_file": "crates/server/src/main.rs",`,
    `mcp/gate/server.py:263` `os.utime(touch_file, None)`). A missing file is reported as an
    unsatisfied guard rather than ignored (`mcp/gate/server.py:270` `"detail": f"cache-hit guard could not touch {touch_file}: {error}",`).
-2. Require the `Checking komun-server` marker in the combined output
+2. Require the gate's own marker in the combined output. `test` requires `Compiling komun-core`
+   (`agentic.config.json:26` `"marker": "Compiling komun-core"`), and `clippy` requires `Checking komun-server`
    (`agentic.config.json:42` `"marker": "Checking komun-server",`,
    `agentic.config.json:43` `"marker_regex": "\\bChecking\\b\\s+(?P<marker>komun-server)\\b",`).
 3. Fail the gate when the marker is absent, even at exit 0 (`mcp/gate/server.py:427` `elif not guard["satisfied"]:` with `mcp/gate/server.py:288` `f"cache-hit guard not satisfied: no '{guard['marker']}' line in the output, so a clean "`).
@@ -243,7 +245,7 @@ Because this image runs cargo with colour forced on (`CARGO_TERM_COLOR=always` i
 environment), so a status line is written as `\033[1m\033[92m    Checking\033[0m komun-server`. Byte
 evidence from the captured stderr: `Checking` appears 3 times while the literal
 `Checking komun-server` appears 0 times, because the escape sequence sits between the two words. The
-guard strips SGR sequences first (`mcp/gate/server.py:286` `match = GUARD_MARKER_PATTERN.search(strip_ansi(combined_output))`,
+guard strips SGR sequences first (`mcp/gate/server.py:286` `match, unusable = guard_marker_search(command, strip_ansi(combined_output))`,
 `mcp/gate/server.py:79` `ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")`), and the returned
 stdout and stderr are stripped for the same reason.
 
@@ -265,6 +267,25 @@ between, both over the warm target directory, exited `0` with no `Checking komun
 (`run1: exit=0 checking_komun_server=0`, `run2: exit=0 checking_komun_server=0`). A gate that read
 exit codes alone would call that a clean lint; the guard makes it unrepresentable.
 
+What happens when a guard's `marker_regex` is unusable?
+
+The server still starts, because no guard pattern raises at import. The vocabulary checks the
+configured pattern first (`mcp/gate/gate_vocabulary.py:313` `configured, reason = _usable_marker_regex(agentic_config.get(key))`).
+A key left out or set to null reaches that check as the default's value
+(`scripts/agentic_config.py:598` `a key the config leaves out falls back to the embedded default`).
+
+- Reject a value that is missing or not a string (`mcp/gate/gate_vocabulary.py:273` `return None, "is missing" if value is None else f"is not a string ({type(value).__name__})"`).
+- Reject a blank value (`mcp/gate/gate_vocabulary.py:275` `return None, "is empty"`).
+- Reject a pattern that will not compile (`mcp/gate/gate_vocabulary.py:279` `return None, f"does not compile ({error})"`).
+- Reject a pattern that matches empty text, because it would satisfy every guard (`mcp/gate/gate_vocabulary.py:280` `if compiled.search("") is not None:`).
+- Fall back to the built-in default when it passes the same four checks, and record the fallback (`mcp/gate/gate_vocabulary.py:318` `return default, f"{key} {reason}; the built-in default answers", None`).
+- Fail that gate's guard alone when no usable default exists, with a detail naming the key (`mcp/gate/gate_vocabulary.py:320` `f"cache-hit guard not satisfied: {key} {reason}, and no usable built-in default exists "`).
+
+The server passes that detail through unchanged
+(`mcp/gate/server.py:286` `match, unusable = guard_marker_search(command, strip_ansi(combined_output))`,
+`mcp/gate/server.py:292` `guard["detail"] = unusable or (f"found '{guard['marker']}' in the cargo output" if match else missing)`).
+The verdict then reads `fail:` plus that detail (`mcp/gate/server.py:428` `verdict = f"fail: {guard['detail']}"`).
+
 ## What does the configured output summary report?
 
 Which artifact declares a summary rule, and which command carries one?
@@ -274,16 +295,16 @@ commands declare `"summary": null` and one declares a rule: `fmt`
 (`agentic.config.json:58` `"summary": {`).
 
 The vocabulary normalises that block once, at import time
-(`mcp/gate/gate_vocabulary.py:126` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`),
+(`mcp/gate/gate_vocabulary.py:130` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`),
 and compiles each declared pattern beside the guard's
-(`mcp/gate/gate_vocabulary.py:269` `SUMMARY_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {`).
+(`mcp/gate/gate_vocabulary.py:361` `SUMMARY_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {`).
 
 Compiled patterns live in `SUMMARY_PATTERNS` and not in `COMMANDS`, so `COMMANDS` stays JSON-safe for
 the tool that publishes it (`mcp/gate/server.py:476` `"argv": list(definition["argv"]),`).
 
 A malformed rule degrades to no summary rather than to a crash. `_summary` returns `None` for an
 unrecognised mode, an uncompilable pattern, or a named group absent from that pattern
-(`mcp/gate/gate_vocabulary.py:126` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`).
+(`mcp/gate/gate_vocabulary.py:130` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`).
 
 Which four numbers does the `fmt` rule count?
 
@@ -435,7 +456,7 @@ vocabulary grew to five names:
 
 | Gate | Exit code | `passed` | Guard | Duration | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| `test` | `0` | `true` | not applicable | 5.7 s | `test result: ok. 20 passed; 0 failed` and `ok. 138 passed; 0 failed` — 158 passed, 0 failed, the documented baseline |
+| `test` | `0` | `true` | not applicable (no test guard existed at this capture) | 5.7 s | `test result: ok. 20 passed; 0 failed` and `ok. 138 passed; 0 failed` — 158 passed, 0 failed, the documented baseline |
 | `clippy` | `0` | `true` | applied, satisfied | 2.5 s | `Checking komun-server v0.1.0 (/workspace/crates/server)`, then `Finished` with no lint |
 | `fmt` | `1` | `false` | not applicable | 0.1 s | 213 diff hunks across 35 files |
 | `policy` | `0` | `true` | not applicable | 1.1 s | `90 passed in 0.90s`, the two eval suites |
@@ -531,17 +552,17 @@ its own recount of the `fmt` counts for the same reason.
 Why is there no `run_command`, no `--` passthrough, and no cwd argument?
 
 - Keep the execution surface a fixed vocabulary, so a call cannot widen its own access: the
-  `COMMANDS` table is the only argv source (`mcp/gate/gate_vocabulary.py:244` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
+  `COMMANDS` table is the only argv source (`mcp/gate/gate_vocabulary.py:248` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
 - Split that vocabulary by declared mode and give each half its own tool, so a check surface cannot
-  reach a mutation (`mcp/gate/gate_vocabulary.py:248` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
+  reach a mutation (`mcp/gate/gate_vocabulary.py:252` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
 - Keep `shell` off and the argv a list, so a metacharacter in a caller value can never become a
   command (`mcp/gate/server.py:400` `completed = subprocess.run(  # noqa: S603 - a fixed argv, never a caller-supplied string`).
 - Journal only executed commands, so the journal's line count is itself an audit fact
   (`mcp/gate/server.py:500` `validate_gate(gate)` runs before the journal call).
 - Record the tool and the mode on every line, so a mutation is legible in the journal without the
   config (`mcp/gate/server.py:211` `"tool": tool,`).
-- Touch one declared file and require its status line, so a cached clippy run cannot be mistaken for
-  a clean lint (`mcp/gate/server.py:422` `passed = exit_code == 0 and bool(guard["satisfied"])`).
+- Touch each guarded gate's declared file and require its status line, so a cached run cannot be mistaken for
+  a clean one (`mcp/gate/server.py:422` `passed = exit_code == 0 and bool(guard["satisfied"])`).
 - Strip ANSI before matching and before returning, so cargo's forced colour cannot break a guard or a
   caller's grep (`mcp/gate/server.py:79` `ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")`).
 - Declare the counting rule in the config rather than in the server, so a fork changes one table and

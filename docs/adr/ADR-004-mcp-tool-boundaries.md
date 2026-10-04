@@ -89,8 +89,8 @@ What does this boundary change, and what does it leave open?
 - Refuse the same attempt with the same message in both directions (`mcp/gate/SCHEMA.md:128` `An argument-passthrough attempt and a shell-injection attempt were refused with the same message:`).
 - Leave the injection target absent afterwards (`mcp/gate/SCHEMA.md:130` `target did not exist afterwards`).
 - Add no journal line for a refusal (`mcp/gate/server.py:12` `refused call runs nothing and journals nothing`).
-- Add no journal line and create no file for a mode refusal (`mcp/gate/SCHEMA.md:503` `The mode refusals added no journal line and created no file`).
-- Count the journal's line count as an audit fact (`mcp/gate/SCHEMA.md:419` `Measured: three refusals in one self-test run left the journal at 10 lines, unchanged`).
+- Add no journal line and create no file for a mode refusal (`mcp/gate/SCHEMA.md:524` `The mode refusals added no journal line and created no file`).
+- Count the journal's line count as an audit fact (`mcp/gate/SCHEMA.md:440` `Measured: three refusals in one self-test run left the journal at 10 lines, unchanged`).
 - Leave a refused secret write with no new audit row (`docs/iteration-log.md:501` `is refused by classification enforcement with **no** new audit`).
 - Keep record removal outside the gate (`mcp/storage/allow-list.json:29` `no role holds a destructive capability here`).
 - Widen the surface by tool rather than by gate name (`docs/routing-and-tool-grant-map.md:70` `Authorisation is held per tool, not per gate name.`).

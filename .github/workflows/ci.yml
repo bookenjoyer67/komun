@@ -180,8 +180,8 @@ jobs:
           docker build -t ${{ env.AGENT_IMAGE_BASE }} .
           docker build -f sandbox/Dockerfile.m3 -t ${{ env.AGENT_IMAGE_TOOLS }} .
 
-      # The compiler caches live outside the checkout, because every mount of the checkout in this
-      # job is read-only. They are bind-mounted into the container as writable paths.
+      # The compiler caches live outside the checkout, because the checkout is mounted read-only
+      # apart from the two files the guards touch, which are writable binds like these caches.
       - name: Restore the cargo caches
         uses: actions/cache@v4
         with:
@@ -197,6 +197,7 @@ jobs:
           docker run --rm -i \
             -v "$GITHUB_WORKSPACE":${{ env.AGENT_WORKSPACE }}:ro \
             -v "$GITHUB_WORKSPACE/crates/server/src/main.rs":${{ env.AGENT_WORKSPACE }}/crates/server/src/main.rs \
+            -v "$GITHUB_WORKSPACE/crates/core/src/tests.rs":${{ env.AGENT_WORKSPACE }}/crates/core/src/tests.rs \
             -v "$GITHUB_WORKSPACE/ci-artifacts":/reports \
             -v "${{ env.AGENT_CACHE_TARGET }}":/ci-target \
             -v "${{ env.AGENT_CACHE_REGISTRY }}":/usr/local/cargo/registry \
@@ -207,7 +208,7 @@ jobs:
             ${{ env.AGENT_IMAGE_TOOLS }} python3 - <<'PY'
           """Run the gate server's three allowlisted gates and write one report.
 
-          The argv and the clippy cache-hit guard are the server's own: this script loads
+          The argv and each gate's cache-hit guard are the server's own: this script loads
           mcp/gate/server.py and calls its run_gate() tool, so nothing is re-typed here. run_gate
           journals one line per executed gate to GATE_AUDIT_PATH.
           """
