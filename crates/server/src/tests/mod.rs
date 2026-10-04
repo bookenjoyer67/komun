@@ -5,6 +5,7 @@ mod key_coherence;
 /// The marketplace foundation: `[market]` config, category scopes, market filters.
 #[cfg(test)]
 mod market;
+mod outbound_routes;
 
 /// The server-side half of the password path.
 #[cfg(test)]
