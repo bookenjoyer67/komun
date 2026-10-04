@@ -1423,9 +1423,9 @@ What does the close step actually persist?
 Nothing. The run's entry treated the close step as a write to a table that does not exist
 (`docs/iteration-log.md:1403` `- Name the table the close step writes to. No ticket or plan table exists in the storage database`). The close step writes to no table at all.
 
-- Read the ticket tool as a simulation with no store (`mcp/coursetools_server.py:184` `"""Simulate updating a shared work ticket."""`).
-- Read its signature as a status in and text out (`mcp/coursetools_server.py:183` `def task_tracker(role: str, ticket_id: str, status: str = "done", note: str = "") -> str:`).
-- Read its whole effect as one formatted string (`mcp/coursetools_server.py:186` `return f"Ticket {ticket_id} updated to {status}. Note: {note or 'No note provided.'}"`).
+- Read the ticket tool as a simulation with no store (`mcp/coursetools_server.py:183` `"""Simulate updating a shared work ticket."""`).
+- Read its signature as a status in and text out (`mcp/coursetools_server.py:182` `def task_tracker(role: str, ticket_id: str, status: str = "done", note: str = "") -> str:`).
+- Read its whole effect as one formatted string (`mcp/coursetools_server.py:185` `return f"Ticket {ticket_id} updated to {status}. Note: {note or 'No note provided.'}"`).
 
 A close step can therefore report success while persisting nothing (`docs/iteration-log.md:324` `` `task_tracker` is a simulation ``).
 

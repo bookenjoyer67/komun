@@ -153,7 +153,6 @@ def wait_for_port(port: int, timeout: float = 240.0) -> bool:
     return False
 
 
-# --- check (g): the allow-list files are the routing map's own projection -------------------
 def check_allow_lists_match_routing_map() -> None:
     """Prove the grants were derived rather than invented: recompute them from the map."""
     try:
@@ -203,7 +202,6 @@ def check_allow_lists_match_routing_map() -> None:
     )
 
 
-# --- checks (a) to (c): the guard, and one journal for denials and successes ----------------
 async def check_write_paths(storage: ClientSession) -> None:
     allowed_roles = sorted(
         role
@@ -211,7 +209,6 @@ async def check_write_paths(storage: ClientSession) -> None:
         if "write_entry" in ops
     )
 
-    # (a) a granted role writes
     is_error, payload, text = await call_tool(
         storage,
         "write_entry",
@@ -231,7 +228,6 @@ async def check_write_paths(storage: ClientSession) -> None:
         f"entry_id={entry_id}",
     )
 
-    # (b) an ungranted role is refused, with the three parties named
     is_error, _, text = await call_tool(
         storage,
         "write_entry",
@@ -278,7 +274,6 @@ async def check_write_paths(storage: ClientSession) -> None:
         text.splitlines()[0][:220] if text else "no error text",
     )
 
-    # (c) both records, in the one journal file
     records = read_audit(STORAGE_AUDIT)
     lines = STORAGE_AUDIT.read_text(encoding="utf-8", errors="replace").splitlines()
     denial_lines = [
@@ -321,7 +316,6 @@ async def check_write_paths(storage: ClientSession) -> None:
     )
 
 
-# --- check (d): unknown roles, and a call that names no role --------------------------------
 async def check_unknown_roles(storage: ClientSession, retrieval: ClientSession) -> None:
     is_error, _, text = await call_tool(
         storage,
@@ -384,7 +378,6 @@ async def check_unknown_roles(storage: ClientSession, retrieval: ClientSession) 
     )
 
 
-# --- check (e): the role ceiling, on both servers -------------------------------------------
 async def check_ceiling(player: ClientSession, label: str, control_map: dict[str, str]) -> None:
     """Run the escalation matrix against one retrieval server."""
     escalation = [
@@ -416,7 +409,6 @@ async def check_ceiling(player: ClientSession, label: str, control_map: dict[str
             f"docs={documents(payload)} classifications={found}",
         )
 
-    # a granted role inside its own ceiling still returns results
     is_error, payload, text = await call_tool(
         player,
         "retrieve",
@@ -562,7 +554,6 @@ def check_withholding_journal() -> None:
     )
 
 
-# --- check (f): a missing allow-list stops the server ---------------------------------------
 def run_fail_loud(name: str, argv: list[str], env_extra: dict[str, str], port: int) -> None:
     """Start a server against a missing allow-list and require a clear startup refusal."""
     missing = "/workspace/mcp/selftest-missing-allow-list.json"

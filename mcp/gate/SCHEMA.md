@@ -272,7 +272,7 @@ What happens when a guard's `marker_regex` is unusable?
 The server still starts, because no guard pattern raises at import. The vocabulary checks the
 configured pattern first (`mcp/gate/gate_vocabulary.py:313` `configured, reason = _usable_marker_regex(agentic_config.get(key))`).
 A key left out or set to null reaches that check as the default's value
-(`scripts/agentic_config.py:598` `a key the config leaves out falls back to the embedded default`).
+(`scripts/agentic_config.py:597` `a key the config leaves out falls back to the embedded default`).
 
 - Reject a value that is missing or not a string (`mcp/gate/gate_vocabulary.py:273` `return None, "is missing" if value is None else f"is not a string ({type(value).__name__})"`).
 - Reject a blank value (`mcp/gate/gate_vocabulary.py:275` `return None, "is empty"`).
