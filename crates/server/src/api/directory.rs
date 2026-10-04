@@ -1,10 +1,12 @@
+use std::net::SocketAddr;
 use std::sync::LazyLock;
 use std::time::Instant as StdInstant;
 
 use axum::{
-    extract::{Query, State},
-    http::StatusCode,
+    extract::{ConnectInfo, Extension, Path, Query, State},
+    http::{HeaderMap, StatusCode},
     middleware,
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -13,12 +15,17 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use tokio::sync::Mutex as TokioMutex;
 
+use super::outbound;
 use super::StatusError;
-use crate::auth::require_auth;
+use crate::auth::{record_audit, require_auth, require_superadmin, AuthUser};
+use crate::rate_limit::RouteClass;
 use crate::AppState;
 
 static REGISTRATIONS: LazyLock<TokioMutex<Vec<StdInstant>>> =
     LazyLock::new(|| TokioMutex::new(Vec::new()));
+
+const URL_REFUSED: &str = "url must be https on a public host";
+const NOT_CONFIRMED: &str = "server at url did not confirm this registration";
 
 pub fn router(state: AppState) -> Router {
     // Gate on the resolved `open_registration`, not `[registration] mode`: signup can be
@@ -33,7 +40,10 @@ pub fn router(state: AppState) -> Router {
 
     let protected = Router::new()
         .route("/directory/{url}", delete(remove_server))
-        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_superadmin,
+        ));
 
     let protected_register = if registration_is_open {
         None
@@ -52,19 +62,36 @@ pub fn router(state: AppState) -> Router {
     router.with_state(state)
 }
 
+/// The `location_*` fields peers still send are ignored: a stored location comes only from the
+/// peer's own `/api/node`.
 #[derive(Deserialize)]
 pub struct RegisterRequest {
     url: String,
     name: String,
     description: Option<String>,
-    location_name: Option<String>,
-    location_lat: Option<f64>,
-    location_lon: Option<f64>,
     version: Option<String>,
     /// Peers advertise whether they accept open registrations; older peers omit it and are treated
     /// as openly registerable.
     #[serde(default)]
     open_registration: Option<bool>,
+}
+
+/// What a peer's own `/api/node` says about it; the fields mirror `api::node::NodeInfo`.
+#[derive(Deserialize)]
+struct PeerNode {
+    name: String,
+    description: Option<String>,
+    version: Option<String>,
+    domain: Option<String>,
+    location: Option<PeerLocation>,
+    open_registration: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct PeerLocation {
+    name: Option<String>,
+    lat: Option<f64>,
+    lon: Option<f64>,
 }
 
 #[derive(Serialize, FromRow)]
@@ -111,8 +138,51 @@ const DISTANCE_KM: &str = r#"(6371 * acos(
 
 async fn register_server(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(input): Json<RegisterRequest>,
+) -> Response {
+    if let Err(limited) = super::per_ip_limit(&state, RouteClass::DirectoryRegister, peer, &headers)
+    {
+        return limited.into_response();
+    }
+    match register_verified(&state, input).await {
+        Ok(body) => body.into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// The directory stores no registrant identity, so the peer's own `/api/node` is the proof of
+/// control: an anonymous caller can at most refresh an entry to what that server publishes.
+async fn register_verified(
+    state: &AppState,
+    input: RegisterRequest,
 ) -> Result<Json<serde_json::Value>, StatusError> {
+    let url = input.url.trim_end_matches('/').to_string();
+    let host = registrable_host(&url)
+        .ok_or_else(|| StatusError::with_status(StatusCode::BAD_REQUEST, URL_REFUSED))?;
+
+    let node = match outbound::fetch_public(&format!("{url}/api/node"), outbound::NODE_INFO).await {
+        Ok(body) => serde_json::from_slice::<PeerNode>(&body).ok(),
+        Err(e) if e.is_refused() => {
+            return Err(StatusError::with_status(
+                StatusCode::BAD_REQUEST,
+                URL_REFUSED,
+            ));
+        }
+        Err(e) => {
+            tracing::debug!("directory registration: peer node info unavailable: {e}");
+            None
+        }
+    };
+    let Some(node) = node.filter(|node| node_matches(&host, &input, node)) else {
+        return Err(StatusError::with_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            NOT_CONFIRMED,
+        ));
+    };
+
+    // Counted only after verification, so unverifiable attempts cannot exhaust it.
     {
         let mut registrations = REGISTRATIONS.lock().await;
         let window_start = StdInstant::now() - std::time::Duration::from_secs(3600);
@@ -126,7 +196,20 @@ async fn register_server(
         registrations.push(StdInstant::now());
     }
 
-    let url = input.url.trim_end_matches('/').to_string();
+    // The peer's `null` location means "none"; falling back to the body would let any caller pin
+    // a location on someone else's entry.
+    let (location_name, location_lat, location_lon) = match node.location {
+        Some(location) => (location.name, location.lat, location.lon),
+        None => (None, None, None),
+    };
+    let description = node.description.or(input.description);
+    let version = node.version.or(input.version);
+    // The column default and this fallback agree: peers that omit the field are openly
+    // registerable.
+    let open_registration = node
+        .open_registration
+        .or(input.open_registration)
+        .unwrap_or(true);
 
     sqlx::query(
         r#"INSERT INTO directory_entries (url, name, description, location_name, location_lat, location_lon, version, open_registration, last_seen)
@@ -143,20 +226,37 @@ async fn register_server(
     )
     .bind(&url)
     .bind(&input.name)
-    .bind(&input.description)
-    .bind(&input.location_name)
-    .bind(input.location_lat)
-    .bind(input.location_lon)
-    .bind(&input.version)
-    // The column default and this fallback agree: peers that omit the field are openly
-    // registerable.
-    .bind(input.open_registration.unwrap_or(true))
+    .bind(description)
+    .bind(location_name)
+    .bind(location_lat)
+    .bind(location_lon)
+    .bind(version)
+    .bind(open_registration)
     .execute(&state.pool)
     .await?;
 
     Ok(Json(
         serde_json::json!({"status": "registered", "url": url}),
     ))
+}
+
+/// The URL's host, if it may be registered. A query or fragment is refused because
+/// `{url}/api/node` would not reach the node.
+fn registrable_host(url: &str) -> Option<String> {
+    let parsed = outbound::check_url(url).ok()?;
+    if parsed.scheme() != "https" || parsed.query().is_some() || parsed.fragment().is_some() {
+        return None;
+    }
+    parsed.host_str().map(str::to_owned)
+}
+
+fn node_matches(url_host: &str, input: &RegisterRequest, node: &PeerNode) -> bool {
+    let name_matches = node.name.trim() == input.name.trim();
+    let domain_matches = match node.domain.as_deref() {
+        Some(domain) => domain.eq_ignore_ascii_case(url_host),
+        None => true,
+    };
+    name_matches && domain_matches
 }
 
 async fn list_servers(
@@ -223,12 +323,24 @@ async fn list_servers(
 
 async fn remove_server(
     State(state): State<AppState>,
-    axum::extract::Path(url): axum::extract::Path<String>,
+    Extension(auth): Extension<AuthUser>,
+    Path(url): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusError> {
-    sqlx::query("DELETE FROM directory_entries WHERE url = $1")
+    let removed = sqlx::query("DELETE FROM directory_entries WHERE url = $1")
         .bind(&url)
         .execute(&state.pool)
-        .await?;
+        .await?
+        .rows_affected();
+
+    record_audit(
+        &state.pool,
+        Some(auth.user_id),
+        "directory.remove",
+        None,
+        serde_json::json!({ "url": url, "removed": removed }),
+    )
+    .await;
+
     Ok(Json(serde_json::json!({"status": "removed"})))
 }
 
@@ -263,6 +375,91 @@ impl From<DirectoryEntryWithDist> for DirectoryEntryWithDistance {
                 registered_at: r.registered_at,
             },
             distance_km: r.distance_km,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn request(name: &str) -> RegisterRequest {
+        serde_json::from_value(json!({ "url": "https://komun.example.org", "name": name }))
+            .expect("register request")
+    }
+
+    fn node(name: &str, domain: Option<&str>) -> PeerNode {
+        serde_json::from_value(json!({
+            "name": name,
+            "description": "d",
+            "version": "0.1.0",
+            "domain": domain,
+            "location": null,
+            "listed": true,
+            "open_registration": true,
+        }))
+        .expect("peer node")
+    }
+
+    /// T12
+    #[test]
+    fn a_peer_must_confirm_its_name_and_domain() {
+        let host = "komun.example.org";
+        assert!(node_matches(
+            host,
+            &request("Oakland Komun"),
+            &node("Oakland Komun", Some(host))
+        ));
+
+        assert!(
+            !node_matches(
+                host,
+                &request("Oakland Komun"),
+                &node("Someone Else", Some(host))
+            ),
+            "a name mismatch must not confirm"
+        );
+        assert!(
+            !node_matches(
+                host,
+                &request("Oakland Komun"),
+                &node("Oakland Komun", Some("other.example.org"))
+            ),
+            "a domain mismatch must not confirm"
+        );
+        assert!(
+            node_matches(
+                host,
+                &request("Oakland Komun"),
+                &node("Oakland Komun", None)
+            ),
+            "a peer without a public_url publishes no domain; the name decides"
+        );
+        assert!(
+            node_matches(
+                host,
+                &request("Oakland Komun"),
+                &node("Oakland Komun", Some("KOMUN.Example.ORG"))
+            ),
+            "host names compare case-insensitively"
+        );
+    }
+
+    #[test]
+    fn only_https_without_query_or_fragment_is_registrable() {
+        assert_eq!(
+            registrable_host("https://komun.example.org").as_deref(),
+            Some("komun.example.org")
+        );
+        for url in [
+            "http://komun.example.org",
+            "https://komun.example.org/?x=1",
+            "https://komun.example.org/#top",
+            "javascript:alert(1)",
+            "https://user:pw@komun.example.org",
+        ] {
+            assert_eq!(registrable_host(url), None, "{url} must be refused");
         }
     }
 }

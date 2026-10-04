@@ -11,9 +11,11 @@
 //! — which is strictly worse than having no limiter at all, because it looks like one.
 
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+
+use crate::AppState;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Quota {
@@ -44,6 +46,12 @@ pub enum RouteClass {
     /// Resending a verification mail — limited hard because each hit sends email to a third party.
     VerifyResend,
     PasswordReset,
+    /// One feed page fires a preview per URL it shows, so this is the loosest outbound class.
+    LinkPreview,
+    /// Every miss spends one of Nominatim's one-per-second slots, which all callers share.
+    Geocode,
+    /// Peers re-register hourly; each attempt makes this server fetch the peer's `/api/node`.
+    DirectoryRegister,
 }
 
 impl RouteClass {
@@ -56,6 +64,9 @@ impl RouteClass {
             RouteClass::SignUp => Quota::new(5, Duration::from_secs(3600)),
             RouteClass::VerifyResend => Quota::new(3, Duration::from_secs(3600)),
             RouteClass::PasswordReset => Quota::new(3, Duration::from_secs(3600)),
+            RouteClass::LinkPreview => Quota::new(60, Duration::from_secs(300)),
+            RouteClass::Geocode => Quota::new(20, Duration::from_secs(600)),
+            RouteClass::DirectoryRegister => Quota::new(5, Duration::from_secs(3600)),
         }
     }
 
@@ -65,6 +76,9 @@ impl RouteClass {
             RouteClass::SignUp => "sign_up",
             RouteClass::VerifyResend => "verify_resend",
             RouteClass::PasswordReset => "password_reset",
+            RouteClass::LinkPreview => "link_preview",
+            RouteClass::Geocode => "geocode",
+            RouteClass::DirectoryRegister => "directory_register",
         }
     }
 }
@@ -186,6 +200,16 @@ pub fn client_ip(
         .unwrap_or(socket_ip)
 }
 
+/// The bucket key for a request outside `auth`, derived exactly as the auth routes derive theirs.
+pub(crate) fn client_key(
+    state: &AppState,
+    peer: SocketAddr,
+    headers: &axum::http::HeaderMap,
+) -> IpAddr {
+    let forwarded = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok());
+    client_ip(peer.ip(), forwarded, &state.trusted_proxies)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,6 +302,57 @@ mod tests {
         assert!(limiter.check(RouteClass::VerifyResend, who).is_err());
         limiter.refund(RouteClass::VerifyResend, who);
         assert!(limiter.check(RouteClass::VerifyResend, who).is_ok());
+    }
+
+    /// T13
+    #[test]
+    fn outbound_classes_have_their_own_quotas_and_buckets() {
+        let quotas = [
+            (RouteClass::LinkPreview, 60, 300),
+            (RouteClass::Geocode, 20, 600),
+            (RouteClass::DirectoryRegister, 5, 3600),
+        ];
+        for (class, capacity, seconds) in quotas {
+            let quota = class.quota();
+            assert_eq!(quota.capacity, capacity, "{}", class.as_str());
+            assert_eq!(
+                quota.per,
+                Duration::from_secs(seconds),
+                "{}",
+                class.as_str()
+            );
+        }
+
+        for (class, _, _) in quotas {
+            let limiter = RateLimiter::new();
+            let who = ip(7);
+            for _ in 0..class.quota().capacity {
+                limiter.check(class, who).expect("burst");
+            }
+            assert!(
+                limiter.check(class, who).is_err(),
+                "{} must refuse past its burst",
+                class.as_str()
+            );
+            assert!(
+                limiter.check(RouteClass::SignIn, who).is_ok(),
+                "an exhausted {} bucket must not touch sign-in",
+                class.as_str()
+            );
+        }
+
+        let limiter = RateLimiter::new();
+        let who = ip(8);
+        for _ in 0..RouteClass::SignIn.quota().capacity {
+            limiter.check(RouteClass::SignIn, who).expect("burst");
+        }
+        for (class, _, _) in quotas {
+            assert!(
+                limiter.check(class, who).is_ok(),
+                "an exhausted sign-in bucket must not touch {}",
+                class.as_str()
+            );
+        }
     }
 
     #[test]
