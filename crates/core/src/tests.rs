@@ -351,6 +351,21 @@ mod schema_contract {
         }
     }
 
+    /// The set, not the predicate's own body: the compiler makes a fifth status pick a side in
+    /// `is_resolved`, and a status that quietly starts resolving threads fails this test.
+    #[test]
+    fn only_the_terminal_statuses_are_resolved() {
+        let resolved: Vec<MatchStatus> = MatchStatus::ALL
+            .iter()
+            .copied()
+            .filter(|status| status.is_resolved())
+            .collect();
+        assert_eq!(
+            resolved,
+            vec![MatchStatus::Completed, MatchStatus::Withdrawn]
+        );
+    }
+
     #[test]
     fn admin_roles_are_admin() {
         assert!(Role::Admin.is_admin());

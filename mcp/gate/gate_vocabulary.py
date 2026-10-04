@@ -142,7 +142,7 @@ def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any
     pattern a fork breaks is found at startup rather than inside a gate run.
 
     The returned rule is JSON-safe: it carries the pattern as the string the config wrote, and the
-    compiled objects live in ``SUMMARY_PATTERNS`` below, beside ``GUARD_MARKER_PATTERN``.
+    compiled objects live in ``SUMMARY_PATTERNS`` below, beside ``GUARD_MARKER_PATTERNS``.
     """
     declared = command.get("summary")
     if not isinstance(declared, dict):
@@ -255,17 +255,17 @@ FIX_COMMANDS: dict[str, dict[str, Any]] = {
 GATE_NAMES: tuple[str, ...] = tuple(GATES)
 FIX_COMMAND_NAMES: tuple[str, ...] = tuple(FIX_COMMANDS)
 
-# The clippy cache-hit guard's marker pattern. cargo honours CARGO_TERM_COLOR=always in the sandbox
-# image even when stderr is a pipe, so the server matches this pattern against output with the SGR
-# escapes stripped; a fork that renames the crate names its own crate here.
-try:
-    GUARD_MARKER_PATTERN = re.compile(
-        str(agentic_config.get("toolchain.commands.clippy.guard.marker_regex"))
-    )
-except re.error:  # a fork's pattern that will not compile: the embedded default answers
-    GUARD_MARKER_PATTERN = re.compile(
-        str(agentic_config.DEFAULT["toolchain"]["commands"]["clippy"]["guard"]["marker_regex"])
-    )
+# The cache-hit guards' marker patterns, one per command that declares a guard. cargo honours
+# CARGO_TERM_COLOR=always in the sandbox image even when stderr is a pipe, so the server matches
+# these against output with the escapes stripped; a fork that renames its crates names them here.
+def _guard_pattern(name: str) -> re.Pattern[str]:
+    try:
+        return re.compile(str(agentic_config.get(f"toolchain.commands.{name}.guard.marker_regex")))
+    except re.error:  # a fork's pattern that will not compile: the embedded default answers
+        default = agentic_config.DEFAULT["toolchain"]["commands"][name]["guard"]["marker_regex"]
+        return re.compile(str(default))
+GUARD_MARKER_PATTERNS = {name: _guard_pattern(name)
+                         for name, definition in COMMANDS.items() if definition["guard"]}
 
 # The compiled output-summary patterns, one sub-table per command that declares a rule. `_summary`
 # already compiled each of these once to validate it, so nothing here can raise: a pattern that
