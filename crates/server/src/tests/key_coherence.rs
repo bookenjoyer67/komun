@@ -1,4 +1,5 @@
-//! The key writers must never write a lone key column, or a new public key without the full set.
+//! The key writers must never write a lone key column, a new public key without the full set, or a
+//! write that would leave the five key columns partly set.
 //!
 //! Every test needs a live Postgres, so every test is `#[ignore]`d; run against a disposable
 //! database with `KOMUN_TEST_DATABASE_URL=postgres://... cargo test -p komun-server key_coherence
@@ -29,6 +30,7 @@ const DATABASE_ENV: &str = "KOMUN_TEST_DATABASE_URL";
 const SIGNUP_PATH: &str = "/signup";
 const RESET_PATH: &str = "/password-reset/confirm";
 const CHANGE_PATH: &str = "/password/change";
+const REISSUE_PATH: &str = "/recovery/reissue";
 
 /// Synthetic verifiers, base64 and at least 43 characters; `NEW_VERIFIER` is set by a reset or
 /// change.
@@ -51,6 +53,8 @@ const PUBLIC_KEY_NEEDS_ALL_ERROR: &str =
 const BUNDLE_PAIR_ERROR: &str = "encrypted_key_bundle and bundle_salt must be sent together";
 const RECOVERY_PAIR_ERROR: &str =
     "encrypted_recovery_bundle and recovery_bundle_salt must be sent together";
+const INCOMPLETE_STORED_KEYS_ERROR: &str =
+    "the stored encryption keys are incomplete: a key update must send all five key columns";
 
 const K1_TAG: u8 = 0x10;
 const K2_TAG: u8 = 0x60;
@@ -385,6 +389,13 @@ fn assert_bad_request(status: StatusCode, body: &Value, expected_error: Option<&
     if let Some(expected) = expected_error {
         assert_eq!(error_of(body), expected);
     }
+}
+
+/// The refusal for a key write over a row that cannot receive it: the request is well formed, so it
+/// is 409 rather than 400.
+fn assert_conflict(status: StatusCode, body: &Value) {
+    assert_eq!(status, StatusCode::CONFLICT, "error: {:?}", error_of(body));
+    assert_eq!(error_of(body), INCOMPLETE_STORED_KEYS_ERROR);
 }
 
 fn assert_success(status: StatusCode, body: &Value) {
@@ -734,4 +745,142 @@ async fn cp4_change_with_no_key_fields_and_no_stored_keys_is_accepted() {
     assert_success(status, &body);
     let after = key_row(&h.pool, user.id).await;
     assert_key_columns(&after, &no_keys(), "change with no key field");
+}
+
+/// A reset that sends the bundle pair over a row with none of the other columns stored is refused:
+/// it would leave two of the five key columns set. The token is spent by the lookup that names the
+/// account, so a client in this state asks for a new link and completes the row with all five.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn rc5_reset_with_a_bundle_pair_over_a_keyless_row_is_refused() {
+    let h = live_harness().await;
+    let k2 = key_set(K2_TAG);
+    let user = seed_user(&h.pool, &no_keys()).await;
+    let token = mint_reset_token(&h.pool, user.id).await;
+    let before = snapshot(&h.pool, user.id).await;
+    let sent = KeyRow {
+        encrypted_key_bundle: k2.encrypted_key_bundle,
+        bundle_salt: k2.bundle_salt,
+        ..no_keys()
+    };
+
+    let body = reset_body(&token, &sent);
+    let (status, body) = post_json(&h.app, RESET_PATH, None, &body).await;
+
+    assert_conflict(status, &body);
+    assert_unchanged(&before, &snapshot(&h.pool, user.id).await);
+}
+
+/// A reset that sends the recovery pair over a keyless row is refused the same way.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn rc6_reset_with_the_recovery_pair_over_a_keyless_row_is_refused() {
+    let h = live_harness().await;
+    let k2 = key_set(K2_TAG);
+    let user = seed_user(&h.pool, &no_keys()).await;
+    let token = mint_reset_token(&h.pool, user.id).await;
+    let before = snapshot(&h.pool, user.id).await;
+    let sent = KeyRow {
+        encrypted_recovery_bundle: k2.encrypted_recovery_bundle,
+        recovery_bundle_salt: k2.recovery_bundle_salt,
+        ..no_keys()
+    };
+
+    let body = reset_body(&token, &sent);
+    let (status, body) = post_json(&h.app, RESET_PATH, None, &body).await;
+
+    assert_conflict(status, &body);
+    assert_unchanged(&before, &snapshot(&h.pool, user.id).await);
+}
+
+/// A reset that sends all five columns is the one shape that repairs an incomplete row.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn rc7_reset_with_all_five_over_a_partial_row_completes_it() {
+    let h = live_harness().await;
+    let k1 = key_set(K1_TAG);
+    let k2 = key_set(K2_TAG);
+    let partial = KeyRow {
+        encryption_public_key: k1.encryption_public_key,
+        ..no_keys()
+    };
+    let user = seed_user(&h.pool, &partial).await;
+    let token = mint_reset_token(&h.pool, user.id).await;
+
+    let body = reset_body(&token, &k2);
+    let (status, body) = post_json(&h.app, RESET_PATH, None, &body).await;
+
+    assert_success(status, &body);
+    let after = key_row(&h.pool, user.id).await;
+    assert_key_columns(&after, &k2, "all five over a partial row");
+}
+
+/// A password change that sends the bundle pair over a keyless row is refused: the account holds no
+/// public key for the pair to belong to.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn cp5_change_with_a_bundle_pair_over_a_keyless_row_is_refused() {
+    let h = live_harness().await;
+    let k2 = key_set(K2_TAG);
+    let user = seed_user(&h.pool, &no_keys()).await;
+    let before = snapshot(&h.pool, user.id).await;
+    let sent = KeyRow {
+        encrypted_key_bundle: k2.encrypted_key_bundle,
+        bundle_salt: k2.bundle_salt,
+        ..no_keys()
+    };
+
+    let body = change_body(&sent);
+    let (status, body) = post_json(&h.app, CHANGE_PATH, Some(&user.bearer), &body).await;
+
+    assert_conflict(status, &body);
+    assert_unchanged(&before, &snapshot(&h.pool, user.id).await);
+}
+
+/// A password change with the bundle pair over a row holding the public key alone is refused: three
+/// of five columns is still a key set that cannot be used.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn cp6_change_with_a_bundle_pair_over_a_partial_row_is_refused() {
+    let h = live_harness().await;
+    let k1 = key_set(K1_TAG);
+    let k2 = key_set(K2_TAG);
+    let partial = KeyRow {
+        encryption_public_key: k1.encryption_public_key,
+        ..no_keys()
+    };
+    let user = seed_user(&h.pool, &partial).await;
+    let before = snapshot(&h.pool, user.id).await;
+    let sent = KeyRow {
+        encrypted_key_bundle: k2.encrypted_key_bundle,
+        bundle_salt: k2.bundle_salt,
+        ..no_keys()
+    };
+
+    let body = change_body(&sent);
+    let (status, body) = post_json(&h.app, CHANGE_PATH, Some(&user.bearer), &body).await;
+
+    assert_conflict(status, &body);
+    assert_unchanged(&before, &snapshot(&h.pool, user.id).await);
+}
+
+/// A recovery reissue over a keyless row is refused: a recovery pair recovers a wrap that is not
+/// there, and the public key it belongs to is missing too.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn rr1_reissue_with_the_recovery_pair_over_a_keyless_row_is_refused() {
+    let h = live_harness().await;
+    let k2 = key_set(K2_TAG);
+    let user = seed_user(&h.pool, &no_keys()).await;
+    let before = snapshot(&h.pool, user.id).await;
+    let body = json!({
+        "current_verifier": VERIFIER,
+        "encrypted_recovery_bundle": b64(k2.encrypted_recovery_bundle.as_deref().expect("tag 2")),
+        "recovery_bundle_salt": b64(k2.recovery_bundle_salt.as_deref().expect("tag 2")),
+    });
+
+    let (status, body) = post_json(&h.app, REISSUE_PATH, Some(&user.bearer), &body).await;
+
+    assert_conflict(status, &body);
+    assert_unchanged(&before, &snapshot(&h.pool, user.id).await);
 }
