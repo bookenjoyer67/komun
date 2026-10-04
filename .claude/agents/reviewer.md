@@ -64,6 +64,8 @@ review stays independent of the edits.
   - No key material, password, derived key, recovery code or plaintext message reaches a log, a file or the
     schema (`AGENTS.md:134` `**Never log** keys, bundles, passwords, derived keys, or message plaintext.`).
   - Clippy `must stay at zero warnings` (`AGENTS.md:197`).
+  - Commentary stays minimal: a comment that restates the code, narrates the change or cites a line
+    number is a finding (`.memory/knowledge/coding-standards.md` rule 9).
 - Classify each finding `blocking` or `advisory`. A blocking finding names the file, the line, the rule
   and the literal text that breaks it.
 - Report a test-result entry whose per-gate verdicts do not match the acceptance criteria in the brief.

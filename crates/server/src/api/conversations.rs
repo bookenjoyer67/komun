@@ -25,8 +25,7 @@ pub fn router(state: AppState) -> Router {
         .route("/conversations/{match_id}", get(get_conversation))
         .route("/conversations/{match_id}/messages", post(send_message))
         .route("/conversations/{match_id}/status", patch(update_status))
-        // M2.1 / M2.2 — the negotiation lives on the thread it belongs to rather than in a
-        // collection of its own, because an offer has no meaning away from its conversation.
+        // The negotiation lives on its thread: an offer has no meaning away from its conversation.
         .route(
             "/conversations/{match_id}/offers",
             post(create_offer).get(list_offers),
@@ -35,8 +34,8 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// A3.3: what arrives is a sealed box, not text. The server stores the bytes and never learns
-/// what they say, so the only validation possible here is that they decode and are not empty.
+/// What arrives is a sealed box: the server stores the bytes and never learns what they say, so
+/// the only checks are that they decode and are non-empty.
 #[derive(Deserialize)]
 struct SealedMessage {
     ciphertext: String,
@@ -122,13 +121,8 @@ async fn get_conversation(
     Extension(auth): Extension<AuthUser>,
     Path(match_id): Path<Uuid>,
 ) -> Result<Json<crate::db::conversations::Conversation>, StatusError> {
-    // M2 addendum: this read used to go straight to the query, whose `WHERE ... AND (responder
-    // OR author)` collapsed "no such thread" and "not your thread" into one `anyhow` error that
-    // left here as a **500** saying "conversation not found". An outsider got a server error
-    // while the offers routes beside it answered the same request with a correct 403.
-    //
-    // The 404/403 pair is decided the same way here as on every other route on a thread, so the
-    // answer to "may I see this?" does not depend on which endpoint asked.
+    // The 404/403 pair, decided the same way on every route on a thread so "may I see this?" does
+    // not depend on the endpoint.
     participant_thread(&state, match_id, auth.user_id).await?;
 
     let convo =
@@ -184,9 +178,8 @@ async fn update_status(
     Path(match_id): Path<Uuid>,
     Json(input): Json<UpdateStatusRequest>,
 ) -> Result<Json<serde_json::Value>, StatusError> {
-    // The 404/403 pair. Whether the *transition* is allowed is decided inside the transaction
-    // below, with the row locked — asking here as well would be a second answer that can already
-    // be stale by the time the first statement runs.
+    // Only the 404/403 pair here; whether the transition is allowed is decided inside the locked
+    // transaction, where a second answer could not be stale.
     participant_thread(&state, match_id, auth.user_id).await?;
 
     let to = parse_status(&input.status).map_err(bad_request)?;
@@ -197,18 +190,12 @@ async fn update_status(
     }
 }
 
-// ---------------------------------------------------------------------------
-// M2 — offers on the match thread
-// ---------------------------------------------------------------------------
-
-/// A note is a sentence attached to a number ("collection only, weekends"), not a message: the
-/// messages on this thread are end-to-end encrypted and a note is not. Bounded so the negotiation
-/// trail cannot be used as an unbounded, server-readable side channel around that.
+/// A note is a server-readable sentence attached to a number, unlike the encrypted messages, so it
+/// is length-bounded to stop it becoming a side channel around them.
 pub(crate) const MAX_NOTE_CHARS: usize = 500;
 
-/// The raw offer body. `kind` arrives as a `String` for the same reason the post filters do:
-/// typing it would hand an unknown value to serde, which answers 422 with a message naming a Rust
-/// type. What a client needs is a 400 that lists the four steps a negotiation has.
+/// `kind` is a `String` for the same reason post filters are: a typed field lets serde answer 422
+/// with a Rust type name instead of a 400 listing the four steps.
 #[derive(Deserialize, Default)]
 pub(crate) struct OfferRequest {
     pub(crate) kind: Option<String>,
@@ -217,7 +204,6 @@ pub(crate) struct OfferRequest {
     pub(crate) note: Option<String>,
 }
 
-/// An offer body that has passed every check that does not need the thread or the config.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ValidOffer {
     pub(crate) kind: OfferKind,
@@ -237,8 +223,7 @@ async fn create_offer(
 
     let offer = validate_offer(&input).map_err(bad_request)?;
 
-    // Only a step that carries a number needs a currency; a decline keeps whatever the client
-    // chose to send, which for a row with no amount is almost always nothing.
+    // Only a step that carries a number needs a currency; a decline keeps whatever the client sent.
     let currency = match offer.amount_cents {
         None => offer.currency.clone(),
         Some(_) => Some(
@@ -252,8 +237,8 @@ async fn create_offer(
     };
 
     let step = match offer.kind {
-        // M2.3: an accept is not a row, it is the agreement — so it goes through the transaction
-        // that writes the row, the agreed price and the status together.
+        // An accept is the agreement, not just a row: it writes the row, the agreed price and the
+        // status in one transaction.
         OfferKind::Accept => {
             let amount = offer
                 .amount_cents
@@ -268,7 +253,7 @@ async fn create_offer(
             )
             .await?
         }
-        // M2 decision: a decline is recorded, then closes the thread as `withdrawn`.
+        // A decline is recorded, then closes the thread as `withdrawn`.
         OfferKind::Decline => {
             crate::db::conversations::decline_offer(
                 &state.pool,
@@ -279,10 +264,8 @@ async fn create_offer(
             )
             .await?
         }
-        // An `offer` or a `counter` changes no state of its own — but a thread that is over does
-        // not take one. M2 addendum: this arm used to append whatever the status was, so a
-        // decline that had already withdrawn the thread was followed by a fresh offer sitting
-        // under it, which renders as a live number waiting for an answer nobody can give.
+        // An offer or counter changes no state of its own, but a thread that is over does not take
+        // one.
         OfferKind::Offer | OfferKind::Counter => {
             crate::db::conversations::append_offer(
                 &state.pool,
@@ -325,8 +308,6 @@ async fn participant_thread(
         .ok_or_else(|| StatusError::with_status(StatusCode::NOT_FOUND, "conversation not found"))?;
 
     if !thread.is_participant(user_id) {
-        // Was HTTP 200 with an `error` key in the body — the same shape A2b fixed on the admin
-        // role route. A client checking the status code read this as success.
         return Err(StatusError::with_status(
             StatusCode::FORBIDDEN,
             "not a participant",
@@ -340,8 +321,8 @@ fn conflict(message: impl std::fmt::Display) -> StatusError {
     StatusError::with_status(StatusCode::CONFLICT, message)
 }
 
-/// M2 decision: offers are for listings and wanted ads. An aid thread keeps its plain
-/// propose/accept flow, and putting a price on one would be the start of charging for aid.
+/// Offers are for listings and wanted ads; an aid thread keeps its plain propose/accept flow, and
+/// putting a price on one would be the start of charging for aid.
 pub(crate) fn offers_allowed_on(post_kind: PostKind) -> Result<(), String> {
     if post_kind.is_market() {
         Ok(())
@@ -350,9 +331,8 @@ pub(crate) fn offers_allowed_on(post_kind: PostKind) -> Result<(), String> {
     }
 }
 
-/// Every check on an offer body that needs neither the thread nor the server config.
-///
-/// Pure and `pub(crate)` so `tests::market` can pin every branch without a database.
+/// Pure checks on an offer body needing neither the thread nor the config; `pub(crate)` so
+/// `tests::market` can pin every branch.
 pub(crate) fn validate_offer(raw: &OfferRequest) -> Result<ValidOffer, String> {
     let kind = match trimmed(raw.kind.as_deref()) {
         None => {
@@ -366,8 +346,8 @@ pub(crate) fn validate_offer(raw: &OfferRequest) -> Result<ValidOffer, String> {
     };
 
     let amount_cents = match (kind, raw.amount_cents) {
-        // A declined offer has no amount of its own — the number it refuses is already on the
-        // thread, and a second copy of it under `decline` would read as a counter.
+        // A decline carries no amount: the number it refuses is already on the thread, and a copy
+        // would read as a counter.
         (OfferKind::Decline, Some(cents)) => {
             return Err(format!("a 'decline' carries no amount_cents (got {cents})"))
         }
@@ -392,8 +372,8 @@ pub(crate) fn validate_offer(raw: &OfferRequest) -> Result<ValidOffer, String> {
     let note = match trimmed(raw.note.as_deref()) {
         None => None,
         Some(note) => {
-            // Characters, not bytes: a note in a non-Latin script would otherwise be cut to a
-            // third of the length the message promises.
+            // Characters, not bytes: a non-Latin note would otherwise be cut to a third of the
+            // promised length.
             let length = note.chars().count();
             if length > MAX_NOTE_CHARS {
                 return Err(format!(
@@ -412,9 +392,8 @@ pub(crate) fn validate_offer(raw: &OfferRequest) -> Result<ValidOffer, String> {
     })
 }
 
-/// M2 decision — currency precedence: the offer's own, else the post's, else `[market]
-/// default_currency`. A fourth step is not available: inventing one would price somebody's deal
-/// in a unit neither party named.
+/// Currency precedence: the offer's own, else the post's, else `[market] default_currency`; there
+/// is no fourth step because it would price a deal in a unit neither party named.
 pub(crate) fn resolve_offer_currency(
     offered: Option<&str>,
     post: Option<&str>,
@@ -431,8 +410,8 @@ pub(crate) fn resolve_offer_currency(
         })
 }
 
-/// `PATCH .../status` takes the same four values `chk_matches_status` does, rendered from the
-/// enum so the accepted list cannot fall behind the CHECK it is pinned to.
+/// The four values `chk_matches_status` enforces, rendered from the enum so the list cannot fall
+/// behind the CHECK.
 pub(crate) fn parse_status(raw: &str) -> Result<MatchStatus, String> {
     let Some(value) = trimmed(Some(raw)) else {
         return Err(format!(

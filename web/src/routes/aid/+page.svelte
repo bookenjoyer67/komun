@@ -7,8 +7,7 @@
 	import RespondModal from '$lib/components/RespondModal.svelte';
 	import type { PostLike } from '$lib/api/types';
 
-	// A3.1 made posts a flat, server-wide collection: this page is the whole feed of the
-	// server you are connected to, with no community to pick first.
+	// Flat, server-wide feed: there is no community to pick first.
 	type Post = PostLike;
 
 	let posts: Post[] = $state([]);

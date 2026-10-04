@@ -52,10 +52,7 @@
 		filter === 'all' ? posts : posts.filter((p) => p.kind === filter)
 	);
 
-	/**
-	 * A6 removed communities, so the way to seed an empty server is to post to it directly
-	 * rather than to found a container first.
-	 */
+	/** To seed an empty server, post to it directly — there is no container to found first. */
 	async function postFirst() {
 		if (!isConnected()) {
 			if (servers.length === 0) {

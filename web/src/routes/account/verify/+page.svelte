@@ -63,8 +63,7 @@
 			<label for="email">Email</label>
 			<input id="email" type="email" autocomplete="email" bind:value={resendEmail} required />
 			{#if resent}
-				<!-- Same wording regardless of whether the address is on file, for the same reason
-				     the reset form gives nothing away. -->
+				<!-- Same wording whether or not the address is on file, for the same anti-enumeration reason as the reset form. -->
 				<p class="ok">If that address needs verifying, a new link is on its way.</p>
 			{/if}
 			{#if error && status !== 'failed'}<p class="error">{error}</p>{/if}

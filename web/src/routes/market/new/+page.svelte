@@ -27,8 +27,7 @@
 	let locationLon: number | null = $state(null);
 	let contactMethod = $state('');
 
-	// The market form shows market-only + `both` categories, straight from the
-	// seeded table. No hardcoded option list lives here.
+	// Categories come from the seeded table; there is no hardcoded option list.
 	let categories = $state<Category[]>([]);
 	let categoryError = $state('');
 	let error = $state('');
@@ -90,8 +89,7 @@
 					title: title.trim(),
 					body: body.trim() || null,
 					price_cents: parsePriceToCents(priceText),
-					// Empty stays empty: the server resolves `[market] default_currency`
-					// (or null). The client must not invent a currency of its own.
+					// Empty stays empty: the server resolves `[market] default_currency`; the client must not invent one.
 					currency: currency.trim() || null,
 					price_negotiable: negotiable,
 					item_condition: condition || null,

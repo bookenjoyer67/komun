@@ -1,9 +1,4 @@
 //! The shared HTTP error type.
-//!
-//! A3.1: this lived in `api/communities.rs` until that file was deleted. Seven modules import it
-//! (`admin`, `conversations`, `directory`, `notifications`, `posts`, `reports`, `search`), so it
-//! needed a home that is not tied to a domain concept. `api/mod.rs` re-exports it, which is why
-//! every call site says `use super::StatusError`.
 
 use axum::{
     http::StatusCode,
@@ -11,10 +6,8 @@ use axum::{
     Json,
 };
 
-/// An `anyhow::Error` carrying the status code it should be reported as.
-///
-/// The blanket `From` means `?` on any error works and produces a 500; anything the client is
-/// allowed to see is built explicitly with [`StatusError::with_status`].
+/// An `anyhow::Error` carrying the status code it should be reported as. The blanket `From` makes
+/// `?` produce a 500; anything the client may see is built with [`StatusError::with_status`].
 pub struct StatusError {
     status: StatusCode,
     inner: anyhow::Error,

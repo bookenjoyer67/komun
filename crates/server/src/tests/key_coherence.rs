@@ -1,22 +1,9 @@
-//! secaudit R2b: the signup, password-reset/confirm and change_password key writers must never
-//! write a lone key column, or a new public key without the full set.
+//! The key writers must never write a lone key column, or a new public key without the full set.
 //!
-//! Every test here needs a live Postgres, so every test is `#[ignore]`d and shows as ignored under
-//! `cargo test --workspace`. Run them against a disposable database with:
-//!
-//! `KOMUN_TEST_DATABASE_URL=postgres://... cargo test -p komun-server key_coherence -- --ignored`
-//!
-//! The tests drive `crate::auth::router` over HTTP only and set up or inspect rows with direct
-//! SQL. They name nothing from the fix itself: the refusal messages below are literals fixed by
-//! plan dc2069e5, section 2, so the same file compiles against the unfixed tree and the fixed one.
-//! Each test builds its own harness, and so its own rate limiter, and sends exactly one request to
-//! the route under test, because password-reset/confirm allows only 3 attempts per hour. Each test
-//! uses its own user and a unique email, so the tests run in any order against a shared database.
-//!
-//! All passwords and keys below are synthetic byte patterns, not real material. Even so, nothing
-//! holding key bytes derives `Debug`, and every comparison of key bytes is an `assert!` whose
-//! message names the column only (R2 review finding F6). Failure messages print the response's
-//! `error` field and never the whole body.
+//! Every test needs a live Postgres, so every test is `#[ignore]`d; run against a disposable
+//! database with `KOMUN_TEST_DATABASE_URL=postgres://... cargo test -p komun-server key_coherence
+//! -- --ignored`. Each test builds its own harness and user, so they run in any order. All
+//! passwords and keys are synthetic byte patterns, not real material.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -43,21 +30,19 @@ const SIGNUP_PATH: &str = "/signup";
 const RESET_PATH: &str = "/password-reset/confirm";
 const CHANGE_PATH: &str = "/password/change";
 
-/// Synthetic verifiers in the shape the client sends: base64 alphabet, at least 43 characters.
-/// `VERIFIER` is the seeded password; `NEW_VERIFIER` is the password a reset or a change sets.
+/// Synthetic verifiers, base64 and at least 43 characters; `NEW_VERIFIER` is set by a reset or
+/// change.
 const VERIFIER: &str = "c3ludGhldGljLXRlc3QtdmVyaWZpZXItZm9yLWtleS1jb2hlcmVuY2U";
 const NEW_VERIFIER: &str = "bmV3LXN5bnRoZXRpYy12ZXJpZmllci1mb3Ita2V5LWNvaGVyZW5jZQ";
 
-/// Synthetic `auth_salt` values, 16 bytes each: the minimum the handlers accept.
+/// Synthetic `auth_salt` values, 16 bytes: the minimum the handlers accept.
 const SEEDED_AUTH_SALT: [u8; 16] = [0x5a; 16];
 const NEW_AUTH_SALT: [u8; 16] = [0xa5; 16];
 
 /// Above the default `min_password_length` of 12.
 const PASSWORD_LENGTH: usize = 16;
 
-/// The refusal messages fixed by plan dc2069e5, section 2. The auth API has no error-code field,
-/// so the message string is the code. `PARTIAL_SET_ERROR` is R2's text, which signup reuses, and
-/// `PUBLIC_KEY_NEEDS_ALL_ERROR` is the reset guard's existing text, which reset keeps.
+/// The refusal messages are the API's error codes: it has no error-code field.
 const PARTIAL_SET_ERROR: &str = "the encryption keys must be sent together: \
                                  encryption_public_key, encrypted_key_bundle, bundle_salt, \
                                  encrypted_recovery_bundle, recovery_bundle_salt";
@@ -70,10 +55,7 @@ const RECOVERY_PAIR_ERROR: &str =
 const K1_TAG: u8 = 0x10;
 const K2_TAG: u8 = 0x60;
 
-/// The five key columns of `users`, in schema order.
-///
-/// It holds key bytes, so it deliberately derives no `Debug`: no failing assertion can print it.
-/// Compare two of these with `assert_key_columns`, which names a differing column and nothing else.
+/// The five key columns of `users`, in schema order; it holds key bytes, so it derives no `Debug`.
 #[derive(sqlx::FromRow)]
 struct KeyRow {
     encryption_public_key: Option<Vec<u8>>,
@@ -95,7 +77,7 @@ impl KeyRow {
     }
 }
 
-/// A full synthetic key set. Two different tags differ in every one of the five columns.
+/// A full synthetic key set; two tags differ in every one of the five columns.
 fn key_set(tag: u8) -> KeyRow {
     KeyRow {
         encryption_public_key: Some(vec![tag; 32]),
@@ -120,7 +102,6 @@ fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
-/// The request-body fields for every present column of `keys`, base64-encoded as the API expects.
 fn key_fields(keys: &KeyRow) -> Map<String, Value> {
     let mut fields = Map::new();
     for (name, value) in keys.fields() {
@@ -131,7 +112,6 @@ fn key_fields(keys: &KeyRow) -> Map<String, Value> {
     fields
 }
 
-/// Adds the present key columns of `keys` to a request body.
 fn with_keys(base: Value, keys: &KeyRow) -> Value {
     let Value::Object(mut fields) = base else {
         panic!("a request body is a JSON object");
@@ -140,7 +120,7 @@ fn with_keys(base: Value, keys: &KeyRow) -> Value {
     Value::Object(fields)
 }
 
-/// A signup body in the shape `signup` in web/src/lib/stores/auth.ts sends.
+/// A signup body in the shape the web client sends.
 fn signup_body(email: &str, keys: &KeyRow) -> Value {
     let base = json!({
         "email": email,
@@ -153,7 +133,7 @@ fn signup_body(email: &str, keys: &KeyRow) -> Value {
     with_keys(base, keys)
 }
 
-/// A reset body in the shape `confirmPasswordReset` in web/src/lib/stores/auth.ts sends.
+/// A reset body in the shape the web client sends.
 fn reset_body(token: &ResetToken, keys: &KeyRow) -> Value {
     let base = json!({
         "token": token.raw,
@@ -164,7 +144,7 @@ fn reset_body(token: &ResetToken, keys: &KeyRow) -> Value {
     with_keys(base, keys)
 }
 
-/// A change body in the shape `changePassword` in web/src/lib/stores/auth.ts sends.
+/// A change body in the shape the web client sends.
 fn change_body(keys: &KeyRow) -> Value {
     let base = json!({
         "current_verifier": VERIFIER,
@@ -175,7 +155,7 @@ fn change_body(keys: &KeyRow) -> Value {
     with_keys(base, keys)
 }
 
-/// A unique signup address. `Uuid` renders in lower case, which the `users.email` CHECK requires.
+/// A unique signup address; `Uuid` renders lower-case, as the `users.email` CHECK requires.
 fn signup_email() -> String {
     format!("r2b-signup-{}@test.invalid", Uuid::now_v7())
 }
@@ -185,12 +165,8 @@ struct Harness {
     app: Router,
 }
 
-/// Connects to the database named by `KOMUN_TEST_DATABASE_URL` and builds the auth router over it,
-/// with a fresh rate limiter.
-///
-/// Without the variable this panics before any database work: an ignored test run on purpose
-/// must not report a pass it never earned. The URL itself is never printed, because it may carry a
-/// password.
+/// Connects via `KOMUN_TEST_DATABASE_URL`; without it the test panics rather than passing
+/// unearned, and the URL is never printed.
 async fn live_harness() -> Harness {
     let Ok(url) = std::env::var(DATABASE_ENV) else {
         panic!("{DATABASE_ENV} is not set: point it at a disposable Postgres database");
@@ -224,8 +200,7 @@ struct TestUser {
     bearer: String,
 }
 
-/// Inserts a verified user whose password verifier is `VERIFIER` and whose key columns are `keys`,
-/// then opens a session for it. The email is unique per call.
+/// Inserts a verified user with `keys`, then opens a session; the email is unique per call.
 async fn seed_user(pool: &PgPool, keys: &KeyRow) -> TestUser {
     let id = Uuid::now_v7();
     let email = format!("r2b-key-coherence-{id}@test.invalid");
@@ -260,7 +235,7 @@ async fn seed_user(pool: &PgPool, keys: &KeyRow) -> TestUser {
     }
 }
 
-/// A password-reset token minted straight into `one_time_tokens`, as the reset mail would carry it.
+/// A password-reset token minted straight into `one_time_tokens`.
 struct ResetToken {
     raw: String,
     hash: Vec<u8>,
@@ -283,7 +258,6 @@ async fn mint_reset_token(pool: &PgPool, user_id: Uuid) -> ResetToken {
     }
 }
 
-/// True while the reset token has not been consumed.
 async fn token_unused(pool: &PgPool, token: &ResetToken) -> bool {
     sqlx::query_scalar::<_, bool>(
         "SELECT used_at IS NULL FROM one_time_tokens WHERE token_hash = $1",
@@ -314,8 +288,8 @@ async fn key_row(pool: &PgPool, user_id: Uuid) -> KeyRow {
     .expect("read key columns")
 }
 
-/// Every column of the user's row, as Postgres renders it. `users` has no `updated_at`, so this
-/// snapshot is the only way to see that nothing moved.
+/// Every column of the row; `users` has no `updated_at`, so this is the only way to see nothing
+/// moved.
 async fn full_row(pool: &PgPool, user_id: Uuid) -> Value {
     sqlx::query_scalar::<_, Value>("SELECT to_jsonb(u) FROM users u WHERE u.id = $1")
         .bind(user_id)
@@ -324,8 +298,7 @@ async fn full_row(pool: &PgPool, user_id: Uuid) -> Value {
         .expect("read full user row")
 }
 
-/// Everything a refused request must leave alone: the five key columns, the two password columns
-/// and, as a backstop, the whole row. It holds key bytes, so it derives no `Debug`.
+/// Everything a refused request must leave alone; holds key bytes, so it derives no `Debug`.
 struct Snapshot {
     keys: KeyRow,
     password_hash: String,
@@ -349,14 +322,14 @@ async fn snapshot(pool: &PgPool, user_id: Uuid) -> Snapshot {
     }
 }
 
-/// Compares the five key columns one by one. A mismatch names the column and prints no bytes.
+/// Compares the five key columns; a mismatch names the column and prints no bytes.
 fn assert_key_columns(actual: &KeyRow, expected: &KeyRow, context: &str) {
     for ((name, got), (_, want)) in actual.fields().into_iter().zip(expected.fields()) {
         assert!(got == want, "{context}: {name} is not the expected value");
     }
 }
 
-/// Asserts that a refused request moved nothing. Each message names a column, never its value.
+/// Asserts a refused request moved nothing; messages name a column, never its value.
 fn assert_unchanged(before: &Snapshot, after: &Snapshot) {
     assert_key_columns(&after.keys, &before.keys, "refused request");
     assert!(
@@ -397,13 +370,11 @@ async fn post_json(
     (status, json)
 }
 
-/// The `error` field of a response. Assertion messages print this and never the whole body, which
-/// on success may echo key fields.
+/// The `error` field only: a body may echo key fields on success.
 fn error_of(body: &Value) -> &str {
     body.get("error").and_then(Value::as_str).unwrap_or("")
 }
 
-/// Asserts a 400 and, when one is given, its error message.
 fn assert_bad_request(status: StatusCode, body: &Value, expected_error: Option<&str>) {
     assert_eq!(
         status,
@@ -420,8 +391,7 @@ fn assert_success(status: StatusCode, body: &Value) {
     assert!(status.is_success(), "got {status}: {:?}", error_of(body));
 }
 
-/// SU1: a signup carrying a partial key set is refused with R2's partial-set message, and no
-/// `users` row exists for its email afterwards.
+/// A partial-set signup is refused and creates no `users` row.
 async fn signup_with_partial_set_is_refused(sent: KeyRow) {
     let h = live_harness().await;
     let email = signup_email();
@@ -436,8 +406,7 @@ async fn signup_with_partial_set_is_refused(sent: KeyRow) {
     );
 }
 
-/// RC1/RC2: a reset with incoherent key fields, against a user holding K1, is refused. It moves no
-/// key column, no password column and nothing else in the row, and the reset token stays unused.
+/// An incoherent reset is refused: nothing moves and the token stays unused.
 async fn reset_with_incoherent_keys_is_refused(sent: KeyRow, expected_error: &str) {
     let h = live_harness().await;
     let user = seed_user(&h.pool, &key_set(K1_TAG)).await;
@@ -455,8 +424,7 @@ async fn reset_with_incoherent_keys_is_refused(sent: KeyRow, expected_error: &st
     );
 }
 
-/// CP1/CP2: a password change carrying one of the bundle pair alone is refused, and the user's row
-/// is unchanged. `expected_error` is `None` where the plan does not pin the message.
+/// A change carrying a lone bundle column is refused and moves nothing.
 async fn change_with_a_lone_bundle_column_is_refused(
     stored: KeyRow,
     sent: KeyRow,
@@ -473,7 +441,7 @@ async fn change_with_a_lone_bundle_column_is_refused(
     assert_unchanged(&before, &snapshot(&h.pool, user.id).await);
 }
 
-/// SU1a: signup with `encryption_public_key` alone is refused.
+/// Signup with `encryption_public_key` alone is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn su1a_signup_with_the_public_key_alone_is_refused() {
@@ -485,7 +453,7 @@ async fn su1a_signup_with_the_public_key_alone_is_refused() {
     signup_with_partial_set_is_refused(sent).await;
 }
 
-/// SU1b: signup with the key-bundle pair alone is refused.
+/// Signup with the key-bundle pair alone is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn su1b_signup_with_the_bundle_pair_alone_is_refused() {
@@ -498,7 +466,7 @@ async fn su1b_signup_with_the_bundle_pair_alone_is_refused() {
     signup_with_partial_set_is_refused(sent).await;
 }
 
-/// SU1c: signup with every key column except `recovery_bundle_salt` is refused.
+/// Signup with every key column except `recovery_bundle_salt` is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn su1c_signup_without_the_recovery_bundle_salt_is_refused() {
@@ -509,7 +477,7 @@ async fn su1c_signup_without_the_recovery_bundle_salt_is_refused() {
     signup_with_partial_set_is_refused(sent).await;
 }
 
-/// SU1d: signup with the recovery pair alone is refused.
+/// Signup with the recovery pair alone is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn su1d_signup_with_the_recovery_pair_alone_is_refused() {
@@ -522,7 +490,7 @@ async fn su1d_signup_with_the_recovery_pair_alone_is_refused() {
     signup_with_partial_set_is_refused(sent).await;
 }
 
-/// SU2: signup with all five key columns, the web client's shape, writes all five.
+/// Signup with all five key columns writes all five.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn su2_signup_with_all_five_keys_writes_them() {
@@ -541,7 +509,7 @@ async fn su2_signup_with_all_five_keys_writes_them() {
     assert_key_columns(&after, &k1, "signup with all five");
 }
 
-/// SU3: signup with no key column is accepted and leaves all five NULL.
+/// Signup with no key column is accepted and leaves all five NULL.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn su3_signup_with_no_keys_leaves_all_five_null() {
@@ -559,7 +527,7 @@ async fn su3_signup_with_no_keys_leaves_all_five_null() {
     assert_key_columns(&after, &no_keys(), "signup with none");
 }
 
-/// RC1a: a reset with `encrypted_key_bundle` alone is refused.
+/// A reset with `encrypted_key_bundle` alone is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn rc1a_reset_with_the_key_bundle_alone_is_refused() {
@@ -571,7 +539,7 @@ async fn rc1a_reset_with_the_key_bundle_alone_is_refused() {
     reset_with_incoherent_keys_is_refused(sent, BUNDLE_PAIR_ERROR).await;
 }
 
-/// RC1b: a reset with `bundle_salt` alone is refused.
+/// A reset with `bundle_salt` alone is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn rc1b_reset_with_the_bundle_salt_alone_is_refused() {
@@ -583,7 +551,7 @@ async fn rc1b_reset_with_the_bundle_salt_alone_is_refused() {
     reset_with_incoherent_keys_is_refused(sent, BUNDLE_PAIR_ERROR).await;
 }
 
-/// RC1c: a reset with `encrypted_recovery_bundle` alone is refused.
+/// A reset with `encrypted_recovery_bundle` alone is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn rc1c_reset_with_the_recovery_bundle_alone_is_refused() {
@@ -595,7 +563,7 @@ async fn rc1c_reset_with_the_recovery_bundle_alone_is_refused() {
     reset_with_incoherent_keys_is_refused(sent, RECOVERY_PAIR_ERROR).await;
 }
 
-/// RC1d: a reset with `recovery_bundle_salt` alone is refused.
+/// A reset with `recovery_bundle_salt` alone is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn rc1d_reset_with_the_recovery_bundle_salt_alone_is_refused() {
@@ -607,7 +575,7 @@ async fn rc1d_reset_with_the_recovery_bundle_salt_alone_is_refused() {
     reset_with_incoherent_keys_is_refused(sent, RECOVERY_PAIR_ERROR).await;
 }
 
-/// RC2a: a reset with a new `encryption_public_key` alone is refused with the existing message.
+/// A reset with a new `encryption_public_key` alone is refused with the existing message.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn rc2a_reset_with_the_public_key_alone_is_refused() {
@@ -619,7 +587,7 @@ async fn rc2a_reset_with_the_public_key_alone_is_refused() {
     reset_with_incoherent_keys_is_refused(sent, PUBLIC_KEY_NEEDS_ALL_ERROR).await;
 }
 
-/// RC2b: a reset with a new public key and the bundle pair, but no recovery pair, is refused.
+/// A reset with a new public key and the bundle pair, but no recovery pair, is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn rc2b_reset_with_a_public_key_and_only_the_bundle_pair_is_refused() {
@@ -633,8 +601,7 @@ async fn rc2b_reset_with_a_public_key_and_only_the_bundle_pair_is_refused() {
     reset_with_incoherent_keys_is_refused(sent, PUBLIC_KEY_NEEDS_ALL_ERROR).await;
 }
 
-/// RC3: a reset with a new bundle pair, the recovery-code shape (auth.ts:451-452), writes the pair
-/// and leaves the public key and the recovery pair as they were.
+/// A reset with a new bundle pair writes the pair and leaves the public key and recovery pair.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn rc3_reset_with_a_new_bundle_pair_writes_only_the_pair() {
@@ -662,8 +629,7 @@ async fn rc3_reset_with_a_new_bundle_pair_writes_only_the_pair() {
     assert_key_columns(&after, &expected, "reset with a bundle pair");
 }
 
-/// RC4: a reset with all five new key columns, the no-recovery-code shape (auth.ts:454-458),
-/// writes all five.
+/// A reset with all five new key columns writes all five.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn rc4_reset_with_all_five_new_keys_writes_them() {
@@ -680,8 +646,7 @@ async fn rc4_reset_with_all_five_new_keys_writes_them() {
     assert_key_columns(&after, &k2, "reset with all five");
 }
 
-/// CP1a: a password change with `encrypted_key_bundle` alone, on an account with no keys, is
-/// refused.
+/// A change with `encrypted_key_bundle` alone, on an account with no keys, is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn cp1a_change_with_the_key_bundle_alone_and_no_stored_keys_is_refused() {
@@ -693,7 +658,7 @@ async fn cp1a_change_with_the_key_bundle_alone_and_no_stored_keys_is_refused() {
     change_with_a_lone_bundle_column_is_refused(no_keys(), sent, Some(BUNDLE_PAIR_ERROR)).await;
 }
 
-/// CP1b: a password change with `bundle_salt` alone, on an account with no keys, is refused.
+/// A change with `bundle_salt` alone, on an account with no keys, is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn cp1b_change_with_the_bundle_salt_alone_and_no_stored_keys_is_refused() {
@@ -705,8 +670,7 @@ async fn cp1b_change_with_the_bundle_salt_alone_and_no_stored_keys_is_refused() 
     change_with_a_lone_bundle_column_is_refused(no_keys(), sent, Some(BUNDLE_PAIR_ERROR)).await;
 }
 
-/// CP2a: a password change with `encrypted_key_bundle` alone, on an account holding K1, is
-/// refused. The message is not pinned: the existing guard refuses this shape before the fix.
+/// A change with `encrypted_key_bundle` alone, over stored keys, is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn cp2a_change_with_the_key_bundle_alone_over_stored_keys_is_refused() {
@@ -718,7 +682,7 @@ async fn cp2a_change_with_the_key_bundle_alone_over_stored_keys_is_refused() {
     change_with_a_lone_bundle_column_is_refused(key_set(K1_TAG), sent, None).await;
 }
 
-/// CP2b: a password change with `bundle_salt` alone, on an account holding K1, is refused.
+/// A change with `bundle_salt` alone, over stored keys, is refused.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn cp2b_change_with_the_bundle_salt_alone_over_stored_keys_is_refused() {
@@ -730,8 +694,7 @@ async fn cp2b_change_with_the_bundle_salt_alone_over_stored_keys_is_refused() {
     change_with_a_lone_bundle_column_is_refused(key_set(K1_TAG), sent, None).await;
 }
 
-/// CP3: a password change with a new bundle pair, the web client's shape (auth.ts:537-541), writes
-/// the pair and leaves the public key and the recovery pair as they were.
+/// A change with a new bundle pair writes the pair and leaves the public key and recovery pair.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn cp3_change_with_a_new_bundle_pair_writes_only_the_pair() {
@@ -758,8 +721,7 @@ async fn cp3_change_with_a_new_bundle_pair_writes_only_the_pair() {
     assert_key_columns(&after, &expected, "change with a bundle pair");
 }
 
-/// CP4: a password change with no key field, on an account with no keys, is accepted and leaves
-/// all five NULL.
+/// A change with no key field, on an account with no keys, is accepted and leaves all five NULL.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn cp4_change_with_no_key_fields_and_no_stored_keys_is_accepted() {

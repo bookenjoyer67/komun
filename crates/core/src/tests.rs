@@ -1,18 +1,10 @@
-// This file is already the crate's `tests` module (`crates/core/src/lib.rs:3` `mod tests;`), so an
-// inner `mod tests` would be `clippy::module_inception`. The name says what the module pins:
-// the Rust enums, the seeded categories and the wire format against `migrations/001_schema.sql`.
+// No inner `mod tests`: it would be `clippy::module_inception`.
 #[cfg(test)]
 mod schema_contract {
     use crate::models::*;
     use std::collections::{BTreeMap, BTreeSet};
 
-    // -----------------------------------------------------------------------
-    // Reading the migration
-    //
-    // The whole point of this file is that the Rust enums and the database CHECK
-    // lists cannot drift apart unnoticed (the P1-P3 class of bug). So the lists are
-    // read out of migrations/001_schema.sql at test time — never copied here.
-    // -----------------------------------------------------------------------
+    // The CHECK lists are read out of the migration at test time, never copied here, so the enums and the schema cannot drift unnoticed.
 
     fn schema_sql() -> String {
         let path = concat!(
@@ -46,9 +38,7 @@ mod schema_contract {
             .collect()
     }
 
-    /// Every `CONSTRAINT chk_x CHECK (col IN ('a', 'b'))` in the migration, keyed by
-    /// constraint name. A CHECK only counts as a value list when that is the whole of
-    /// it: ranges, regexes and compound conditions are skipped rather than half-read.
+    /// Every `CONSTRAINT chk_x CHECK (col IN ('a', 'b'))` in the migration, keyed by name; ranges, regexes and compound conditions are skipped rather than half-read.
     fn check_lists() -> BTreeMap<String, BTreeSet<String>> {
         let sql = schema_sql();
         let mut out = BTreeMap::new();
@@ -114,7 +104,6 @@ mod schema_contract {
                 stringify!($enum),
                 $constraint
             );
-            // and the round trip holds for every value the database may hand back
             for value in &from_sql {
                 let parsed = <$enum>::parse(value)
                     .unwrap_or_else(|| panic!("{} cannot parse {value:?}", stringify!($enum)));
@@ -123,10 +112,6 @@ mod schema_contract {
             assert!(<$enum>::parse("definitely-not-a-value").is_none());
         }};
     }
-
-    // -----------------------------------------------------------------------
-    // enum <-> CHECK agreement
-    // -----------------------------------------------------------------------
 
     #[test]
     fn post_kind_matches_schema() {
@@ -173,8 +158,7 @@ mod schema_contract {
         assert_enum_pinned!(CategoryScope, "chk_categories_scope");
     }
 
-    /// A new enum-like CHECK list in the schema must come with a Rust enum pinning it,
-    /// or be listed here as deliberately owned elsewhere.
+    /// A new enum-like CHECK list in the schema must come with a Rust enum pinning it, or be listed here as owned elsewhere.
     #[test]
     fn every_check_list_is_pinned_by_an_enum() {
         let pinned = [
@@ -201,10 +185,6 @@ mod schema_contract {
             "CHECK lists with no enum pinning them: {unpinned:?}"
         );
     }
-
-    // -----------------------------------------------------------------------
-    // categories are seed data, so the seed itself is what gets tested
-    // -----------------------------------------------------------------------
 
     /// (slug, label, scope) for every row of the seeded INSERT.
     fn seeded_categories() -> Vec<(String, String, String)> {
@@ -273,7 +253,6 @@ mod schema_contract {
 
     #[test]
     fn seeded_categories_are_the_agreed_list() {
-        // SPEC Part 1.6: 15 market-only + 6 both + 2 aid-only
         let rows = seeded_categories();
         assert_eq!(rows.len(), 23, "expected 23 seeded categories");
         let count = |scope: &str| rows.iter().filter(|(_, _, s)| s == scope).count();
@@ -281,10 +260,6 @@ mod schema_contract {
         assert_eq!(count("both"), 6);
         assert_eq!(count("aid"), 2);
     }
-
-    // -----------------------------------------------------------------------
-    // wire format
-    // -----------------------------------------------------------------------
 
     /// serde must emit exactly the database value — the wire and the column agree.
     macro_rules! assert_serde_is_db_value {
@@ -311,11 +286,7 @@ mod schema_contract {
         assert_serde_is_db_value!(CategoryScope);
     }
 
-    /// Display must emit the database value, never the Rust variant name. `Display` is what a log
-    /// line, an error message and every `format!` string carry, so a fallback to the derived name
-    /// would put `LikeNew` where the column holds `like_new`.
-    /// Held by `crates/core/src/models/mod.rs:44` `f.write_str(self.as_str())`, inside
-    /// `impl std::fmt::Display for $name` at `crates/core/src/models/mod.rs:42`.
+    /// Display must emit the database value, never the Rust variant name; a fallback to the derived name would put `LikeNew` where the column holds `like_new`.
     macro_rules! assert_display_is_db_value {
         ($enum:ty) => {{
             for variant in <$enum>::ALL {
@@ -351,8 +322,7 @@ mod schema_contract {
         }
     }
 
-    /// The set, not the predicate's own body: the compiler makes a fifth status pick a side in
-    /// `is_resolved`, and a status that quietly starts resolving threads fails this test.
+    /// The set, not the predicate's own body: the compiler makes a fifth status pick a side, and a status that starts resolving threads fails this test.
     #[test]
     fn only_the_terminal_statuses_are_resolved() {
         let resolved: Vec<MatchStatus> = MatchStatus::ALL

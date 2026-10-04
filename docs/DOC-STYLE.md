@@ -33,11 +33,11 @@ a new version and never a rewrite of an older one.
 
 What has to be inside a v2 parenthetical?
 
-- a location and the text at it — (`crates/server/src/api/mod.rs:44` `.merge(search::router(state.clone()))`)
+- a location and the text at it — (`crates/server/src/api/mod.rs:38` `.merge(search::router(state.clone()))`)
 - a command and its output — (`cargo test --workspace` -> `158 passed, 0 failed`)
 - a search and its count — (`rg -c 'fetch\(' web/src` -> `37`)
 
-A bare location is a v1 form and fails R2 in v2: `(crates/server/src/api/mod.rs:44)` names an artifact
+A bare location is a v1 form and fails R2 in v2: `(crates/server/src/api/mod.rs:38)` names an artifact
 but quotes nothing from it. The section "A claim you cannot trace" below is unchanged and still
 applies in full.
 

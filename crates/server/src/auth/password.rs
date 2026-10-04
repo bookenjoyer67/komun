@@ -1,4 +1,4 @@
-//! Server-side password hashing (A2a / SPEC Part 1.5).
+//! Server-side password hashing (SPEC Part 1.5).
 //!
 //! The server never sees a password. The client derives
 //! `verifier = Argon2id(password, auth_salt)` and sends *that*; this module puts a second,
@@ -76,13 +76,9 @@ pub fn needs_rehash(stored: &str) -> bool {
     params.m_cost() < MEMORY_KIB || params.t_cost() < ITERATIONS || params.p_cost() != PARALLELISM
 }
 
-/// Reject passwords (or, here, verifiers) that are structurally too weak to accept.
-///
-/// The client derives the verifier from the real password, so the server cannot measure the
-/// password's length directly — the client enforces `min_password_length` before deriving, and the
-/// server enforces that the verifier it receives is a plausible Argon2id output rather than a
-/// hand-typed string. Both checks are required: the client one is the policy, this one stops a
-/// crafted request from registering a one-character "verifier".
+/// The client enforces `min_password_length` before deriving, but a crafted request could register
+/// a one-character "verifier", so the server also checks that what it receives is a plausible
+/// Argon2id output.
 pub fn validate_verifier_shape(verifier: &str) -> Result<(), String> {
     // 32 raw bytes, base64 -> 43-44 chars. Accept a range so the client may pick a longer output.
     if verifier.len() < 43 {

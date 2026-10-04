@@ -41,7 +41,6 @@
 	let showTheme = $state(false);
 	let resendState = $state('');
 
-	// change password
 	let currentPassword = $state('');
 	let newPassword = $state('');
 	let newPasswordConfirm = $state('');
@@ -49,13 +48,11 @@
 	let pwSaved = $state(false);
 	let pwError = $state('');
 
-	// recovery code reissue
 	let reissuePassword = $state('');
 	let reissuing = $state(false);
 	let reissueError = $state('');
 	let freshRecoveryCode = $state('');
 
-	// sessions
 	let sessions = $state<SessionSummary[]>([]);
 	let sessionsError = $state('');
 

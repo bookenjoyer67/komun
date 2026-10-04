@@ -52,9 +52,7 @@
 			return;
 		}
 
-		// Clear the password from component state the moment it is no longer needed. It is already
-		// in memory elsewhere, but leaving it bound to a live input is a gift to anything that can
-		// read the DOM.
+		// Clear the password from live component state: leaving it bound to an input is readable from the DOM.
 		password = '';
 		confirm = '';
 		recoveryCode = result.recoveryCode || '';

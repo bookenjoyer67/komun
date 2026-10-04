@@ -1,12 +1,9 @@
 /**
- * Marketplace helpers: the two market kinds, the item-condition vocabulary, price
- * formatting that distinguishes "no price" from "$0.00", and the filter ⇄ query
- * string codec the `/market` browse page relies on to make a view linkable.
+ * Marketplace helpers: the market kinds, the item-condition vocabulary, price formatting that
+ * distinguishes "no price" from "$0.00", and the filter ⇄ query-string codec.
  *
- * Currency is deliberately never defaulted here. `[market] default_currency` is
- * resolved **server-side** when a create request leaves `currency` empty (see
- * `api::posts::create`), so the client sends `null` and lets the operator's
- * precedence decide. Inventing "USD" here would silently override it.
+ * Currency is never defaulted here: the server resolves `[market] default_currency` when a create
+ * request leaves `currency` empty, and inventing "USD" would silently override it.
  */
 import { api } from '$lib/api/client';
 import type { PostLike } from '$lib/api/types';
@@ -14,13 +11,8 @@ import type { PostLike } from '$lib/api/types';
 export type MarketKind = 'listing' | 'want';
 
 /**
- * Mirrors `komun_core::models::post::ItemCondition`, which is pinned to this
- * constraint in `migrations/001_schema.sql` (quoted verbatim from the file):
- *
- *   CONSTRAINT chk_posts_item_condition CHECK
- *     (item_condition IN ('new', 'like_new', 'good', 'fair', 'poor', 'for_parts')),
- *
- * Anything outside this list is rejected by the server with a 400.
+ * Mirrors `komun_core::models::post::ItemCondition`, pinned to the `chk_posts_item_condition` CHECK
+ * constraint; anything outside this list is rejected with a 400.
  */
 export type ItemCondition = 'new' | 'like_new' | 'good' | 'fair' | 'poor' | 'for_parts';
 
@@ -49,16 +41,12 @@ export const ITEM_CONDITIONS = ITEM_CONDITION_VALUES.map((value) => ({
 
 export const MARKET_KINDS = ['listing', 'want'] as const satisfies readonly MarketKind[];
 
-/**
- * Keyed by `string` rather than `MarketKind` so a card can render a post whose
- * `kind` is typed as the wider `PostKind` without an index-type error.
- */
+/** Keyed by `string` so a card can render a post whose `kind` is the wider `PostKind`. */
 export const MARKET_KIND_LABELS: Record<string, string> = {
 	listing: 'Listing',
 	want: 'Wanted'
 };
 
-/** A post shape that also carries the marketplace facet the flat API returns. */
 export interface MarketPost extends PostLike {
 	category_label?: string | null;
 	market_listed?: boolean;
@@ -68,10 +56,7 @@ export interface MarketPost extends PostLike {
 	item_condition?: ItemCondition | string | null;
 }
 
-/**
- * An absent price is not a zero price. A listing with no `price_cents` reads
- * "Free / negotiable"; a real `0` still formats as the currency's zero.
- */
+/** An absent price is not a zero price: no `price_cents` reads "Free / negotiable", a real `0` formats as zero. */
 export function formatPrice(
 	priceCents: number | null | undefined,
 	currency?: string | null,
@@ -153,10 +138,7 @@ function intParam(params: URLSearchParams, key: string): number | undefined {
 	return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-/**
- * Parse a query string (with or without a leading `?`) back into filters.
- * Round-trips through [`filtersToQuery`]: filters in, the same filters out.
- */
+/** Parse a query string (with or without a leading `?`) back into filters. */
 export function queryToFilters(query: string | URLSearchParams): MarketFilters {
 	const params = typeof query === 'string' ? new URLSearchParams(query) : query;
 	const filters: MarketFilters = {};
@@ -203,11 +185,8 @@ export function marketListParams(filters: MarketFilters): Record<string, string>
 }
 
 /**
- * `GET /api/posts` constrained to the market kinds.
- *
- * With no `kind`, this is the "both" view: two requests (one per market kind)
- * merged newest-first. That is deliberate — an unfiltered request would also
- * return aid posts, and the market feed must never look like an aid feed.
+ * `GET /api/posts` constrained to the market kinds. With no `kind`, two requests (one per kind)
+ * are merged newest-first, so an unfiltered request never returns aid posts.
  */
 export async function listMarketPosts(filters: MarketFilters = {}): Promise<MarketPost[]> {
 	if (filters.kind) {

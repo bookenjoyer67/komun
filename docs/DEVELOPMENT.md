@@ -32,13 +32,13 @@ Everything else in the template has a working default (`crates/server/src/config
 `#[serde(default)]`, on `Config` and on each of its 13 section structs; `rg -c 'serde\(default'
 crates/server/src/config.rs` -> `14`). `[registration]` runs without SMTP
 (`config.example.toml:98` `require_email_verification = false`). `[discovery]` mounts no directory
-routes (`config.example.toml:34` `directory_enabled = false`; `crates/server/src/api/mod.rs:64`
+routes (`config.example.toml:34` `directory_enabled = false`; `crates/server/src/api/mod.rs:57`
 `if state.config.discovery.directory_enabled {`). The optional `[market]` `default_currency` is
 unset, which is the intended default (`config.example.toml:129` `# default_currency = "USD"`). See
 the currency precedence below.
 
 Keep the example config bootable as shipped: verification turned on without an `[email]` section is
-a startup failure (`crates/server/src/config.rs:316` `if self.registration.require_email_verification
+a startup failure (`crates/server/src/config.rs:306` `if self.registration.require_email_verification
 && !self.email.is_configured() {`). See the boot check below.
 
 **Claims needing verification**

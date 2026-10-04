@@ -2,8 +2,7 @@
 	import { onMount } from 'svelte';
 	import LocationMap from '$lib/components/LocationMap.svelte';
 
-	// The flat, server-scoped posts endpoint (A3.1) is typed locally because
-	// this route does not own the shared API client module.
+	// Typed locally because this route does not own the shared API client module.
 	interface PostLocation {
 		id: string;
 		title: string;
@@ -26,8 +25,7 @@
 		try {
 			const res = await fetch('/api/posts');
 			if (res.status === 404) {
-				// The flat /api/posts endpoint has not merged on this branch yet;
-				// treat it as "not available", not as a bug.
+				// A 404 means the endpoint is not available here, not a bug.
 				notMerged = true;
 				posts = [];
 				return;

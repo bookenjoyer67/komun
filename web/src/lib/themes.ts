@@ -1333,7 +1333,6 @@ export function buildThemeColors(theme: Theme): Record<string, string> {
 		'text-on-need': bestContrast(c['kind-need'] || c.accent),
 		'text-on-offer': bestContrast(c['kind-offer'] || c.success),
 		'text-on-resource': bestContrast(c['kind-resource'] || '#818cf8'),
-		// Semantic interactives
 		'button-primary-bg': c.accent,
 		'button-primary-hover': adjust(c.accent, 8),
 		'button-primary-active': adjust(c.accent, 14),

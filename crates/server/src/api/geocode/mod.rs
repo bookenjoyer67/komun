@@ -1,10 +1,6 @@
-//! Nominatim geocode proxy.
-//!
-//! The endpoint is small, but Nominatim's usage policy makes three things
-//! mandatory: at most one request per second, a `User-Agent` that names the
-//! deployment and gives a contact, and no repeat hammering of identical
-//! queries. The process-wide [`limiter`] and [`cache`] below enforce the first
-//! and third; [`build_user_agent`] builds the header for the second.
+//! Nominatim geocode proxy. Nominatim's usage policy requires at most one request per second, a
+//! `User-Agent` naming the deployment with a contact, and no repeat queries — enforced by
+//! [`limiter`], [`build_user_agent`] and [`cache`].
 
 mod cache;
 mod limiter;
@@ -31,9 +27,8 @@ const CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 /// Hard cap on cached queries so the map cannot be grown without bound.
 const CACHE_CAPACITY: usize = 512;
 
-/// The header used before an operator configures a contact. It identifies the
-/// deployment the same way the old hardcoded value did, with the version taken
-/// from the crate rather than pinned in source.
+/// Fallback header when no contact is configured; the version comes from the crate rather than
+/// source.
 const DEFAULT_USER_AGENT: &str = concat!(
     "Komun/",
     env!("CARGO_PKG_VERSION"),
@@ -52,8 +47,7 @@ pub async fn geocode(
     Ok(Json(value))
 }
 
-/// Core lookup path, split out from the handler so the limiter and cache can be
-/// exercised with a fake upstream in tests.
+/// Split from the handler so tests can exercise the limiter and cache with a fake upstream.
 async fn resolve<F, Fut>(
     raw_query: &str,
     cache: &GeocodeCache,
@@ -82,8 +76,7 @@ where
     Ok(value)
 }
 
-/// Cache key: case-insensitive and whitespace-collapsed, so trivial
-/// reformattings of the same place share an entry.
+/// Cache key: case-insensitive and whitespace-collapsed, so trivial reformattings share an entry.
 fn normalize_query(query: &str) -> String {
     query
         .split_whitespace()
@@ -102,19 +95,15 @@ fn cache() -> &'static GeocodeCache {
     CACHE.get_or_init(|| GeocodeCache::new(CACHE_TTL, CACHE_CAPACITY))
 }
 
-/// Process-wide `User-Agent`, resolved once at first use.
-///
-/// The canonical `[geocode] contact` field is requested for `config.rs` via
-/// `.dispatch/hub-requests/B1.md`. The route is mounted without `AppState` (no
-/// edit to `api/mod.rs` is allowed), so this module reads the same section from
-/// the config file itself, and treats a missing section as "unset".
+/// Process-wide `User-Agent`, resolved once. The route is mounted without `AppState`, so this
+/// module reads `[geocode] contact` from the config file itself.
 fn user_agent() -> &'static str {
     static USER_AGENT: OnceLock<String> = OnceLock::new();
     USER_AGENT.get_or_init(|| build_user_agent(configured_contact().as_deref()))
 }
 
-/// Reads the operator contact, preferring `KOMUN_GEOCODE_CONTACT` over the
-/// `[geocode] contact` key in the config file. A missing file or key is fine.
+/// Operator contact, preferring `KOMUN_GEOCODE_CONTACT` over `[geocode] contact`; a missing file
+/// or key is fine.
 fn configured_contact() -> Option<String> {
     if let Ok(value) = std::env::var("KOMUN_GEOCODE_CONTACT") {
         let value = value.trim();
@@ -139,8 +128,8 @@ struct GeocodeSection {
     contact: Option<String>,
 }
 
-/// Extracts `[geocode] contact` from a full config file. Unknown keys and a
-/// missing section are ignored, so a stale config still loads.
+/// Extracts `[geocode] contact`; unknown keys and a missing section are ignored, so a stale config
+/// still loads.
 fn parse_contact(contents: &str) -> Option<String> {
     toml::from_str::<ConfigFile>(contents)
         .ok()
@@ -149,9 +138,8 @@ fn parse_contact(contents: &str) -> Option<String> {
         .filter(|contact| !contact.is_empty())
 }
 
-/// Builds the `User-Agent` Nominatim requires: an identifier plus a contact.
-/// Without a contact it falls back to the historical generic agent so an
-/// unconfigured node keeps working.
+/// The `User-Agent` Nominatim requires; without a contact it falls back to the generic agent so an
+/// unconfigured node still works.
 fn build_user_agent(contact: Option<&str>) -> String {
     match contact.map(str::trim).filter(|contact| !contact.is_empty()) {
         Some(contact) => format!(
@@ -256,10 +244,6 @@ mod tests {
 
     #[test]
     fn user_agent_default_keeps_existing_behaviour() {
-        // The `[geocode] contact` config field is pending (hub request B1), so
-        // assert against the default value explicitly: that is what a node
-        // without the section actually sends today. It no longer pins a version
-        // literal, so the source carries no hardcoded agent string.
         assert_eq!(build_user_agent(None), DEFAULT_USER_AGENT);
         assert!(DEFAULT_USER_AGENT.starts_with("Komun/"));
         assert!(DEFAULT_USER_AGENT.contains("nominatim proxy"));
@@ -267,8 +251,7 @@ mod tests {
 
     #[test]
     fn nonsense_contact_still_boots_clean() {
-        // A bogus contact is not rejected during config parsing, so the process
-        // still starts and simply sends the bogus header.
+        // A bogus contact is not rejected during config parsing, so the process still starts.
         let config = "[geocode]\ncontact = \"not a real address!!!\"\n";
         let contact = parse_contact(config);
         assert_eq!(contact.as_deref(), Some("not a real address!!!"));
@@ -309,7 +292,6 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(first["display_name"], "Oakland");
 
-        // Same place, reformatted: normalisation makes the second a cache hit.
         let second = resolve("  oakland ", &cache, &limiter, counting_fetch())
             .await
             .unwrap();
@@ -341,11 +323,8 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
-    // The clock is paused, so `Instant::now()` and both sleeps below read
-    // tokio's timer rather than the wall clock. The 50 ms checkpoint and the
-    // 200 ms slot are then exact, instead of being eaten into by the first
-    // lookup's own latency. `acquire()` is already on that timer and is
-    // unchanged.
+    // The paused clock makes `Instant::now()` and the sleeps below read tokio's timer, so the
+    // 50 ms checkpoint and 200 ms slot are exact.
     #[tokio::test(start_paused = true)]
     async fn limiter_queues_second_lookup_instead_of_firing_both() {
         let cache = Arc::new(GeocodeCache::new(Duration::from_secs(60), 8));

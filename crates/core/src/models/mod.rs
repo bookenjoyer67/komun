@@ -1,9 +1,5 @@
-/// Declares an enum that maps to a DB text column.
-///
-/// The string form is written once and drives serde, `as_str()` and `parse()`, so nothing
-/// can drift between the wire format, the database value and the Rust variant. Agreement
-/// with the `CHECK (col IN (...))` list in `migrations/001_schema.sql` is pinned by the
-/// tests in `crates/core/src/tests.rs`.
+/// Declares an enum that maps to a DB text column; one string form drives serde, `as_str()`,
+/// `parse()` and `Display`, so the wire, the column and Rust cannot drift.
 macro_rules! db_enum {
     (
         $(#[$meta:meta])*
@@ -19,7 +15,6 @@ macro_rules! db_enum {
         }
 
         impl $name {
-            /// Every variant, in declaration order.
             pub const ALL: &'static [$name] = &[$($name::$variant),+];
 
             /// The value stored in the database and sent on the wire.
@@ -29,8 +24,8 @@ macro_rules! db_enum {
                 }
             }
 
-            /// Parse a database/wire value. `None` for anything unknown — callers decide
-            /// the fallback rather than silently mapping it onto a wrong variant.
+            /// Parse a database/wire value; `None` for anything unknown, so callers choose the
+            /// fallback rather than mapping it onto a wrong variant.
             pub fn parse(value: &str) -> Option<$name> {
                 match value {
                     $($value => Some($name::$variant),)+

@@ -1,14 +1,10 @@
-//! M3 — deal reviews.
+//! Deal reviews.
 //!
-//! A review is the one thing on this thread that outlives it: an offer is a step in a
-//! negotiation, but a rating follows somebody around the marketplace afterwards. So the rules are
-//! narrow on purpose — only a participant, only against a deal that actually completed, and only
-//! once per person per deal, enforced by `UNIQUE (match_id, reviewer_id)` in the schema and
-//! mapped back to a 409 here rather than escaping as a 500.
-//!
-//! There is no counter column anywhere. `rating_avg` and `rating_count` on a profile are computed
-//! from these rows (`db::users::get_profile`), because a denormalised total is a second answer to
-//! the same question that can only ever drift from the first.
+//! A rating follows somebody around the marketplace after the deal ends, so the rules are narrow:
+//! only a participant, only against a completed deal, only once per person per deal — enforced by
+//! `UNIQUE (match_id, reviewer_id)` and mapped here to a 409 rather than a 500. There is no
+//! counter column; `rating_avg` and `rating_count` are computed from these rows by
+//! `db::users::get_profile`.
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -20,10 +16,8 @@ use komun_core::models::MatchStatus;
 
 use super::conversations::{lock_status, DealStep};
 
-/// The message a duplicate review is refused with.
 pub const ALREADY_REVIEWED: &str = "you have already reviewed this deal";
 
-/// A review as it was written, returned to its author.
 #[derive(Serialize, Clone, Debug, FromRow)]
 pub struct ReviewRow {
     pub id: Uuid,
@@ -35,11 +29,9 @@ pub struct ReviewRow {
     pub created_at: DateTime<Utc>,
 }
 
-/// A review as it appears on somebody's profile.
-///
-/// SPEC B4 decision: reviews are attributed. The reviewer's id and name travel with every row,
-/// because "4 stars" from nobody in particular is a number a marketplace cannot act on — there is
-/// no one to ask, and nothing to weigh it against.
+/// A review as it appears on somebody's profile. Reviews are attributed: the reviewer's id and
+/// name travel with every row, because an unattributed rating is a number a marketplace cannot
+/// act on.
 #[derive(Serialize, Clone, Debug, FromRow)]
 pub struct ReviewView {
     pub id: Uuid,
@@ -51,27 +43,21 @@ pub struct ReviewView {
     pub created_at: DateTime<Utc>,
 }
 
-/// Whether a thread in `current` may be reviewed.
-///
-/// Pure, so the rule can be pinned without a database; the status it is asked about is read under
-/// the row lock inside [`create`], where the answer cannot change between the check and the write.
-///
-/// SPEC B4: "writable only against a completed deal". A proposal anyone can open, and a thread
-/// somebody withdrew from, would otherwise both be a one-star review of a stranger you never
-/// traded with.
+/// Whether a thread in `current` may be reviewed. Pure so the rule can be pinned without a
+/// database; the status is read under the row lock inside [`create`]. Only a completed deal is
+/// reviewable — otherwise a proposal or a withdrawn thread could be a one-star review of a
+/// stranger.
 pub fn check_reviewable(current: MatchStatus) -> Result<(), String> {
     if current == MatchStatus::Completed {
         return Ok(());
     }
-    // The current status is named for the same reason every other 409 on this thread names it:
-    // "not completed" tells the caller they were wrong, and nothing about what to do next.
+    // The status is named because "not completed" tells the caller they were wrong but not what
+    // to do next.
     Err(format!("this deal is not completed (status: {current})"))
 }
 
-/// M3.1 — write one review, or say why not.
-///
-/// `reviewee_id` is supplied by the caller of this function, not by the HTTP client: the handler
-/// derives it from the thread (`Thread::other_participant`).
+/// Write one review, or say why not. `reviewee_id` is supplied by this function's caller, not the
+/// HTTP client: the handler derives it from the thread (`Thread::other_participant`).
 pub async fn create(
     pool: &PgPool,
     match_id: Uuid,
@@ -104,11 +90,9 @@ pub async fn create(
 
     let row = match inserted {
         Ok(row) => row,
-        // The duplicate is caught by the database, not by a SELECT first: a check-then-insert
-        // has a window two concurrent requests both pass, and the constraint does not. What this
-        // arm exists for is the *mapping* — an unmapped 23505 leaves here as an anyhow error and
-        // is reported to the reviewer as "internal error", which reads as a server fault rather
-        // than as "you already did this".
+        // The duplicate is caught by the database, not a SELECT first: a check-then-insert has a
+        // window two concurrent requests both pass. This arm exists to map 23505, so it reads as
+        // "you already did this" rather than an internal error.
         Err(e) if is_unique_violation(&e) => {
             return Ok(DealStep::Conflict(ALREADY_REVIEWED.to_string()))
         }
@@ -119,12 +103,9 @@ pub async fn create(
     Ok(DealStep::Done(row))
 }
 
-/// M3.3 — somebody's reviews, newest first.
-///
-/// `id` breaks the tie for the same reason `list_offers` does: `created_at` is microsecond
-/// resolution, and two rows written in the same microsecond would otherwise come back in an order
-/// Postgres is free to change between calls — which, under LIMIT/OFFSET, means a row appearing on
-/// two pages or on none.
+/// Somebody's reviews, newest first. `id` breaks the tie because `created_at` is
+/// microsecond-resolution and Postgres may reorder equal timestamps — which under LIMIT/OFFSET
+/// means a row on two pages or none.
 pub async fn list_for_user(
     pool: &PgPool,
     reviewee_id: Uuid,
@@ -150,9 +131,8 @@ pub async fn list_for_user(
     Ok(rows)
 }
 
-/// `23505` is Postgres' unique-violation SQLSTATE. `deal_reviews` carries exactly one unique
-/// constraint — `UNIQUE (match_id, reviewer_id)` — so on this table the code identifies it
-/// unambiguously.
+/// `23505` is Postgres' unique-violation SQLSTATE; `deal_reviews` carries exactly one unique
+/// constraint, so on this table the code identifies it unambiguously.
 fn is_unique_violation(e: &sqlx::Error) -> bool {
     match e {
         sqlx::Error::Database(db) => db.code().is_some_and(|code| code == "23505"),

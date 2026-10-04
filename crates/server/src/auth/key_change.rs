@@ -1,4 +1,4 @@
-//! Changing an account's encryption keys through `PUT /api/auth/me` (secaudit R2 / VA01).
+//! Changing an account's encryption keys through `PUT /api/auth/me`.
 //!
 //! The five key columns of `users` (the public key, the wrapped key bundle, its salt, the recovery
 //! bundle and its salt) move together or not at all. Following the Matrix rule for
@@ -20,7 +20,7 @@ use super::{enforce_limit, fail, internal, reauthenticate, record_audit, ApiErro
 use crate::rate_limit::RouteClass;
 use crate::AppState;
 
-/// How many key columns `users` has (`migrations/001_schema.sql:25-29`).
+/// How many key columns `users` has.
 const KEY_COLUMNS: usize = 5;
 
 /// The refusal for a request carrying some of the five key fields but not all of them. The auth
@@ -49,7 +49,6 @@ pub(super) struct KeyColumns {
 }
 
 impl KeyColumns {
-    /// How many of the five columns hold a value.
     fn present(&self) -> usize {
         [
             &self.encryption_public_key,
@@ -126,17 +125,11 @@ type StoredRow = (
 /// Applies the requested key set to `user_id`'s row inside `tx`, and returns what it did.
 ///
 /// The stored keys are read `FOR UPDATE`, so the row stays locked until the caller commits or
-/// drops `tx`, and two requests cannot both take the first-time path. Every refusal returns
-/// before any write, and the caller's dropped transaction rolls back anything else it wrote.
-///
-/// - `NoKeys`: reads nothing and writes nothing.
-/// - `Partial`: 400 (the caller has normally refused it already, through `check_complete`).
-/// - `Identical`: writes nothing, and `current_verifier` is never evaluated.
-/// - `FirstTimeSet`: writes all five columns in one statement.
-/// - `Replacement`: 401 without `current_verifier`, spending no token. Otherwise it charges one
-///   `SignIn` token, then `reauthenticate` checks the password (401 "current password is
-///   incorrect" when wrong, with the token kept; refunded inside `reauthenticate` when right).
-///   Then it writes all five columns in one statement.
+/// drops `tx`, and two requests cannot both take the first-time path. Every refusal returns before
+/// any write. `NoKeys` and `Identical` write nothing and never evaluate `current_verifier`;
+/// `Partial` is 400; `Replacement` needs `current_verifier` and charges a `SignIn` token, refunded
+/// by `reauthenticate` when the password is right. The two writing outcomes write all five columns
+/// in one statement.
 pub(super) async fn apply(
     tx: &mut Transaction<'_, Postgres>,
     state: &AppState,
@@ -187,8 +180,7 @@ pub(super) async fn apply(
     Ok(outcome)
 }
 
-/// Writes all five key columns in one statement on `tx`. Only `apply` calls it, and only with a
-/// complete set.
+/// Only `apply` calls it, and only with a complete set.
 async fn write(
     tx: &mut Transaction<'_, Postgres>,
     user_id: Uuid,

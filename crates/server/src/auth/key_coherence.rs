@@ -1,25 +1,21 @@
 //! The key-coherence rule for the password writers that can also write encryption keys: `signup`,
-//! `confirm_password_reset` and `change_password` (secaudit R2b).
+//! `confirm_password_reset` and `change_password`.
 //!
-//! The five key columns of `users` are the public key, the wrapped key bundle and its salt, and
-//! the recovery bundle and its salt. A wrapped bundle is useless without its salt, and a new public
-//! key is useless without both bundles that carry its secret. So a request may send no key field,
-//! the bundle pair, the recovery pair, both pairs, or all five. Every other shape is refused with
-//! 400 before any query, any invite decrement, any token consumption and any write.
+//! A wrapped bundle is useless without its salt, and a new public key is useless without both
+//! bundles that carry its secret. So a request may send no key field, the bundle pair, the recovery
+//! pair, both pairs, or all five; every other shape is refused with 400 before any query, any invite
+//! decrement, any token consumption and any write. `signup` is stricter: all five or none.
 //!
-//! `signup` is stricter: an account is created with all five or with none
-//! (`key_change::KeyColumns::check_complete`).
-//!
-//! Both checks only test whether a field is present. They read no byte of key material, log
-//! nothing, and this module declares no type, so nothing here can derive `Debug`.
+//! Both checks only test whether a field is present. They read no byte of key material, log nothing,
+//! and this module declares no type, so nothing here can derive `Debug`.
 
 use axum::http::StatusCode;
 
 use super::key_change::KeyColumns;
 use super::{fail, ApiError};
 
-/// The refusal for a new public key sent without the full set. Byte-equal to the message of the
-/// existing reset guard (`auth/mod.rs:1064`), so a reset client sees the same text as before.
+/// The refusal for a new public key sent without the full set. Byte-equal to the existing reset
+/// guard's message, so a reset client sees the same text as before.
 const PUBLIC_KEY_NEEDS_ALL: &str =
     "a new encryption_public_key must arrive with a new key bundle and recovery bundle";
 
@@ -31,14 +27,9 @@ const RECOVERY_PAIR: &str =
     "encrypted_recovery_bundle and recovery_bundle_salt must be sent together";
 
 /// The general rule, used by `confirm_password_reset` and `change_password`. Pure: no database,
-/// no rate limiter.
-///
-/// It accepts exactly five of the 32 shapes: none, the bundle pair, the recovery pair, both
-/// pairs, or all five. It checks in this order and returns the first refusal:
-///
-/// 1. A public key without all four other fields: 400 `PUBLIC_KEY_NEEDS_ALL`.
-/// 2. Exactly one of `encrypted_key_bundle` and `bundle_salt`: 400 `BUNDLE_PAIR`.
-/// 3. Exactly one of `encrypted_recovery_bundle` and `recovery_bundle_salt`: 400 `RECOVERY_PAIR`.
+/// no rate limiter. Accepts exactly five of the 32 shapes — none, the bundle pair, the recovery
+/// pair, both pairs, or all five — and returns the first refusal otherwise: a public key without
+/// all four other fields, then a broken bundle pair, then a broken recovery pair.
 pub(super) fn check_pairs(keys: &KeyColumns) -> Result<(), ApiError> {
     let bundle = keys.encrypted_key_bundle.is_some();
     let bundle_salt = keys.bundle_salt.is_some();
@@ -58,8 +49,8 @@ pub(super) fn check_pairs(keys: &KeyColumns) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// The signup rule: all five or none. It reuses R2's check, so a refusal is 400 with R2's
-/// partial-set message (`key_change.rs:28-30`). Pure: no database, no rate limiter.
+/// The signup rule: all five or none. Reuses the partial-set check, so a refusal is 400 with that
+/// message. Pure: no database, no rate limiter.
 pub(super) fn check_signup(keys: &KeyColumns) -> Result<(), ApiError> {
     keys.check_complete()
 }
@@ -128,7 +119,7 @@ mod tests {
         assert_eq!(body.0["error"], message, "mask {mask:#07b}");
     }
 
-    // U1: of the 32 subsets, check_pairs accepts exactly the five coherent shapes.
+    // Of the 32 subsets, check_pairs accepts exactly the five coherent shapes.
     #[test]
     fn check_pairs_accepts_exactly_five_of_the_32_subsets() {
         let accepted: Vec<u8> = (0..=ALL)
@@ -140,7 +131,7 @@ mod tests {
         );
     }
 
-    // U1/U2: every one of the 32 subsets gets the outcome the rule's statement gives it, and every
+    // Every one of the 32 subsets gets the outcome the rule's statement gives it, and every
     // refusal is a 400.
     #[test]
     fn check_pairs_gives_every_subset_its_expected_outcome() {
@@ -158,7 +149,7 @@ mod tests {
         assert_eq!(refused, 27);
     }
 
-    // U2: the refusal message, case by case.
+    // The refusal message, case by case.
     #[test]
     fn check_pairs_names_the_broken_rule() {
         for mask in [
@@ -192,7 +183,7 @@ mod tests {
         assert_refused(check_pairs(&keys), BUNDLE_PAIR, BUNDLE);
     }
 
-    // U3: the three literals, pinned. Clients match on them, and the first must stay byte-equal
+    // The three literals are pinned because clients match on them; the first must stay byte-equal
     // to the reset guard's message.
     #[test]
     fn the_refusal_messages_are_fixed() {
@@ -210,7 +201,7 @@ mod tests {
         );
     }
 
-    // U4: check_signup accepts none and all five only, and refuses the other 30 with R2's text.
+    // check_signup accepts none and all five only, and refuses the other 30 with the partial-set text.
     #[test]
     fn check_signup_accepts_only_none_or_all_five() {
         const PARTIAL_SET: &str = "the encryption keys must be sent together: \
@@ -229,17 +220,16 @@ mod tests {
         assert_eq!(accepted, vec![NONE, ALL]);
     }
 
-    // U5: every shape the web client sends passes the check at its site.
+    // Every shape the web client sends passes the check at its site.
     #[test]
     fn the_client_shapes_pass_their_sites() {
-        // signup sends all five (web/src/lib/stores/auth.ts:259-263).
+        // signup sends all five.
         assert!(check_signup(&full(5)).is_ok());
-        // reset with a recovery code sends the bundle pair (auth.ts:451-452).
+        // reset with a recovery code sends the bundle pair.
         assert!(check_pairs(&subset(5, BUNDLE_PAIR_ONLY)).is_ok());
-        // reset without a code sends all five (auth.ts:454-458).
+        // reset without a code sends all five.
         assert!(check_pairs(&full(5)).is_ok());
-        // change_password sends the bundle pair, or neither when no secret is held
-        // (auth.ts:537-541). S3 passes only these two fields.
+        // change_password sends the bundle pair, or neither when no secret is held.
         let keys = full(5);
         let change = KeyColumns {
             encrypted_key_bundle: keys.encrypted_key_bundle,
@@ -248,8 +238,7 @@ mod tests {
         };
         assert!(check_pairs(&change).is_ok());
         assert!(check_pairs(&KeyColumns::default()).is_ok());
-        // reissue sends the recovery pair (auth.ts:590-591). No span routes it here, but the rule
-        // would pass it.
+        // reissue sends the recovery pair. No span routes it here, but the rule would pass it.
         assert!(check_pairs(&subset(5, RECOVERY_PAIR_ONLY)).is_ok());
     }
 }

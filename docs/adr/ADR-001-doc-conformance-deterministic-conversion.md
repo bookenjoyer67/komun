@@ -16,7 +16,7 @@ Which step is this, and what does the record show about it?
 
 The orchestration checks prose against `docs/DOC-STYLE.md` and re-executes the citations behind each
 claim before a change reaches the human checkpoint. Two roles ran that step by hand
-(`.claude/agents/reviewer.md:47` `Apply docs/DOC-STYLE.md to every prose file the change touches`).
+(`.claude/agents/reviewer.md:48` `Apply docs/DOC-STYLE.md to every prose file the change touches`).
 
 The record shows the step ran repeatedly with a stable outcome. The documentation-standard run scored
 `11 / 12` (`docs/iteration-log.md:706` `| **Total** | **11 / 12**`), and its consistency pass produced
@@ -78,7 +78,7 @@ Which alternatives were rejected, and why?
   per run.
 - **Convert the review verdict instead.** Rejected. The verdict weighs a change against the rubric and
   the acceptance criteria, so it is not specifiable as a rule set
-  (`.claude/agents/reviewer.md:47` `v2 is the current rule set`). The prose half of the same role is
+  (`.claude/agents/reviewer.md:48` `v2 is the current rule set`). The prose half of the same role is
   specifiable, and that half is what this ADR converts.
 - **Keep an agent and gate it with the script.** Rejected. An advisory script beside an agent leaves
   the agent as the step the workflow runs, so the cost stays

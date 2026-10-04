@@ -1,4 +1,3 @@
-// Merged: `communities/` (A) and `alliances/`, `federation/` (B) are all deleted.
 pub mod categories;
 pub mod conversations;
 pub mod endorsements;

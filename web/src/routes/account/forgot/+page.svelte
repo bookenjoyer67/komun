@@ -34,10 +34,7 @@
 	<h1>Reset your password</h1>
 
 	{#if sent}
-		<!--
-			Deliberately the same message whether or not the address exists. The server behaves the
-			same way; saying "no account found" here would hand anyone a membership check.
-		-->
+		<!-- Same message whether or not the address exists: naming a missing account is a membership check. -->
 		<p class="ok">
 			If that address has an account here, a reset link is on its way. The link is good for
 			30 minutes and can be used once.

@@ -28,12 +28,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub struct AppState {
     pub pool: sqlx::PgPool,
     pub config: Arc<Config>,
-    /// In-process token buckets for the auth routes (A2a).
     pub rate_limiter: Arc<rate_limit::RateLimiter>,
     /// `None` when `[email]` is unconfigured, which startup only permits while
     /// `require_email_verification` is false.
     pub mailer: Arc<Option<auth::email::Mailer>>,
-    /// Parsed once at startup: proxies whose `X-Forwarded-For` may be believed.
     pub trusted_proxies: Arc<Vec<IpAddr>>,
     /// Per-process secret behind the decoy salts that keep `GET /auth/salt` from confirming
     /// whether an address has an account here.
@@ -54,9 +52,6 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::load()
         .context("Failed to load configuration. Copy config.example.toml to config.toml and edit it, or set KOMUN_CONFIG to a custom path.")?;
-
-    // A2a: there is no signing key to install into the environment any more. Sessions are rows in
-    // `sessions`, so authority comes from the database, not from a secret this process holds.
 
     // Built before the listener so a misconfigured `[email]` block is a startup failure rather
     // than a surprise at the first signup.

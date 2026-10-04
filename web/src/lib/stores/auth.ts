@@ -13,22 +13,12 @@ import {
 } from '$lib/crypto';
 
 /**
- * Auth state, A2b shape.
+ * Auth state.
  *
- * Two storage tiers, deliberately:
- *
- *  - `localStorage` keeps only what is not secret-bearing beyond the session token itself: the
- *    opaque bearer token, the user id, the display name, the role. The server stores only a
- *    SHA-256 of the token, and revoking a session takes effect on its next request, so this is
- *    recoverable state rather than a credential of lasting value.
- *  - the x25519 secret is unwrapped at sign-in and held in memory, mirrored into `sessionStorage`
- *    so a page reload inside the same tab does not silently stop decrypting messages. It is never
- *    written to `localStorage` and is dropped on sign-out.
- *
- * What is gone from the previous version: the second-secret prompt. Accounts used to carry a
- * separate "recovery phrase" that had to be typed again on every reload before anything could be
- * read, and which most accounts never set at all. The password is now the only thing that unwraps
- * the key, and it does so automatically at login.
+ * `localStorage` keeps only non-secret session state (token, user id, display name, role): the
+ * server stores a hash of the token and revocation takes effect on the next request. The x25519
+ * secret is unwrapped at sign-in, held in memory and mirrored to `sessionStorage` so a reload in
+ * the same tab keeps decrypting; never `localStorage`, and dropped on sign-out.
  */
 interface PerServerAuth {
 	token: string;
@@ -76,7 +66,6 @@ function loadFromStorage(): AuthState {
 			const parsed = JSON.parse(sessionRaw);
 			if (parsed?.publicKey && parsed?.secretKey) keypair = parsed;
 		} catch {
-			// same
 		}
 	}
 
@@ -144,10 +133,6 @@ export function isEmailVerified(): boolean {
 	return getActiveAuth()?.emailVerified === true;
 }
 
-// ---------------------------------------------------------------------------
-// plumbing
-// ---------------------------------------------------------------------------
-
 export interface AuthResult {
 	ok: boolean;
 	error?: string;
@@ -155,14 +140,12 @@ export interface AuthResult {
 	recoveryCode?: string;
 }
 
-/** Pull the server's error message out of a failed response, falling back to the status. */
 async function errorFrom(res: Response): Promise<string> {
 	try {
 		const data = await res.json();
 		if (typeof data?.error === 'string') return data.error;
 		if (typeof data?.message === 'string') return data.message;
 	} catch {
-		// non-JSON body
 	}
 	if (res.status === 429) return 'Too many attempts. Wait a minute and try again.';
 	return `Request failed (${res.status})`;
@@ -189,14 +172,7 @@ function setKeypair(keypair: IdentityKeypair | null) {
 	auth.update((s) => ({ ...s, keypair }));
 }
 
-/**
- * The account's x25519 public key.
- *
- * Sign-in returns the wrapped secret but not the public half, and the wasm bindings expose no
- * secret-to-public derivation, so it is read back from the account's own key endpoint. A2b.4:
- * that endpoint no longer returns a `public_key` field — the signature key it described is gone —
- * and `encryption_public_key` is the only key a caller has any use for.
- */
+/** The x25519 public key, read back from the account's own key endpoint (sign-in returns only the wrapped secret). */
 async function fetchOwnPublicKey(server: string, userId: string, token: string): Promise<string> {
 	const res = await fetch(`${server}/api/auth/users/${userId}/keys`, {
 		headers: { Authorization: `Bearer ${token}` },
@@ -214,10 +190,6 @@ async function fetchAuthSalt(server: string, email: string): Promise<string | nu
 	return data.auth_salt || null;
 }
 
-// ---------------------------------------------------------------------------
-// signup / signin
-// ---------------------------------------------------------------------------
-
 export interface SignupInput {
 	email: string;
 	displayName: string;
@@ -226,13 +198,9 @@ export interface SignupInput {
 }
 
 /**
- * Create an account.
- *
- * Everything secret is derived in this function and most of it stays here: the password itself
- * never leaves, and neither does the recovery code. What crosses the wire is one Argon2id output
- * (the verifier) and two ciphertexts wrapping the same x25519 secret — one under the password, one
- * under the recovery code. The code is returned to the caller so it can be shown once; it is not
- * stored anywhere, and no endpoint will ever hand it back.
+ * Create an account. The password and recovery code never leave the browser; the wire carries the
+ * Argon2id verifier plus two ciphertexts wrapping one x25519 secret. The recovery code is returned
+ * to show once and is never stored.
  */
 export async function signup(input: SignupInput): Promise<AuthResult> {
 	const server = getActiveServer();
@@ -277,12 +245,8 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
 }
 
 /**
- * Sign in, and unlock the encryption key in the same step.
- *
- * The unwrap is why there is no separate "unlock" prompt any more: the password is already in hand
- * at this point, so deriving the wrap key and opening the bundle costs one extra Argon2id pass and
- * nothing the user has to do. A bundle that fails to open is reported, not swallowed — the session
- * is still valid, but messages will not decrypt and the user should know why.
+ * Sign in and unlock the encryption key in the same step: the password is already in hand, so the
+ * unwrap costs one extra Argon2id pass. A bundle that fails to open is reported, not swallowed.
  */
 export async function login(
 	email: string,
@@ -336,10 +300,6 @@ export async function login(
 	}
 }
 
-// ---------------------------------------------------------------------------
-// email verification
-// ---------------------------------------------------------------------------
-
 export async function resendVerification(email: string): Promise<AuthResult> {
 	const server = getActiveServer();
 	if (!server) return { ok: false, error: 'No server selected' };
@@ -370,14 +330,9 @@ export async function verifyEmail(token: string): Promise<AuthResult> {
 	return { ok: true };
 }
 
-// ---------------------------------------------------------------------------
-// password reset
-// ---------------------------------------------------------------------------
-
 /**
- * Ask for a reset mail. Always reports success: the response is identical for a known and an
- * unknown address, and echoing "no such account" back to the form would turn it into a membership
- * oracle for anyone with a list of email addresses.
+ * Always reports success: the response is identical for a known and an unknown address, so
+ * echoing "no such account" would turn the form into a membership oracle.
  */
 export async function requestPasswordReset(email: string): Promise<AuthResult> {
 	const server = getActiveServer();
@@ -399,18 +354,9 @@ export interface ResetInput {
 }
 
 /**
- * Finish a reset.
- *
- * Two genuinely different outcomes, and the difference is not cosmetic:
- *
- *  - **With the recovery code**, the code unwraps the existing x25519 secret, which is re-wrapped
- *    under the new password. The account keeps its identity key, so everything sent to it before
- *    the reset stays readable.
- *  - **Without it**, that secret is unrecoverable — by anyone, which is the property the design is
- *    paying for. A fresh keypair is generated and published, and a fresh recovery code is minted
- *    and returned for display. Old messages stay encrypted to a key nobody holds; new ones work.
- *    The new public key has to go up in the same request, or correspondents would keep encrypting
- *    to the dead key and even post-reset messages would be unreadable.
+ * With the recovery code the existing x25519 secret is re-wrapped under the new password and the
+ * identity key survives. Without it that secret is unrecoverable, so a fresh keypair must be
+ * published in the same request or correspondents keep encrypting to the dead key.
  */
 export async function confirmPasswordReset(input: ResetInput): Promise<AuthResult> {
 	const server = getActiveServer();
@@ -484,11 +430,6 @@ export async function confirmPasswordReset(input: ResetInput): Promise<AuthResul
 	}
 }
 
-// ---------------------------------------------------------------------------
-// signed-in account management
-// ---------------------------------------------------------------------------
-
-/** The current account's email, from local state or, failing that, `/auth/me`. */
 async function currentEmail(server: string, token: string): Promise<string | null> {
 	const known = getActiveAuth()?.email;
 	if (known) return known;
@@ -501,11 +442,8 @@ async function currentEmail(server: string, token: string): Promise<string | nul
 }
 
 /**
- * Change the password of an account whose password is still known.
- *
- * The x25519 secret is not regenerated, only re-wrapped, so the account reads exactly what it read
- * before. The existing recovery code also survives: it wraps the same secret, and nothing about it
- * depends on the password.
+ * The x25519 secret is re-wrapped, not regenerated, so the account reads exactly what it read
+ * before; the existing recovery code wraps the same secret and survives too.
  */
 export async function changePassword(
 	currentPassword: string,
@@ -554,11 +492,8 @@ export async function changePassword(
 }
 
 /**
- * Mint a replacement recovery code.
- *
- * Writing the new wrapping over the old one is the whole revocation: the server never held
- * anything derived from the previous code, so there is nothing else to invalidate, and a bundle
- * the old code can open no longer exists.
+ * Writing the new wrapping over the old is the whole revocation: the server holds nothing derived
+ * from the previous code, so no bundle the old code can open remains.
  */
 export async function reissueRecoveryCode(currentPassword: string): Promise<AuthResult> {
 	const server = getActiveServer();
@@ -725,18 +660,7 @@ export function logout() {
 	});
 }
 
-// ---------------------------------------------------------------------------
-// gating
-// ---------------------------------------------------------------------------
-
-/**
- * Run `action` if the visitor is signed in, otherwise send them to the sign-in page.
- *
- * A3.4 removed the four A2b shims that sat here: `register`, `recover`, `showOnboarding` and
- * `onAuthComplete`. Signing in is a page now, not a modal, so there is no modal flag to raise and
- * no completion callback to run afterwards — the deferred `pendingAction` queue went with
- * `onAuthComplete`, which was its only consumer and which nothing called.
- */
+/** Run `action` if signed in, otherwise send the visitor to the sign-in page. */
 export function requireAuth(action: () => void) {
 	if (isAuthenticated()) {
 		action();
