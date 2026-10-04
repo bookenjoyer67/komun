@@ -4,6 +4,7 @@
 //! the SPEC actually demands: passwords, timing, single-use tokens and session revocation.
 
 mod key_change;
+mod key_coherence;
 /// M1 — the marketplace foundation: `[market]` config, category scopes, market filters.
 #[cfg(test)]
 mod market;

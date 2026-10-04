@@ -20,6 +20,7 @@
 
 pub mod email;
 mod key_change;
+mod key_coherence;
 pub mod password;
 
 use std::net::{IpAddr, SocketAddr};
@@ -540,6 +541,13 @@ async fn signup(
     let bundle_salt = decode_b64_opt(&input.bundle_salt)?;
     let recovery_bundle = decode_b64_opt(&input.encrypted_recovery_bundle)?;
     let recovery_salt = decode_b64_opt(&input.recovery_bundle_salt)?;
+    key_coherence::check_signup(&key_change::KeyColumns {
+        encryption_public_key: encryption_pk.clone(),
+        encrypted_key_bundle: bundle.clone(),
+        bundle_salt: bundle_salt.clone(),
+        encrypted_recovery_bundle: recovery_bundle.clone(),
+        recovery_bundle_salt: recovery_salt.clone(),
+    })?;
 
     // Invite mode: claim a use before creating anything, so a failed claim cannot leave an
     // account behind.
@@ -1049,6 +1057,13 @@ async fn confirm_password_reset(
     let encryption_pk = decode_b64_opt(&body.encryption_public_key)?;
     let recovery_bundle = decode_b64_opt(&body.encrypted_recovery_bundle)?;
     let recovery_salt = decode_b64_opt(&body.recovery_bundle_salt)?;
+    key_coherence::check_pairs(&key_change::KeyColumns {
+        encryption_public_key: encryption_pk.clone(),
+        encrypted_key_bundle: bundle.clone(),
+        bundle_salt: bundle_salt.clone(),
+        encrypted_recovery_bundle: recovery_bundle.clone(),
+        recovery_bundle_salt: recovery_salt.clone(),
+    })?;
 
     // Rotating the identity key is all-or-nothing. A client that sends a new public key but keeps
     // the old recovery bundle leaves a code that unwraps a secret no longer matching the published
@@ -1190,6 +1205,11 @@ async fn change_password(
     }
     let bundle = decode_b64_opt(&body.encrypted_key_bundle)?;
     let bundle_salt = decode_b64_opt(&body.bundle_salt)?;
+    key_coherence::check_pairs(&key_change::KeyColumns {
+        encrypted_key_bundle: bundle.clone(),
+        bundle_salt: bundle_salt.clone(),
+        ..Default::default()
+    })?;
 
     let row = reauthenticate(&state, auth.user_id, ip, &body.current_verifier).await?;
 
