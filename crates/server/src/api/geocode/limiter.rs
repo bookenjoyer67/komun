@@ -5,13 +5,9 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-/// Spaces outbound calls so that no two start less than `interval` apart.
-///
-/// Callers `acquire().await` a slot. The first caller runs immediately; every
-/// later caller is assigned a slot one `interval` after the previous one and
-/// sleeps until then, so requests **queue** instead of being dropped or fired
-/// early. A single instance is shared by the whole process, which matches
-/// Nominatim's per-application usage policy.
+/// Spaces outbound calls at least `interval` apart. The first caller runs immediately; later
+/// callers queue one `interval` behind the previous one rather than being dropped. One instance is
+/// shared process-wide, matching Nominatim's per-application usage policy.
 pub struct RateLimiter {
     interval: Duration,
     next_slot: Mutex<Option<Instant>>,
@@ -25,7 +21,6 @@ impl RateLimiter {
         }
     }
 
-    /// Waits until this caller's slot is due, then returns.
     pub async fn acquire(&self) {
         let wait_until = {
             let mut next_slot = self.next_slot.lock().await;
@@ -45,11 +40,8 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
-    // The clock is paused, so `Instant::now()` and both sleeps below read
-    // tokio's timer rather than the wall clock. The 50 ms checkpoint and the
-    // 200 ms slot are then exact, instead of being eaten into by the first
-    // caller's own latency. `acquire()` is already on that timer and is
-    // unchanged.
+    // The paused clock makes `Instant::now()` and the sleeps below read tokio's timer, so the
+    // 50 ms checkpoint and 200 ms slot are exact.
     #[tokio::test(start_paused = true)]
     async fn second_lookup_is_queued_not_dropped_or_fired_early() {
         let limiter = Arc::new(RateLimiter::new(Duration::from_millis(200)));

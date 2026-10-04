@@ -95,8 +95,7 @@
 		try {
 			const loaded = await api.conversations.get(matchId);
 			convo = loaded;
-			// A market thread carries a negotiation; an aid thread has none, and asking for one
-			// would be a 400 the page has no use for.
+			// Only market threads carry a negotiation; asking for one on an aid thread is a 400.
 			if (loaded.post_kind === 'listing' || loaded.post_kind === 'want') {
 				offers = await listOffers(matchId);
 			} else {
@@ -212,11 +211,7 @@
 		sending = false;
 	}
 
-	/**
-	 * The deal lifecycle behind `PATCH /api/conversations/{id}/status`. The server names the
-	 * current status in a 409, so the sentence is shown verbatim rather than swallowed: it is the
-	 * one fact that tells the viewer whether the deal moved under them.
-	 */
+	/** A 409 names the current status: show the server's sentence verbatim so the viewer sees the deal moved under them. */
 	async function setStatus(status: string) {
 		if (!convo) return;
 		statusError = '';

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 db_enum!(
-    /// Server-level role. There are no per-community roles any more.
+    /// Server-level role; there are no per-community roles.
     Role {
         User => "user",
         Admin => "admin",
@@ -18,8 +18,7 @@ impl Role {
     }
 }
 
-/// A user as other users see them. Never carries key material beyond the public
-/// encryption key, and never the password verifier or its salt.
+/// A user as other users see them: the public encryption key, never the password verifier or its salt.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserProfile {
     pub id: Uuid,
@@ -42,11 +41,7 @@ pub struct UserProfile {
     pub profile_json: serde_json::Value,
 }
 
-/// The x25519 secret wrapped twice — once under a password-derived key, once under a
-/// recovery-code-derived key — plus the salts needed to re-derive those keys.
-///
-/// The server stores and returns these blobs but holds nothing that can unwrap them:
-/// both wrapping keys are derived in the browser and never transmitted.
+/// The x25519 secret wrapped twice — under a password-derived key and a recovery-code-derived key — plus the salts to re-derive them; the server stores these blobs but holds nothing that can unwrap them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyBundle {
     /// x25519 public key, base64.

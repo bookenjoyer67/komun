@@ -18,7 +18,7 @@ What has to hold before a step counts as a candidate?
 - Show **specifiability**: one paragraph lets a developer implement the step, because the standard
   names each rule's detection (`docs/DOC-STYLE.md:24` `How a violation is detected`).
 - Show a **high run rate**: the step runs on every review of a prose change
-  (`.claude/agents/reviewer.md:47` `Apply docs/DOC-STYLE.md to every prose file the change touches`).
+  (`.claude/agents/reviewer.md:48` `Apply docs/DOC-STYLE.md to every prose file the change touches`).
 
 Apply the matrix per step rather than per workflow (Lesson 4.3, block [15], VERBATIM). The table
 below applies it to this repository's own recorded work.
@@ -34,8 +34,8 @@ Which steps hold their place as agentic work, and which ones are now determinist
 | Change classification | deterministic | `scripts/classify-change.py` | `scripts/classify-change.py:12` `Change Classifier` |
 | Audit-trail assembly | deterministic | `scripts/build-audit-trail.py` | `scripts/build-audit-trail.py:2` `Assemble the run's audit trail` |
 | Plan authoring | agentic | — | `.claude/agents/planner.md:23` `autonomy: medium` |
-| Implementation | agentic | — | `.claude/agents/implementer.md:23` `autonomy: medium` |
-| Review findings and verdicts | agentic | — | `.claude/agents/reviewer.md:47` `v2 is the current rule set` |
+| Implementation | agentic | — | `.claude/agents/implementer.md:25` `autonomy: medium` |
+| Review findings and verdicts | agentic | — | `.claude/agents/reviewer.md:48` `v2 is the current rule set` |
 | Ticket bracketing | agentic | — | `.claude/agents/project-manager.md:37` `records the released status rather than deciding it` |
 | External research | agentic, on request | — | `.claude/agents/researcher.md:35` `the researcher returns the answer rather than acting on it` |
 | Gate sequencing and escalation | agentic, by design | — | `.claude/agents/orchestrator.md:18` `The orchestrator sequences the work` |
@@ -56,7 +56,7 @@ Why was this step the strongest candidate in the repository?
   accepted shapes (`docs/DOC-STYLE.md:40` `A bare location is a v1 form`). One paragraph describes
   the step: check each heading's opener, each claim's parenthetical, each sentence's word count, each
   rule bullet's hedges, then re-execute every `path:line` citation behind a claim.
-- **Run rate.** Every review of a prose change runs it (`.claude/agents/reviewer.md:47`
+- **Run rate.** Every review of a prose change runs it (`.claude/agents/reviewer.md:48`
   `Apply docs/DOC-STYLE.md to every prose file the change touches`).
 - **Known agent judgment, and the edge cases the deterministic version must preserve.** A claim that
   cannot be traced keeps its place and gets the marker, never invented authority
@@ -72,7 +72,7 @@ Why was this step the strongest candidate in the repository?
   `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`.
 - **Preserved edge case:** a line carrying `[UNVERIFIED]` is exempt from the bare-location check
   (`docs/DOC-STYLE.md:72` `Mark the sentence with`).
-- **Known false positive, pinned by a test.** Pairing is structural, so the checker takes the literal inside a pointer's parentheses or beside it on one line (`scripts/validate_doc_conformance_deterministic.py:111` `Citation pairing is structural`). A pointer whose literal wraps to the next line therefore takes a neighbouring literal and reports `CIT-LINE-DRIFT` on a citation that is correct.
+- **Known false positive, pinned by a test.** Pairing is structural, so the checker takes the literal inside a pointer's parentheses or beside it on one line (`scripts/validate_doc_conformance_deterministic.py:110` `Citation pairing is structural`). A pointer whose literal wraps to the next line therefore takes a neighbouring literal and reports `CIT-LINE-DRIFT` on a citation that is correct.
 - **Two live citations carry that false positive.** `AGENTS.md:29` and `AGENTS.md:45` both cite `web/package.json` correctly, and both come back as drift. `eval/test_deterministic_step.py` pins the behaviour on a fixture, so the limit is recorded rather than argued.
 - **Integration status.** Clauses 2, 3 and 4 are in place, and clause 1 holds in the orchestrator's definition while its canonical `CLAUDE.md` line is held by a write guardrail (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`). Clause 5, the single commit, is the human's.
 - **Clause 4 deviates, and the deviation is deliberate.** The retired definition stays in place and is annotated instead of deleted (`.claude/agents/komun-docs-stylist.md:18` `The prose and citation conformance step this definition ran now runs as`). Reason: it is a graded Module 1/2 deliverable that the earlier module's record cites.
@@ -129,7 +129,7 @@ When does a plan need a model rather than a template?
 When does a change need a model rather than a script?
 
 - The writing role holds no command runner and returns each change for independent test
-  (`.claude/agents/implementer.md:23` `autonomy: medium`).
+  (`.claude/agents/implementer.md:25` `autonomy: medium`).
 - The change under gate in the last run was a two-line lint repair (`docs/iteration-log.md:480`
   `two files, 8 insertions, 2 deletions`).
 - **Next review:** 2026-10-27. The work is specifiable per change and not repeatable across changes.
@@ -139,9 +139,9 @@ When does a change need a model rather than a script?
 Why does the review step need judgment rather than a rule set?
 
 - The verdict weighs a change against the rubric and the acceptance criteria
-  (`.claude/agents/reviewer.md:47` `v2 is the current rule set`).
+  (`.claude/agents/reviewer.md:48` `v2 is the current rule set`).
 - One review class is now deterministic: the prose rules and the citations inside it
-  (`.claude/agents/reviewer.md:47` `Apply docs/DOC-STYLE.md to every prose file the change touches`).
+  (`.claude/agents/reviewer.md:48` `Apply docs/DOC-STYLE.md to every prose file the change touches`).
 - **Next review:** 2026-10-27. The prose half of the review moved to the converted step; the verdict
   half rests on the plan and the gate evidence.
 

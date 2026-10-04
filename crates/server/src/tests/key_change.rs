@@ -1,16 +1,9 @@
-//! secaudit R2 / VA01: `PUT /api/auth/me` must not replace stored encryption keys on a session
-//! alone.
+//! `PUT /api/auth/me` must not replace stored encryption keys on a session alone.
 //!
-//! Every test here needs a live Postgres, so every test is `#[ignore]`d and shows as ignored under
-//! `cargo test --workspace`. Run them against a disposable database with:
-//!
-//! `KOMUN_TEST_DATABASE_URL=postgres://... cargo test -p komun-server key_change -- --ignored`
-//!
-//! The tests drive `crate::auth::router` over HTTP only and set up or inspect rows with direct
-//! SQL. They name nothing from the fix itself, and send `current_verifier` only as a JSON field, so
-//! the same file compiles against the unfixed tree and the fixed one. Each test creates its own
-//! user with a unique email and its own rate limiter, so the tests run in any order against a
-//! shared database. All passwords and keys below are synthetic byte patterns, not real material.
+//! Every test needs a live Postgres, so every test is `#[ignore]`d; run against a disposable
+//! database with `KOMUN_TEST_DATABASE_URL=postgres://... cargo test -p komun-server key_change
+//! -- --ignored`. Each test creates its own user and rate limiter, so they run in any order. All
+//! passwords and keys below are synthetic byte patterns, not real material.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -37,8 +30,7 @@ const DATABASE_ENV: &str = "KOMUN_TEST_DATABASE_URL";
 const VERIFIER: &str = "c3ludGhldGljLXRlc3QtdmVyaWZpZXItZm9yLWtleS1jaGFuZ2U";
 const WRONG_VERIFIER: &str = "d3JvbmctdGVzdC12ZXJpZmllci1mb3Ita2V5LWNoYW5nZQ";
 
-/// The refusal messages fixed by plan 6eef2ec3, section 4. The auth API has no error-code field,
-/// so the message string is the code.
+/// The refusal messages are the API's error codes: it has no error-code field.
 const PARTIAL_SET_ERROR: &str = "the encryption keys must be sent together: \
                                  encryption_public_key, encrypted_key_bundle, bundle_salt, \
                                  encrypted_recovery_bundle, recovery_bundle_salt";
@@ -77,7 +69,7 @@ impl KeyRow {
     }
 }
 
-/// A full synthetic key set. Two different tags differ in every one of the five columns.
+/// A full synthetic key set; two tags differ in every one of the five columns.
 fn key_set(tag: u8) -> KeyRow {
     KeyRow {
         encryption_public_key: Some(vec![tag; 32]),
@@ -112,7 +104,6 @@ fn hex(bytes: &[u8]) -> String {
     out
 }
 
-/// The request-body fields for every present column of `keys`, base64-encoded as the API expects.
 fn key_fields(keys: &KeyRow) -> Map<String, Value> {
     let mut fields = Map::new();
     for (name, value) in keys.fields() {
@@ -141,11 +132,8 @@ struct Harness {
     app: Router,
 }
 
-/// Connects to the database named by `KOMUN_TEST_DATABASE_URL` and builds the auth router over it.
-///
-/// Without the variable this panics before any database work: an ignored test run on purpose
-/// must not report a pass it never earned. The URL itself is never printed, because it may carry a
-/// password.
+/// Connects via `KOMUN_TEST_DATABASE_URL`; without it the test panics rather than passing
+/// unearned, and the URL is never printed.
 async fn live_harness() -> Harness {
     let Ok(url) = std::env::var(DATABASE_ENV) else {
         panic!("{DATABASE_ENV} is not set: point it at a disposable Postgres database");
@@ -179,8 +167,7 @@ struct TestUser {
     bearer: String,
 }
 
-/// Inserts a verified user whose password verifier is `VERIFIER` and whose key columns are `keys`,
-/// then opens a session for it. The email is unique per call.
+/// Inserts a verified user with `keys`, then opens a session; the email is unique per call.
 async fn seed_user(pool: &PgPool, keys: &KeyRow) -> TestUser {
     let id = Uuid::now_v7();
     let email = format!("r2-key-change-{id}@test.invalid");
@@ -227,8 +214,8 @@ async fn key_row(pool: &PgPool, user_id: Uuid) -> KeyRow {
     .expect("read key columns")
 }
 
-/// Every column of the user's row, as Postgres renders it. `users` has no `updated_at`, so this
-/// snapshot is the only way to see that nothing moved.
+/// Every column of the row; `users` has no `updated_at`, so this is the only way to see nothing
+/// moved.
 async fn full_row(pool: &PgPool, user_id: Uuid) -> Value {
     sqlx::query_scalar::<_, Value>("SELECT to_jsonb(u) FROM users u WHERE u.id = $1")
         .bind(user_id)
@@ -272,13 +259,12 @@ async fn put_me(app: &Router, bearer: &str, body: &Value) -> (StatusCode, Value)
     (status, json)
 }
 
-/// The `error` field of a response. Assertion messages print this and never the whole body, which
-/// on success may echo key fields.
+/// The `error` field only: a body may echo key fields on success.
 fn error_of(body: &Value) -> &str {
     body.get("error").and_then(Value::as_str).unwrap_or("")
 }
 
-/// Asserts that no audit row of the user carries any of the given key bytes, in base64 or in hex.
+/// Asserts no audit row carries the given key bytes, in base64 or hex.
 fn assert_no_key_material(rows: &[(String, Option<Value>)], key_sets: &[&KeyRow]) {
     for (action, detail) in rows {
         let text = format!("{action} {}", detail.clone().unwrap_or(Value::Null));
@@ -295,7 +281,7 @@ fn assert_no_key_material(rows: &[(String, Option<Value>)], key_sets: &[&KeyRow]
     }
 }
 
-/// C1a: replacing stored keys with no `current_verifier` is refused and moves no key column.
+/// Replacing stored keys with no `current_verifier` is refused and moves no key column.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c1a_replacing_stored_keys_without_a_verifier_is_refused() {
@@ -320,7 +306,7 @@ async fn c1a_replacing_stored_keys_without_a_verifier_is_refused() {
     );
 }
 
-/// C1b: replacing stored keys with a wrong `current_verifier` is refused and moves no key column.
+/// Replacing stored keys with a wrong `current_verifier` is refused and moves no key column.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c1b_replacing_stored_keys_with_a_wrong_verifier_is_refused() {
@@ -346,8 +332,7 @@ async fn c1b_replacing_stored_keys_with_a_wrong_verifier_is_refused() {
     );
 }
 
-/// C1c: replacing stored keys with the correct `current_verifier` writes all five columns and
-/// records one audit row that carries no key material.
+/// Replacing stored keys with the correct verifier writes all five and audits one row.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c1c_replacing_stored_keys_with_the_correct_verifier_succeeds_and_is_audited() {
@@ -375,8 +360,7 @@ async fn c1c_replacing_stored_keys_with_the_correct_verifier_succeeds_and_is_aud
     assert_no_key_material(&rows, &[&k1, &k2]);
 }
 
-/// C1d: wrong verifiers are charged to the SignIn bucket, so the attempt after the quota is 429,
-/// and no key column moves at any point.
+/// Wrong verifiers are charged to the SignIn bucket, so the attempt past the quota is 429.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c1d_wrong_verifiers_are_rate_limited_like_sign_in() {
@@ -412,7 +396,7 @@ async fn c1d_wrong_verifiers_are_rate_limited_like_sign_in() {
     );
 }
 
-/// C2: the first key set on an account with none stored is accepted on the session alone.
+/// The first key set on an account with none stored is accepted on the session alone.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c2_first_time_key_setup_needs_only_the_session() {
@@ -430,8 +414,7 @@ async fn c2_first_time_key_setup_needs_only_the_session() {
     );
 }
 
-/// C3: re-uploading the stored key set unchanged, with no verifier, succeeds and changes nothing:
-/// every `users` column and the audit count are the same afterwards.
+/// An unchanged re-upload with no verifier succeeds and changes nothing.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c3_identical_reupload_is_accepted_and_changes_nothing() {
@@ -455,7 +438,7 @@ async fn c3_identical_reupload_is_accepted_and_changes_nothing() {
     );
 }
 
-/// C4a: a partial key set against stored keys is refused and moves no key column.
+/// A partial key set against stored keys is refused and moves no key column.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c4a_partial_key_set_over_stored_keys_is_refused() {
@@ -484,7 +467,7 @@ async fn c4a_partial_key_set_over_stored_keys_is_refused() {
     );
 }
 
-/// C4b: a partial key set on an account with no keys stored is refused and leaves all five NULL.
+/// A partial key set on an account with no keys is refused and leaves all five NULL.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c4b_partial_key_set_with_no_keys_stored_is_refused() {
@@ -512,8 +495,7 @@ async fn c4b_partial_key_set_with_no_keys_stored_is_refused() {
     );
 }
 
-/// C4c: a partial key set alongside a profile field refuses the whole request, so the profile
-/// field is not written either.
+/// A partial key set alongside a profile field refuses the whole request, profile included.
 #[tokio::test]
 #[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
 async fn c4c_partial_key_set_with_a_profile_field_refuses_the_whole_request() {

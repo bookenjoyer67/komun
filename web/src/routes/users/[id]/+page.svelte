@@ -13,9 +13,7 @@
     let error = $derived(data.error);
     let copied = $state(false);
     let endorsing = $state(false);
-    // Both are written optimistically by the endorse handlers and otherwise track the load.
-    // Deriving them (rather than seeding `$state` from a prop, which only ever captured the
-    // first value) keeps them in step with a fresh load — same pattern as `endorsements`.
+    // Written optimistically by the endorse handlers, so derive (not seed $state from the prop) to stay in step with a fresh load.
     let endorsed = $derived(data.hasEndorsed);
     let endCount = $derived(data.endorsements?.count || 0);
     let endorseError = $state('');
@@ -103,8 +101,6 @@
             {/if}
         </div>
 
-        <!-- M3.4: the aggregate is computed from `deal_reviews`; a user nobody has reviewed reads
-             "No reviews yet" rather than a zero-star rating no deal can produce. -->
         <div
             class="rating-badge"
             aria-label={profile.rating_count > 0
@@ -132,7 +128,6 @@
         {/if}
 
         <div class="stats-row">
-            <!-- A3.2 removed `community_count` from `/api/users/{id}`; it rendered as `undefined`. -->
             <div class="stat">
                 <span class="stat-value">{profile.post_count}</span>
                 <span class="stat-label">posts</span>

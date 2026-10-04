@@ -1,12 +1,8 @@
 /**
  * Deal reviews — `deal_reviews`, writable only against a completed deal.
  *
- * SPEC B4: star ratings plus a written review, and M3 pins the rules: participant-only, only
- * when `matches.status = 'completed'`, one review per (match, reviewer). The endpoints are
- * `POST /api/matches/{id}/reviews` (session) and `GET /api/users/{id}/reviews` (public).
- *
- * The rating lives on a 1–5 integer scale (`chk_deal_reviews_rating`), so the client validates it
- * before sending and the modal refuses to call the API with an impossible star.
+ * Participant-only, one review per (match, reviewer), only when the match is `completed`; the
+ * rating is a 1–5 integer, validated here before sending.
  */
 import { getActiveServer } from '$lib/stores/server';
 import { getToken } from '$lib/stores/auth';
@@ -79,10 +75,7 @@ async function requestJson<T>(path: string, options: RequestInit = {}): Promise<
 	return res.json();
 }
 
-/**
- * Count by Unicode code point, the way the server counts with `chars().count()`. A `String.length`
- * counts UTF-16 units, so an emoji would be charged twice against a limit the server measures once.
- */
+/** Count by Unicode code point, the way the server counts with `chars().count()`. */
 export function countChars(value: string): number {
 	return [...value].length;
 }

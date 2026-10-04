@@ -1,4 +1,4 @@
-//! In-process rate limiting for the auth routes (A2a / SPEC Part 1.5).
+//! In-process rate limiting for the auth routes.
 //!
 //! A token bucket keyed by `(route class, client IP)`. Deliberately in-process and
 //! deliberately not exact: the goal is to make online password guessing and mail-flooding
@@ -15,7 +15,6 @@ use std::net::IpAddr;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// What a bucket permits: `capacity` requests in a burst, refilling over `per`.
 #[derive(Debug, Clone, Copy)]
 pub struct Quota {
     pub capacity: u32,
@@ -41,18 +40,16 @@ impl Quota {
 pub enum RouteClass {
     /// Password sign-in: the one an attacker actually grinds.
     SignIn,
-    /// Account creation.
     SignUp,
     /// Resending a verification mail — limited hard because each hit sends email to a third party.
     VerifyResend,
-    /// Requesting a password-reset mail. Same reasoning as above.
     PasswordReset,
 }
 
 impl RouteClass {
-    /// The default quota for each class. Sign-in is the loosest of the four because a legitimate
-    /// household or office behind one NAT address shares a bucket; the mail-sending routes are the
-    /// tightest because the cost of abuse lands on someone who did not ask for it.
+    /// Sign-in is the loosest of the four because a legitimate household or office behind one NAT
+    /// address shares a bucket; the mail-sending routes are the tightest because the cost of abuse
+    /// lands on someone who did not ask for it.
     pub const fn quota(self) -> Quota {
         match self {
             RouteClass::SignIn => Quota::new(10, Duration::from_secs(300)),
@@ -78,7 +75,6 @@ struct Bucket {
     last_refill: Instant,
 }
 
-/// The limiter itself. Cheap to clone-by-reference through `Arc` in `AppState`.
 #[derive(Debug)]
 pub struct RateLimiter {
     buckets: Mutex<HashMap<(RouteClass, IpAddr), Bucket>>,
@@ -102,8 +98,7 @@ impl RateLimiter {
         }
     }
 
-    /// Take one token. `Ok(())` means proceed; `Err(retry_after)` means reject with 429 and that
-    /// `Retry-After`.
+    /// `Ok(())` means proceed; `Err(retry_after)` means reject with 429 and that `Retry-After`.
     pub fn check(&self, class: RouteClass, ip: IpAddr) -> Result<(), Duration> {
         self.check_at(class, ip, Instant::now())
     }
@@ -168,12 +163,9 @@ impl RateLimiter {
     }
 }
 
-/// Resolve the client IP for limiting purposes.
-///
-/// `socket_ip` is the peer that actually opened the connection. `forwarded_for` is the raw
-/// `X-Forwarded-For` header, which is consulted **only** when the socket peer is in
-/// `trusted_proxies`. The value taken is the right-most entry that is not itself a trusted proxy:
-/// entries to the left of that are attacker-supplied and must not be believed.
+/// `forwarded_for` is the raw `X-Forwarded-For` header, which is consulted **only** when the
+/// socket peer is in `trusted_proxies`. The value taken is the right-most entry that is not itself
+/// a trusted proxy: entries to the left of that are attacker-supplied and must not be believed.
 pub fn client_ip(
     socket_ip: IpAddr,
     forwarded_for: Option<&str>,
@@ -255,9 +247,8 @@ mod tests {
         }
         assert!(limiter.check(RouteClass::SignIn, attacker).is_err());
 
-        // Same address, different route: unaffected.
         assert!(limiter.check(RouteClass::PasswordReset, attacker).is_ok());
-        // Different address, same route: unaffected. One noisy IP must not lock out the world.
+        // One noisy IP must not lock out the world.
         assert!(limiter.check(RouteClass::SignIn, ip(4)).is_ok());
     }
 
@@ -314,7 +305,6 @@ mod tests {
             real
         );
 
-        // Chained trusted proxies are skipped over.
         let inner = ip(21);
         assert_eq!(
             client_ip(

@@ -24,11 +24,7 @@
 	let success = $state(false);
 	let matchId = $state('');
 
-	/**
-	 * A2a/A3.4 replaced the anonymous device identity with a session: responding takes an
-	 * account, which takes an email and a password, which is a page and not a field in a modal.
-	 * So this branch offers the door rather than pretending to open it here.
-	 */
+	/** Responding needs an account, which needs a signup page — so this branch offers the door rather than a field. */
 	let needsAccount = $derived(!isAuthenticated());
 
 	function goSignUp() {
@@ -36,11 +32,7 @@
 		goto('/account/signup');
 	}
 
-	/**
-	 * A3.3 sealed the wire: `/respond` takes a `ciphertext` and the server never sees plaintext.
-	 * There is deliberately no plaintext fallback — if the recipient's key cannot be fetched the
-	 * response fails loudly instead of quietly shipping a readable "ciphertext".
-	 */
+	/** No plaintext fallback: if the recipient's key cannot be fetched, the response fails loudly rather than ship a readable "ciphertext". */
 	async function seal(plaintext: string): Promise<string> {
 		if (!post.author_id) throw new Error('This post has no recipient to encrypt to');
 

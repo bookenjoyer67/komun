@@ -118,11 +118,7 @@
 			{/if}
 
 			{#if !hasCode}
-				<!--
-					This is the one irreversible choice in the whole flow, so it gets an explicit
-					acknowledgement rather than a silent default. Nobody — not the server, not us —
-					can open the old bundle without the code.
-				-->
+				<!-- The one irreversible choice in the flow: without the code nobody can open the old key bundle. -->
 				<label class="accept">
 					<input type="checkbox" bind:checked={acceptLoss} />
 					I do not have my recovery code. I understand that messages sent to me before this

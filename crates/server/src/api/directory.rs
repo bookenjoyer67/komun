@@ -21,9 +21,8 @@ static REGISTRATIONS: LazyLock<TokioMutex<Vec<StdInstant>>> =
     LazyLock::new(|| TokioMutex::new(Vec::new()));
 
 pub fn router(state: AppState) -> Router {
-    // B5: the gate is the resolved `open_registration`, not `[registration] mode` directly. An
-    // operator may sign users up by invite only and still accept peer registrations into the
-    // directory by setting `open_registration = true`; unset falls back to the signup mode.
+    // Gate on the resolved `open_registration`, not `[registration] mode`: signup can be
+    // invite-only while peer directory registrations stay open.
     let registration_is_open = state.config.open_registration();
 
     let mut public = Router::new().route("/directory", get(list_servers));
@@ -62,8 +61,8 @@ pub struct RegisterRequest {
     location_lat: Option<f64>,
     location_lon: Option<f64>,
     version: Option<String>,
-    /// Peers advertise whether they accept open registrations. Older peers omit it
-    /// (`#[serde(default)]`), and are treated as openly registerable.
+    /// Peers advertise whether they accept open registrations; older peers omit it and are treated
+    /// as openly registerable.
     #[serde(default)]
     open_registration: Option<bool>,
 }
@@ -101,7 +100,7 @@ pub struct SearchParams {
 const ENTRY_COLUMNS: &str =
     "url, name, description, location_name, location_lat, location_lon, version, open_registration, last_seen, registered_at";
 
-/// Great-circle distance in km from `$1`/`$2` to a row's `location_lat`/`location_lon`.
+/// Great-circle distance in km between (`$1`, `$2`) and a row's location.
 const DISTANCE_KM: &str = r#"(6371 * acos(
     LEAST(1.0, GREATEST(-1.0,
       cos(radians($1)) * cos(radians(location_lat)) *
@@ -129,8 +128,6 @@ async fn register_server(
 
     let url = input.url.trim_end_matches('/').to_string();
 
-    // A3.2: `communities_count` and `community_locations` are not columns of the squashed
-    // `directory_entries`. A server registering itself advertises one location, its own.
     sqlx::query(
         r#"INSERT INTO directory_entries (url, name, description, location_name, location_lat, location_lon, version, open_registration, last_seen)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
@@ -151,7 +148,8 @@ async fn register_server(
     .bind(input.location_lat)
     .bind(input.location_lon)
     .bind(&input.version)
-    // Old peers omit the field; the column default and our fallback agree: openly registerable.
+    // The column default and this fallback agree: peers that omit the field are openly
+    // registerable.
     .bind(input.open_registration.unwrap_or(true))
     .execute(&state.pool)
     .await?;
@@ -165,9 +163,6 @@ async fn list_servers(
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<Vec<DirectoryEntryWithDistance>>, StatusError> {
-    // The nearby case used to run a second query that expanded each entry's
-    // `community_locations` JSONB into one result per community, then deduplicated the two
-    // result sets by url. With one location per server there is one query and nothing to merge.
     let entries = if let (Some(lat), Some(lon)) = (params.lat, params.lon) {
         let radius = params.radius.unwrap_or(50.0);
 

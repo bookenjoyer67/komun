@@ -132,10 +132,6 @@
 		{/if}
 
 		<div class="footer">
-			<!--
-				A6 flattened the model: a post belongs to a server, not to a community inside one.
-				The origin worth showing in a federated feed is therefore the server it came from.
-			-->
 			<span class="origin">{post.server_name || ''}</span>
 			<div class="footer-actions">
 				{#if post.location_lat != null && post.location_lon != null}
@@ -164,8 +160,8 @@
 
 {#if showMap}
 	<!--
-		The backdrop dismisses the popout on click; it needs to do the same from the keyboard,
-		and it needs to be focusable for `role="dialog"` to mean anything to a screen reader.
+		The backdrop dismisses on click and must do the same from the keyboard; it is focusable so
+		`role="dialog"` means something to a screen reader.
 	-->
 	<div
 		class="map-overlay"

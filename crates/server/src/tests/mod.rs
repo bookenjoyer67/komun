@@ -1,15 +1,12 @@
-//! A2a replaced the whole JWT + ed25519-challenge test suite. The old tests asserted that a
-//! token this server signed could be verified by this server, which is true of any correct HMAC
-//! and told us nothing about whether the scheme was sound. What is tested now is the behaviour
-//! the SPEC actually demands: passwords, timing, single-use tokens and session revocation.
+//! Passwords, timing, single-use tokens and session revocation.
 
 mod key_change;
 mod key_coherence;
-/// M1 — the marketplace foundation: `[market]` config, category scopes, market filters.
+/// The marketplace foundation: `[market]` config, category scopes, market filters.
 #[cfg(test)]
 mod market;
 
-/// A2.2 — the server-side half of the password path.
+/// The server-side half of the password path.
 #[cfg(test)]
 mod password_tests {
     use crate::auth::password::*;
@@ -47,17 +44,14 @@ mod password_tests {
         assert!(verify_verifier(VERIFIER, &b));
     }
 
-    // Wrong-password rejection must not be measurably faster than acceptance, and neither may
-    // depend on how much of the input is correct. This is a coarse check — a loaded CI box has
-    // far more jitter than any Argon2 timing signal — but it does catch the failure that matters:
-    // an early-exit comparison, which is orders of magnitude faster, not percent-wise faster.
+    // A coarse check, but it catches the failure that matters: an early-exit comparison is
+    // orders of magnitude faster than a full Argon2 verify.
     #[test]
     fn verification_time_does_not_leak_how_wrong_the_guess_was() {
         use std::time::Instant;
 
         let stored = hash_verifier(VERIFIER).expect("hash");
-        // Same length, differs in the last character only: an early-exit memcmp would return
-        // almost instantly on the near-miss and much later on the far-miss.
+        // Differs in the last character only: an early-exit compare would return instantly.
         let near_miss = format!("{}X", &VERIFIER[..VERIFIER.len() - 1]);
         let far_miss = OTHER;
 
@@ -84,8 +78,7 @@ mod password_tests {
         let far = far_total / ROUNDS;
         let good = good_total / ROUNDS;
 
-        // Every path must do the full Argon2 work. Ratios rather than absolute numbers, because
-        // the absolute cost depends on the machine.
+        // Ratios rather than absolute times, which depend on the machine.
         let ratio = |a: std::time::Duration, b: std::time::Duration| {
             a.as_secs_f64().max(b.as_secs_f64()) / a.as_secs_f64().min(b.as_secs_f64()).max(1e-9)
         };
@@ -156,8 +149,7 @@ mod password_tests {
         assert!(needs_rehash("not-a-hash"));
     }
 
-    // The client enforces the length policy before deriving; the server enforces it again,
-    // because a client that skips its own check is exactly the client to worry about.
+    // The server re-enforces the length policy because a client may skip its own check.
     #[test]
     fn too_short_a_password_is_refused_at_signup() {
         assert!(validate_password_length(12, 12).is_ok());
@@ -171,8 +163,7 @@ mod password_tests {
 
     #[test]
     fn a_hand_typed_verifier_is_refused() {
-        // Without this, a crafted request could register "hunter2" as its own verifier and
-        // bypass the client-side derivation entirely.
+        // Without this, a request could register a plaintext verifier directly.
         assert!(validate_verifier_shape(VERIFIER).is_ok());
         assert!(validate_verifier_shape("hunter2").is_err());
         assert!(validate_verifier_shape("").is_err());
@@ -184,7 +175,7 @@ mod password_tests {
     }
 }
 
-/// A2.4 — session tokens: what is stored, what is accepted, what is thrown away.
+/// Session tokens: what is stored, what is accepted, what is thrown away.
 #[cfg(test)]
 mod session_token_tests {
     use crate::sessions::*;
@@ -217,12 +208,10 @@ mod session_token_tests {
 
     #[test]
     fn lifetimes_match_the_spec() {
-        // SPEC Part 1.5: verification 24h, reset 30 minutes.
+        // Verification 24h, reset 30 minutes.
         assert_eq!(EMAIL_VERIFY_TTL_MINUTES, 24 * 60);
         assert_eq!(PASSWORD_RESET_TTL_MINUTES, 30);
-        // Both operands are `const`, so a runtime `assert!` is `clippy::assertions_on_constants`.
-        // A `const` item keeps the same comparison and the same message and moves the failure from
-        // test time to build time, where a wrong TTL pair cannot be compiled at all.
+        // A `const` assert moves a wrong TTL pair from test time to build time.
         const _: () = assert!(
             PASSWORD_RESET_TTL_MINUTES < EMAIL_VERIFY_TTL_MINUTES,
             "a reset link is more dangerous than a verification link and must live shorter"
@@ -287,8 +276,7 @@ superadmin_public_keys = []
         assert_eq!(config.database.max_connections, 5);
     }
 
-    // A2a / SPEC Part 1.5: the operator must not be able to demand email verification from a
-    // server that cannot send email. The failure belongs at startup, not at the first signup.
+    // A server that cannot send email must not be allowed to demand verification.
     #[test]
     fn verification_required_without_smtp_is_a_startup_error() {
         let toml = r#"
@@ -346,7 +334,7 @@ from = ""
         assert!(config.validate_registration().is_err());
     }
 
-    // A7: open | invite | closed, defaulting to open.
+    // open | invite | closed, defaulting to open.
     #[test]
     fn registration_mode_defaults_to_open_and_rejects_nonsense() {
         let default: Config = toml::from_str("").expect("parse empty config");

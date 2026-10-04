@@ -1,14 +1,10 @@
 /**
- * The negotiation trail on a match thread — `match_offers`, append-only.
+ * The negotiation trail on a match thread — `match_offers`, append-only. An offer is a numbered
+ * step on the encrypted thread, not a message.
  *
- * SPEC B3: negotiation reuses the existing encrypted thread; an offer is a numbered step on it,
- * not a message. The four kinds are pinned to `chk_match_offers_kind` in the frozen schema and to
- * `komun_core::models::OfferKind`; this file mirrors that union rather than inventing a second
- * vocabulary.
- *
- * Unlike the message bodies on the same thread, an offer and its note are server-readable. They
- * carry no plaintext secret — only a price and a sentence about collection — which is what lets
- * the offer list render without a conversation key.
+ * Unlike the message bodies on the same thread, an offer and its note are server-readable — no
+ * plaintext secret, only a price and a sentence — which is what lets the offer list render without
+ * a conversation key.
  */
 import { getActiveServer } from '$lib/stores/server';
 import { getToken } from '$lib/stores/auth';
@@ -44,12 +40,8 @@ export interface NewOffer {
 }
 
 /**
- * A refusal from the server that keeps its status code.
- *
- * `api/client.ts` throws a bare `Error`, which is enough for a generic failure but not for an
- * offer: a 409 is a *legal* answer ("you already agreed", "that thread is withdrawn") whose
- * sentence the UI has to show, while a 400 is a bug in the request. Folding both into `Error`
- * would make the panel either swallow the 409 or report a typo as a deal conflict.
+ * A server refusal that keeps its status code: a 409 is a legal answer whose sentence the UI must
+ * show, while a 400 is a request bug.
  */
 export class OfferApiError extends Error {
 	readonly status: number;
@@ -89,11 +81,8 @@ export function listOffers(matchId: string): Promise<Offer[]> {
 }
 
 /**
- * `POST /api/conversations/{id}/offers`.
- *
- * A `decline` carries no amount by server rule; every other kind needs one (an accept must
- * restate the number it agrees to). Blank notes are omitted so an empty box is "no note", not a
- * note of whitespace.
+ * A `decline` carries no amount by server rule; every other kind needs one. Blank notes are
+ * omitted so an empty box is "no note", not a note of whitespace.
  */
 export function createOffer(matchId: string, offer: NewOffer): Promise<Offer> {
 	const body: Record<string, unknown> = { kind: offer.kind };
@@ -126,9 +115,8 @@ export function agreedOffer(offers: Offer[]): Offer | null {
 }
 
 /**
- * The rule the accept control exists to honour: the counterparty accepts, never the author of
- * the number. The server enforces this too (a self-accept is a 409); the UI simply does not
- * offer a button whose only outcome is an error.
+ * The counterparty accepts, never the author of the number. The server enforces this too (a
+ * self-accept is a 409); the UI does not offer a button whose only outcome is an error.
  */
 export function canAccept(offers: Offer[], myUserId: string | null): boolean {
 	const last = lastNumberedOffer(offers);

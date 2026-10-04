@@ -1,8 +1,7 @@
 mod admin;
 mod reports;
-// M1/M2: `pub(crate)` on these three only so `crate::tests::market` can unit-test their
-// validators directly. Nothing outside the crate can reach them, and the routers are still
-// mounted here.
+// `pub(crate)` on these three only so `crate::tests::market` can unit-test their validators
+// directly; nothing outside the crate can reach them.
 pub(crate) mod categories;
 pub(crate) mod conversations;
 pub mod directory;
@@ -17,9 +16,6 @@ pub(crate) mod posts;
 pub(crate) mod reviews;
 mod search;
 mod users;
-
-// `alliances` is gone: no `mod` declaration, no route, and no file on disk. `GET /api/alliances`
-// therefore 404s, which is the intended shape.
 
 use axum::Router;
 
@@ -36,27 +32,21 @@ pub fn router(state: AppState) -> Router {
         .merge(conversations::router(state.clone()))
         .merge(notifications::router(state.clone()))
         .merge(admin::router(state.clone()))
-        // M1.2/M1.3: the public taxonomy and its admin editor. Mounted flat rather than nested
-        // because the two halves live under different path prefixes (`/categories` and
-        // `/admin/categories`) and behind different guards.
+        // Mounted flat, not nested: the two halves sit under different path prefixes and guards.
         .merge(categories::router(state.clone()))
         .merge(reports::router(state.clone()))
         .merge(search::router(state.clone()))
-        // M3.1: writing a review hangs off the deal it is about, so it is mounted at
-        // `/matches/{id}/reviews` rather than under `/conversations` — the thread is where the
-        // negotiation happened, the match is what was completed.
+        // A review hangs off the deal it is about, not the thread the negotiation happened in.
         .merge(reviews::router(state.clone()))
         .nest("/auth", auth::router(state.clone()))
-        // M3.3: reading somebody's reviews is a fact about that profile, so it joins the `/users`
-        // nest beside endorsements instead of being a second top-level `/users` route — which
-        // axum would have to resolve against this very nest.
+        // Reviews read as a fact about a profile, so they join the `/users` nest rather than a
+        // second top-level route axum would have to resolve.
         .nest(
             "/users",
             users::router(state.clone())
                 .merge(endorsements::router(state.clone()))
                 .merge(reviews::user_router(state.clone())),
         )
-        // A3.1: posts are a flat, server-wide collection now — no tenant segment in the path.
         .nest("/posts", posts::router(state.clone()));
 
     r = r.route(

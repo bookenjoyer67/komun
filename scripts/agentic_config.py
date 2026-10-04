@@ -494,7 +494,6 @@ _CACHE: dict[str, Any] | None = None
 _SOURCE: str | None = None
 
 
-# --- Reading the config ----------------------------------------------------------------------
 def _read_json(path: Path | None) -> dict[str, Any] | None:
     """The JSON object at `path`, or None when it is missing, unreadable or not a JSON object."""
     if path is None:
@@ -606,7 +605,6 @@ def get(dotted_key: str, default: Any = None) -> Any:
     return default if value is None else value
 
 
-# --- CLI -------------------------------------------------------------------------------------
 USAGE = "usage: agentic_config.py (--print-config | --source | --get <dotted.key> [--default <v>])"
 
 

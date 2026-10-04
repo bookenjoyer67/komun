@@ -79,8 +79,6 @@
 		color: var(--kind-offer, var(--success));
 	}
 
-	/* A wanted ad is not a listing: a different colour and its own label, so the
-	   two never read as the same thing at a glance. */
 	.kind-want {
 		background: var(--kind-need-soft);
 		color: var(--kind-need, var(--critical));

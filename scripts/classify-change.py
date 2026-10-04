@@ -70,7 +70,6 @@ from pathlib import Path
 
 RULE_VERSION = "m4-4.2-v1"
 
-# --- The portability seam: the two glob tables live in agentic.config.json --------------------
 # `classification.governed_globs` and `classification.policy_globs` carry this repository's tables,
 # so a fork reclassifies by editing the config instead of this file. The loader is stdlib only and
 # falls back to its own embedded defaults, so the classifier behaves exactly as it does today when
@@ -112,29 +111,12 @@ def _glob_table(dotted_key: str) -> tuple[str, ...]:
     return tuple(str(entry) for entry in configured)
 
 
-# The classifier also enforces these policy globs, which `classification.policy_globs` does not
-# The operation guards that decide who may call what, the container permission layer and the
-# gates and the audit trail all control permissions and access boundaries exactly as the
-# configured globs do. All of them now live in `classification.policy_globs`, because a fork
-# reading that key must get the whole set: a glob left behind in this file is a seam the fork
-# cannot see, and scripts/port-self-test.sh exists to catch exactly that. The alias stays so
-# the history of this list is legible.
 POLICY_GLOBS_EXTRA: tuple[str, ...] = ()
 
-# Files that can change what agents do or what they are allowed to do, or that carry the
-# evidence about either. Lesson 4.2 block [123], applied to this repository's layout: the mapping
-# from the lesson's paths to this tree's paths (`.agents/` -> `.claude/agents/`, `.skills/` ->
-# `.claude/skills/`, `mcp-servers/` -> `mcp/`) and the reason each path is agent-affecting is the
-# table in the module docstring above. The values are `classification.governed_globs`.
 GOVERNED_GLOBS: tuple[str, ...] = _glob_table("classification.governed_globs")
 
-# The strictly narrower subset: files that control permissions and access boundaries.
-# Lesson 4.2 block [123]: "Some files are especially sensitive because they control
-# permissions and access boundaries. For those files, the workflow sets a second flag:
-# touches-policy=true." The whole set is `classification.policy_globs`.
 POLICY_GLOBS: tuple[str, ...] = _glob_table("classification.policy_globs") + POLICY_GLOBS_EXTRA
 
-# What this classifier consumes, for `--print-config` and for scripts/port-self-test.sh.
 CONFIG_KEYS: tuple[str, ...] = (
     "classification.governed_globs",
     "classification.policy_globs",
