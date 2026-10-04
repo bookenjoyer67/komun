@@ -88,7 +88,7 @@ Read a non-zero exit as one named consumer still ignoring the config (`scripts/p
 
 Which parts of this gate are content and code rather than values?
 
-- Keep the retrieval corpus as data, because the retrieval server reads Markdown at startup (`mcp/retrieval/server.py:589` `reference corpus not found at {reference_dir}`).
+- Keep the retrieval corpus as data, because the retrieval server reads Markdown at startup (`mcp/retrieval/server.py:629` `reference corpus not found at {reference_dir}`).
 - Keep the style-rules content as prose, because the config carries only its path (`docs/DOC-STYLE.md:26` `A section opens with the question it answers`).
 - Replace the three cargo gate commands for a non-Rust toolchain, because cargo argv is Rust-specific (`agentic.config.json:20` `"argv": ["cargo", "test", "--workspace"]`).
 - Replace or delete the clippy guard, because a cached linter prints nothing and exits 0 (`agentic.config.json:31` `a cached clippy run prints nothing and exits 0, which is indistinguishable from a clean lint`).

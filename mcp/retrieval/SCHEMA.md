@@ -5,7 +5,7 @@ Which server, endpoint, and corpus does this document describe?
 The server is named `retrieval` (`mcp/retrieval/server.py:108` `mcp = FastMCP("retrieval")`), and
 it serves streamable HTTP at `http://localhost:8002/mcp`.
 
-It exposes exactly one operation, `retrieve` (`mcp/retrieval/server.py:752` `@mcp.tool`).
+It exposes exactly one operation, `retrieve` (`mcp/retrieval/server.py:792` `@mcp.tool`).
 
 The corpus is the curated reference directory, `.memory/reference` on the host and
 `/workspace/.memory/reference` in the container (`mcp/retrieval/server.py:58`
@@ -17,10 +17,10 @@ Which command indexes that corpus and starts the server?
 python3 mcp/retrieval/server.py --port 8002 --host 0.0.0.0 --chunking paragraph
 ```
 
-The chunking flag accepts two strategies (`mcp/retrieval/server.py:872` `choices=["paragraph", "semantic"],`) and defaults to `paragraph`
-(`mcp/retrieval/server.py:873` `default="paragraph",`).
+The chunking flag accepts two strategies (`mcp/retrieval/server.py:912` `choices=["paragraph", "semantic"],`) and defaults to `paragraph`
+(`mcp/retrieval/server.py:913` `default="paragraph",`).
 
-The boundary flag defaults to `0.75` (`mcp/retrieval/server.py:877`
+The boundary flag defaults to `0.75` (`mcp/retrieval/server.py:917`
 `"--boundary-threshold",` with `default=0.75` at `:878`), and `--port` defaults to `8002`
 (`python3 mcp/retrieval/server.py --help` -> `--port PORT           HTTP port (default 8002)`).
 
@@ -40,12 +40,12 @@ and `mcp/retrieval/server.py:70`
 `str(Path(__file__).resolve().parents[2] / "docs" / "routing-and-tool-grant-map.json"),`).
 
 Override each with its environment variable, or with the matching flag: `--reference-dir`,
-`--allowlist-path` (`mcp/retrieval/server.py:888` `"--allowlist-path",`), `--routing-map-path`
-(`mcp/retrieval/server.py:893` `"--routing-map-path",`) and `--audit-path`
-(`mcp/retrieval/server.py:898` `"--audit-path", default=AUDIT_PATH,`).
+`--allowlist-path` (`mcp/retrieval/server.py:928` `"--allowlist-path",`), `--routing-map-path`
+(`mcp/retrieval/server.py:933` `"--routing-map-path",`) and `--audit-path`
+(`mcp/retrieval/server.py:938` `"--audit-path", default=AUDIT_PATH,`).
 
 The server prints its grants and its ceilings as it starts, so the run states what it will allow
-(`mcp/retrieval/server.py:917`
+(`mcp/retrieval/server.py:957`
 `print(f"retrieval grants: {json.dumps(ALLOW_LIST, sort_keys=True)}"`, which printed
 `retrieval grants: {"implementer": ["retrieve"], "planner": ["retrieve"], "reviewer": ["retrieve"],
 ...}` with `retrieval role ceilings: {"implementer": "internal", "orchestrator": "none", ...}` on a
@@ -54,7 +54,7 @@ live start).
 ## How is the index built at startup?
 
 Read every `*.md` file under the corpus, parse its front matter, chunk it, embed each chunk,
-and store the vectors in an in-memory sqlite-vec table (`mcp/retrieval/server.py:714`
+and store the vectors in an in-memory sqlite-vec table (`mcp/retrieval/server.py:754`
 `def build_index(reference_dir: str, chunker: Callable[[str], list[str]]) -> CorpusIndex:`).
 
 Embed chunks with fastembed's ONNX runtime, which needs no torch and no API key
@@ -80,13 +80,13 @@ matching passage prefix (`mcp/retrieval/server.py:84`
 Both prefixes default to empty, so the MiniLM path behaves exactly as it did before.
 
 Vectors are 384 wide (`mcp/retrieval/server.py:76` `EMBEDDING_DIM = 384`), and the table is a
-cosine index (`mcp/retrieval/server.py:729` `f"CREATE VIRTUAL TABLE vec_chunks USING vec0("`).
+cosine index (`mcp/retrieval/server.py:769` `f"CREATE VIRTUAL TABLE vec_chunks USING vec0("`).
 
 Which components hold the index?
 
-An in-memory SQLite connection holds the vectors (`mcp/retrieval/server.py:722`
+An in-memory SQLite connection holds the vectors (`mcp/retrieval/server.py:762`
 `conn = sqlite3.connect(":memory:", check_same_thread=False)`), and a BM25 index holds the
-tokenized chunks for the keyword path (`mcp/retrieval/server.py:647`
+tokenized chunks for the keyword path (`mcp/retrieval/server.py:687`
 `self.bm25 = BM25Okapi(tokenized) if tokenized and any(tokenized) else None`).
 
 Because the index is derived at startup, restarting the server rebuilds it from the corpus; no
@@ -106,14 +106,14 @@ doc_type: decision
 ```
 
 Read `classification` first because it decides visibility
-(`mcp/retrieval/server.py:603` `classification = metadata.get("classification", "").lower()`).
+(`mcp/retrieval/server.py:643` `classification = metadata.get("classification", "").lower()`).
 
 Read `project` next; accept the `project_id` spelling as an alias, and fall back to `unknown`
-(`mcp/retrieval/server.py:610`
+(`mcp/retrieval/server.py:650`
 `project = metadata.get("project") or metadata.get("project_id") or "unknown"`).
 
 Read `doc_type` last, so a metadata filter can narrow by document class
-(`mcp/retrieval/server.py:611` `doc_type = metadata.get("doc_type") or None`).
+(`mcp/retrieval/server.py:651` `doc_type = metadata.get("doc_type") or None`).
 
 What happens to a document without usable front matter?
 
@@ -125,15 +125,15 @@ document (`indexed 16 chunks from 9 documents` beside
 `WARNING: notes-untagged.md: no valid front-matter classification; indexed as 'secret'`).
 
 The server never crashes on corpus input: an unreadable or unchunkable file is reported and
-skipped (`mcp/retrieval/server.py:599` `warnings.append(f"{path.name}: unreadable ({error}); skipped")`).
+skipped (`mcp/retrieval/server.py:639` `warnings.append(f"{path.name}: unreadable ({error}); skipped")`).
 
-Skip dot-files and `.gitkeep` (`mcp/retrieval/server.py:594`
+Skip dot-files and `.gitkeep` (`mcp/retrieval/server.py:634`
 `if path.name.startswith(".") or path.name == ".gitkeep":`).
 
 ## Which chunking strategies exist, and what does each one do?
 
 Two strategies exist, and paragraph chunking is the default
-(`mcp/retrieval/server.py:873` `default="paragraph",`).
+(`mcp/retrieval/server.py:913` `default="paragraph",`).
 
 Which chunk size do the guards enforce?
 
@@ -160,7 +160,7 @@ and compares consecutive sentences with a dot product (`mcp/retrieval/server.py:
 How does a chunk carry its own context?
 
 Prepend the section heading to the chunk text, so a one-sentence hit still names its subject
-(`mcp/retrieval/server.py:623` `excerpt = f"{heading}. {piece}".strip() if heading else piece.strip()`).
+(`mcp/retrieval/server.py:663` `excerpt = f"{heading}. {piece}".strip() if heading else piece.strip()`).
 
 Split the headings from the body first (`mcp/retrieval/server.py:168`
 `def split_sections(body: str) -> list[tuple[str, str]]:`), and never cut a sentence in half
@@ -175,13 +175,13 @@ chunking unless `scripts/run-retrieval-comparison.sh` favors semantic on the gro
 The grant is data, not code. `mcp/retrieval/allow-list.json` holds one entry per role naming the
 operations that role may call, and the per-role ceiling comes from `retrieval_ceiling` in
 `docs/routing-and-tool-grant-map.json`; the server reads both at startup
-(`mcp/retrieval/server.py:524` `ALLOW_LIST: dict[str, list[str]] = load_allow_list(ALLOW_LIST_PATH)`
-beside `mcp/retrieval/server.py:525`
+(`mcp/retrieval/server.py:564` `ALLOW_LIST: dict[str, list[str]] = load_allow_list(ALLOW_LIST_PATH)`
+beside `mcp/retrieval/server.py:565`
 `ROLE_CEILINGS: dict[str, str] = load_role_ceilings(ROUTING_MAP_PATH)`).
 
 `_authorize(calling_role, "retrieve")` is the first statement of the operation, so a refused call
 reaches no validation, no embedding and no index lookup
-(`mcp/retrieval/server.py:763` `role = _authorize(`, defined at `mcp/retrieval/server.py:462`
+(`mcp/retrieval/server.py:803` `role = _authorize(`, defined at `mcp/retrieval/server.py:498`
 `def _authorize(`).
 
 Which role holds what?
@@ -209,7 +209,7 @@ What does a refusal look like?
 
 It raises `AuthorizationDenied` (`mcp/retrieval/server.py:274`
 `class AuthorizationDenied(PermissionError):`) with the literal token `authorization_denied`, the
-role, the operation and the roles that ARE allowed (`mcp/retrieval/server.py:502` `reason = (`). A
+role, the operation and the roles that ARE allowed (`mcp/retrieval/server.py:542` `reason = (`). A
 live call as `tester` returned:
 
 ```
@@ -217,7 +217,7 @@ Error calling tool 'retrieve': authorization_denied: role 'tester' is not grante
 ```
 
 An unknown, blank or missing role is refused the same way and is never defaulted to a granted one
-(`mcp/retrieval/server.py:485` `if not role or role == "unknown":`); a live call as `intern` returned
+(`mcp/retrieval/server.py:525` `if not role or role == "unknown":`); a live call as `intern` returned
 `authorization_denied: unknown role 'intern': it is not one of the roles ['implementer',
 'orchestrator', 'planner', 'project-manager', 'researcher', 'reviewer', 'tester']`.
 
@@ -236,9 +236,9 @@ and exited `2`, with nothing listening on its port afterwards.
 The effective ceiling is the stricter of the role's ceiling and the caller's requested ceiling
 (`mcp/retrieval/server.py:451` `def resolve_effective_ceiling(`), and the eligible set is computed
 from that effective ceiling and nothing else
-(`mcp/retrieval/server.py:806`
+(`mcp/retrieval/server.py:846`
 `effective_ceiling = resolve_effective_ceiling(role_ceiling, classification_ceiling)` with
-`mcp/retrieval/server.py:810`
+`mcp/retrieval/server.py:850`
 `eligible = INDEX.eligible_ids(project_id, sensitivity_rank(effective_ceiling), filters)`).
 
 The consequence is the rule this layer exists for: a role capped at `internal` cannot obtain a
@@ -266,8 +266,8 @@ ceiling is raised to `confidential`. On that server the identical query returned
 capped at `internal`. The ceiling is therefore per role and read from the map, and the withholding
 on the first server is the cap doing its work.
 
-A capped call is journalled as a withholding (`mcp/retrieval/server.py:807`
-`withheld = effective_ceiling != classification_ceiling` and `mcp/retrieval/server.py:831`
+A capped call is journalled as a withholding (`mcp/retrieval/server.py:847`
+`withheld = effective_ceiling != classification_ceiling` and `mcp/retrieval/server.py:871`
 `decision="withheld_ceiling" if withheld else "allowed",`), which the next section shows.
 
 ## What does one retrieval audit record hold?
@@ -313,26 +313,26 @@ And an allowed call beside them, from the quality harness running as `implemente
 ```
 
 `rejected` is the fourth decision and covers a call the guard admitted but a validator then refused,
-such as an unknown `classification_ceiling` (`mcp/retrieval/server.py:793` `audit_call(` in the
+such as an unknown `classification_ceiling` (`mcp/retrieval/server.py:309` `audit_call(` in the
 validation `except`).
 
 ## `retrieve`: which parameters does it accept?
 
-The tool signature is the parameter authority (`mcp/retrieval/server.py:753` `def retrieve(`).
+The tool signature is the parameter authority (`mcp/retrieval/server.py:793` `def retrieve(`).
 
-- Pass `query` (`str`, required) as the search text (`mcp/retrieval/server.py:754` `query: str,`).
-- Pass `project_id` (`str`, required) to scope the search to one project (`mcp/retrieval/server.py:755` `project_id: str,`).
-- Pass `top_k` (`int`, optional) as the result cap, default `3` (`mcp/retrieval/server.py:756` `top_k: int = 3,`).
-- Pass `classification_ceiling` (`str`, optional), default `internal` (`mcp/retrieval/server.py:757` `classification_ceiling: str = DEFAULT_CEILING,`).
-- Pass `metadata_filters` (`dict`, optional) to narrow by `doc_type` (`mcp/retrieval/server.py:758` `metadata_filters: dict | None = None,`).
+- Pass `query` (`str`, required) as the search text (`mcp/retrieval/server.py:705` `query: str,`).
+- Pass `project_id` (`str`, required) to scope the search to one project (`mcp/retrieval/server.py:691` `project_id: str,`).
+- Pass `top_k` (`int`, optional) as the result cap, default `3` (`mcp/retrieval/server.py:796` `top_k: int = 3,`).
+- Pass `classification_ceiling` (`str`, optional), default `internal` (`mcp/retrieval/server.py:797` `classification_ceiling: str = DEFAULT_CEILING,`).
+- Pass `metadata_filters` (`dict`, optional) to narrow by `doc_type` (`mcp/retrieval/server.py:798` `metadata_filters: dict | None = None,`).
 - Pass `calling_role` (`str`, optional) as the role the guard authorizes and the ceiling is read for,
-  default `unknown` (`mcp/retrieval/server.py:759` `calling_role: str = "unknown",`); a missing or
+  default `unknown` (`mcp/retrieval/server.py:799` `calling_role: str = "unknown",`); a missing or
   unrecognised role is refused, so the parameter is what tells the server who is asking.
 
 Which parameter values are refused?
 
-Reject a blank query (`mcp/retrieval/server.py:786` `raise ValueError("query must be a non-empty string")`)
-and a `top_k` outside 1 to 20 (`mcp/retrieval/server.py:790`
+Reject a blank query (`mcp/retrieval/server.py:826` `raise ValueError("query must be a non-empty string")`)
+and a `top_k` outside 1 to 20 (`mcp/retrieval/server.py:830`
 `raise ValueError("top_k must be an integer between 1 and 20")`).
 
 Reject a `project_id` outside `^[A-Za-z0-9-]+$` and a ceiling outside the four-value vocabulary
@@ -347,17 +347,17 @@ A live call with `metadata_filters={"classification": "secret"}` was refused, as
 ## Which six fields does every result carry?
 
 Each hit carries exactly `source_document`, `chunk_index`, `excerpt`, `classification`,
-`similarity_score`, and `retrieval_method` (`mcp/retrieval/server.py:562`
+`similarity_score`, and `retrieval_method` (`mcp/retrieval/server.py:602`
 `def as_result(self, similarity_score: float | None, retrieval_method: str) -> dict:`).
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `source_document` | `str` | Source Markdown file name (`mcp/retrieval/server.py:565` `"source_document": self.source_document,`) |
-| `chunk_index` | `int` | Chunk position in that file (`mcp/retrieval/server.py:566` `"chunk_index": self.chunk_index,`) |
-| `excerpt` | `str` | Matching chunk text (`mcp/retrieval/server.py:567` `"excerpt": self.excerpt,`) |
-| `classification` | `str` | Never above the ceiling (`mcp/retrieval/server.py:568` `"classification": self.classification,`) |
-| `similarity_score` | `float` or `null` | Cosine similarity, or `null` for keyword hits (`mcp/retrieval/server.py:569` `"similarity_score": similarity_score,`) |
-| `retrieval_method` | `str` | `vector` or `keyword` (`mcp/retrieval/server.py:570` `"retrieval_method": retrieval_method,`) |
+| `source_document` | `str` | Source Markdown file name (`mcp/retrieval/server.py:605` `"source_document": self.source_document,`) |
+| `chunk_index` | `int` | Chunk position in that file (`mcp/retrieval/server.py:606` `"chunk_index": self.chunk_index,`) |
+| `excerpt` | `str` | Matching chunk text (`mcp/retrieval/server.py:607` `"excerpt": self.excerpt,`) |
+| `classification` | `str` | Never above the ceiling (`mcp/retrieval/server.py:608` `"classification": self.classification,`) |
+| `similarity_score` | `float` or `null` | Cosine similarity, or `null` for keyword hits (`mcp/retrieval/server.py:609` `"similarity_score": similarity_score,`) |
+| `retrieval_method` | `str` | `vector` or `keyword` (`mcp/retrieval/server.py:610` `"retrieval_method": retrieval_method,`) |
 
 A live paragraph-mode call returned `feature-post-ranking.md#0 (0.707, vector)` for the ranking
 question, and a keyword call returned `error-codes.md#0 (null, keyword)` for a cost question.
@@ -376,15 +376,15 @@ The vector-confidence threshold is `0.65` (`mcp/retrieval/server.py:77`
 `SIMILARITY_THRESHOLD = float(os.getenv("RETRIEVAL_SIMILARITY_THRESHOLD", "0.65"))`).
 
 Discard every vector hit below that score before returning anything
-(`mcp/retrieval/server.py:682` `if similarity < SIMILARITY_THRESHOLD:`).
+(`mcp/retrieval/server.py:722` `if similarity < SIMILARITY_THRESHOLD:`).
 
 Return keyword results only when no vector hit cleared the threshold
-(`mcp/retrieval/server.py:823` `results = [chunk.as_result(score, "vector") for score, chunk in hits]`).
+(`mcp/retrieval/server.py:863` `results = [chunk.as_result(score, "vector") for score, chunk in hits]`).
 
 Which second case skips the vector path?
 
 An identifier lookup, because an embedded identifier proves shared characters rather than shared
-meaning (`mcp/retrieval/server.py:815` `if IDENTIFIER_TOKEN.search(query):`).
+meaning (`mcp/retrieval/server.py:855` `if IDENTIFIER_TOKEN.search(query):`).
 
 An identifier is a token carrying a digit or an underscore
 (`mcp/retrieval/server.py:106` `IDENTIFIER_TOKEN = re.compile(r"\w*[\d_]\w*")`), which the wordpiece
@@ -396,7 +396,7 @@ model, while an identifier-only query scored `0.88`.
 Which method does a fallback hit report?
 
 Report `retrieval_method: "keyword"` with `similarity_score: null`
-(`mcp/retrieval/server.py:817` `chunk.as_result(None, "keyword")`).
+(`mcp/retrieval/server.py:857` `chunk.as_result(None, "keyword")`).
 
 A live call over an internal ceiling returned twelve keyword hits, every one with a `null`
 score, because the only strongly matching document sat above the ceiling.
@@ -404,16 +404,16 @@ score, because the only strongly matching document sat above the ceiling.
 ## How does the keyword fallback rank chunks?
 
 Rank with `rank_bm25` over the tokenized eligible chunks
-(`mcp/retrieval/server.py:689` `def keyword_search(self, query: str, eligible: list[int], top_k: int) -> list[Chunk]:`).
+(`mcp/retrieval/server.py:729` `def keyword_search(self, query: str, eligible: list[int], top_k: int) -> list[Chunk]:`).
 
-Keep only chunks holding at least one query token (`mcp/retrieval/server.py:704` `if overlap == 0:`),
+Keep only chunks holding at least one query token (`mcp/retrieval/server.py:744` `if overlap == 0:`),
 because a degenerate corpus can score a matching chunk at zero.
 
-Order by descending BM25 score, then overlap, then chunk id (`mcp/retrieval/server.py:707`
+Order by descending BM25 score, then overlap, then chunk id (`mcp/retrieval/server.py:747`
 `ranked.sort(reverse=True)`).
 
 Tokenize on lowercase word characters and keep underscores, so `E_KOMUN_417` survives
-(`mcp/retrieval/server.py:532` `def tokenize(text: str) -> list[str]:`).
+(`mcp/retrieval/server.py:572` `def tokenize(text: str) -> list[str]:`).
 
 ## How does the classification ceiling work?
 
@@ -427,13 +427,13 @@ An unknown classification ranks above every known value, so it can never fall un
 (`mcp/retrieval/server.py:158` `return len(CLASSIFICATION_ORDER)`).
 
 Filter before any similarity is computed, which is what makes the ceiling unbypassable
-(`mcp/retrieval/server.py:650` `def eligible_ids(`).
+(`mcp/retrieval/server.py:690` `def eligible_ids(`).
 
 The filter applies project, ceiling, and `doc_type` in one place
-(`mcp/retrieval/server.py:658`
+(`mcp/retrieval/server.py:698`
 `if chunk.project == project_id` beside `and sensitivity_rank(chunk.classification) <= ceiling_rank`).
 
-The KNN query itself is restricted to those eligible ids (`mcp/retrieval/server.py:675`
+The KNN query itself is restricted to those eligible ids (`mcp/retrieval/server.py:715`
 `f"WHERE rowid IN ({placeholders}) AND embedding MATCH ? AND k = ?"`), so a confidential chunk is
 never a candidate, not merely filtered out afterwards.
 
@@ -448,7 +448,7 @@ the routing map first, and the effective value is the stricter of the two
 (`mcp/retrieval/server.py:451` `def resolve_effective_ceiling(role_ceiling: str, requested_ceiling: str) -> str:`
 takes `min(sensitivity_rank(role_ceiling), sensitivity_rank(requested_ceiling))`), so the rank the
 eligible set is filtered by comes from the effective ceiling and from nothing else
-(`mcp/retrieval/server.py:810`
+(`mcp/retrieval/server.py:850`
 `eligible = INDEX.eligible_ids(project_id, sensitivity_rank(effective_ceiling), filters)`).
 
 On this repository's map every granted role is capped at `internal`, so every request above
@@ -461,11 +461,11 @@ On this repository's map every granted role is capped at `internal`, so every re
 Only `doc_type` (`mcp/retrieval/server.py:97` `SUPPORTED_METADATA_FILTERS = ("doc_type",)`).
 
 Compare the filter against the chunk's stored document class
-(`mcp/retrieval/server.py:660`
+(`mcp/retrieval/server.py:700`
 `and (wanted_doc_type is None or chunk.doc_type == wanted_doc_type)`).
 
 A document with no `doc_type` key is excluded by any `doc_type` filter
-(`mcp/retrieval/server.py:611` `doc_type = metadata.get("doc_type") or None`).
+(`mcp/retrieval/server.py:651` `doc_type = metadata.get("doc_type") or None`).
 
 ## How is this server's quality validated?
 
@@ -577,18 +577,18 @@ The sandbox image installs fastembed and sqlite-vec instead, so the whole runtim
 torch (`sandbox/requirements-m3.txt:5` `fastembed (ONNX runtime, no torch) + sqlite-vec`).
 
 - Keep the ceiling in the query, not in a post-filter, so no code path can widen access
-  (`mcp/retrieval/server.py:675` `WHERE rowid IN ({placeholders})`).
+  (`mcp/retrieval/server.py:715` `WHERE rowid IN ({placeholders})`).
 - Keep the per-role ceiling in `docs/routing-and-tool-grant-map.json` and the grants in
   `mcp/retrieval/allow-list.json`, so a ceiling change is a data change a reviewer can read and no
   ceiling hides in a branch: `load_role_ceilings` reads the map and
   `check_configuration_agrees` refuses to start when the two files contradict each other
   (`mcp/retrieval/server.py:389` `def load_role_ceilings(path: Path) -> dict[str, str]:`).
-- Authorize before validating anything else (`mcp/retrieval/server.py:763` `role = _authorize(` is
+- Authorize before validating anything else (`mcp/retrieval/server.py:803` `role = _authorize(` is
   the first statement of `retrieve`), so a refused role learns nothing from the corpus, not even
   whether a query would have matched.
 - Keep `similarity_score: null` for keyword hits, so a caller never reads a BM25 score as a
-  cosine similarity (`mcp/retrieval/server.py:817` `as_result(None, "keyword")`).
+  cosine similarity (`mcp/retrieval/server.py:857` `as_result(None, "keyword")`).
 - Keep the index in memory, so a restart cannot resurrect a stale corpus
-  (`mcp/retrieval/server.py:722` `sqlite3.connect(":memory:", check_same_thread=False)`).
+  (`mcp/retrieval/server.py:762` `sqlite3.connect(":memory:", check_same_thread=False)`).
 - Cite every hit, so a downstream claim is always traceable
-  (`mcp/retrieval/server.py:565` `"source_document": self.source_document,`).
+  (`mcp/retrieval/server.py:605` `"source_document": self.source_document,`).

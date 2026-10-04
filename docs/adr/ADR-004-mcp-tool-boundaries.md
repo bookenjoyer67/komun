@@ -31,28 +31,28 @@ Every role starts at no access (`docs/governance-policy.md:23` `Start every role
 What contract does each server enforce at its boundary?
 
 - Read each role's permit set from a file beside the server (`mcp/storage/allow-list.json:14` `Derived from docs/routing-and-tool-grant-map.json`).
-- Check that permit set as the first statement of every operation (`mcp/storage/server.py:13` `is the first statement of every one of the five`; `mcp/retrieval/server.py:762` `The guard is the first statement of the operation`).
+- Check that permit set as the first statement of every operation (`mcp/storage/server.py:13` `is the first statement of every one of the five`; `mcp/retrieval/server.py:802` `The guard is the first statement of the operation`).
 - Refuse an unknown, blank or ungranted role, and default nothing (`mcp/retrieval/allow-list.json:9` `nothing is defaulted to an allowed role.`).
 - Treat an empty permit set as a known role holding nothing (`mcp/storage/allow-list.json:13` `An empty list means the role is known and holds nothing.`).
 - Name the role, the operation and the permitted roles in each refusal (`mcp/storage/server.py:16` `error that names the role, the operation and the roles that ARE`).
 - Mount both allow-lists and the routing map read-only into the sandbox (`agentic.config.json:127` `"mcp/storage/allow-list.json",`; `agentic.config.json:128` `"mcp/retrieval/allow-list.json",`).
 - Take a gate name, and never a command line (`mcp/gate/server.py:7` `A caller names a command, never a command line`).
-- Resolve that name against an allow-list before anything runs (`mcp/gate/server.py:120` `if gate not in GATES:`; `mcp/gate/SCHEMA.md:120` `The refusal is raised before anything is executed`).
-- Read every argv from the config table alone (`mcp/gate/server.py:69` `The argv tuples are the only commands this process can ever run`).
-- Keep the shell off and append nothing caller-supplied (`mcp/gate/server.py:400` `a fixed argv, never a caller-supplied string`; `mcp/gate/server.py:402` `cwd=WORKSPACE,`).
-- Refuse a command string, an extra argument and a shell with one message (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments and no`).
-- Split the vocabulary by declared mode, and give each half one tool (`mcp/gate/server.py:146` `if command not in FIX_COMMANDS:`).
+- Resolve that name against an allow-list before anything runs (`mcp/gate/server.py:122` `if gate not in GATES:`; `mcp/gate/SCHEMA.md:120` `The refusal is raised before anything is executed`).
+- Read every argv from the config table alone (`mcp/gate/server.py:71` `The argv tuples are the only commands this process can ever run`).
+- Keep the shell off and append nothing caller-supplied (`mcp/gate/server.py:596` `a fixed argv, never a caller-supplied string`; `mcp/gate/server.py:598` `cwd=WORKSPACE,`).
+- Refuse a command string, an extra argument and a shell with one message (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments and no`).
+- Split the vocabulary by declared mode, and give each half one tool (`mcp/gate/server.py:148` `if command not in FIX_COMMANDS:`).
 - Expose four operations and no shell on the gate (`mcp/gate/SCHEMA.md:9` `It exposes four named operations and no shell, no argv, and no working-directory control:`).
-- Journal every executed call, and journal nothing for a refusal (`mcp/gate/server.py:12` `refused call runs nothing and journals nothing`).
+- Journal every executed call, and journal nothing for a gate-name or command refusal (`mcp/gate/server.py:12` `refused gate name or command runs nothing and journals nothing`).
 - Record the tool and the outcome on every gate journal row (`mcp/gate/server.py:10` `Each invocation returns the exit code, the captured stdout and stderr`).
-- Stamp each gate journal row with the caller (`mcp/gate/server.py:222` `"calling_role": calling_role or "unknown",`).
+- Stamp each gate journal row with the caller (`mcp/gate/server.py:224` `"calling_role": calling_role or "unknown",`).
 - Keep each journal append-only (`mcp/storage/server.py:131` `The file is opened append-only.`; `mcp/retrieval/server.py:25` `A denial and a withholding land in the same log as a success.`).
 - Write three journals, one per server that journals (`agentic.config.json:133` `".memory/storage-audit.log",`; `agentic.config.json:134` `".memory/retrieval-audit.log",`; `agentic.config.json:135` `".memory/gate-audit.log"`).
 - Refuse a storage write above the internal ceiling before the journal row (`mcp/storage/server.py:121` `if classification not in WRITE_CLASSIFICATIONS:`; `mcp/storage/server.py:124` `entries and never journals a refusal;`).
-- Refuse a write above `internal` at the storage layer (`mcp/storage/server.py:307` `Classifications at or above confidential are refused.`).
-- Pin a retrieval ceiling per role, and take the stricter of the role's cap and the request (`mcp/retrieval/server.py:807` `withheld = effective_ceiling != classification_ceiling`; `docs/routing-and-tool-grant-map.json:62` `"planner": "internal",`).
-- Refuse a retrieval call for a role with no ceiling (`mcp/retrieval/server.py:494` `elif ceiling == CEILING_NONE:`; `mcp/retrieval/server.py:88` `which means the role holds no retrieval grant at all.`).
-- Journal each retrieval decision as allowed or withheld (`mcp/retrieval/server.py:831` `decision="withheld_ceiling" if withheld else "allowed",`).
+- Refuse a write above `internal` at the storage layer (`mcp/storage/server.py:357` `Classifications at or above confidential are refused.`).
+- Pin a retrieval ceiling per role, and take the stricter of the role's cap and the request (`mcp/retrieval/server.py:847` `withheld = effective_ceiling != classification_ceiling`; `docs/routing-and-tool-grant-map.json:62` `"planner": "internal",`).
+- Refuse a retrieval call for a role with no ceiling (`mcp/retrieval/server.py:534` `elif ceiling == CEILING_NONE:`; `mcp/retrieval/server.py:88` `which means the role holds no retrieval grant at all.`).
+- Journal each retrieval decision as allowed or withheld (`mcp/retrieval/server.py:871` `decision="withheld_ceiling" if withheld else "allowed",`).
 - Keep the ceiling in one file rather than two (`mcp/retrieval/allow-list.json:11` `The classification ceiling is NOT duplicated in this file.`).
 - Refuse to start when the allow-list and the routing map disagree (`mcp/retrieval/server.py:429` `if granted and ceiling == CEILING_NONE:`).
 - Deny shell to every role on the coursetools server (`mcp/roles.allowlist.json:5` `"shell": [],`).
@@ -88,14 +88,14 @@ What does this boundary change, and what does it leave open?
 - Refuse a shell injection and leave no file (`docs/iteration-log.md:406` `is refused and left no file`).
 - Refuse the same attempt with the same message in both directions (`mcp/gate/SCHEMA.md:128` `An argument-passthrough attempt and a shell-injection attempt were refused with the same message:`).
 - Leave the injection target absent afterwards (`mcp/gate/SCHEMA.md:130` `target did not exist afterwards`).
-- Add no journal line for a refusal (`mcp/gate/server.py:12` `refused call runs nothing and journals nothing`).
+- Add no journal line for a gate-name or command refusal (`mcp/gate/server.py:12` `refused gate name or command runs nothing and journals nothing`).
 - Add no journal line and create no file for a mode refusal (`mcp/gate/SCHEMA.md:524` `The mode refusals added no journal line and created no file`).
 - Count the journal's line count as an audit fact (`mcp/gate/SCHEMA.md:440` `Measured: three refusals in one self-test run left the journal at 10 lines, unchanged`).
 - Leave a refused secret write with no new audit row (`docs/iteration-log.md:501` `is refused by classification enforcement with **no** new audit`).
 - Keep record removal outside the gate (`mcp/storage/allow-list.json:29` `no role holds a destructive capability here`).
 - Widen the surface by tool rather than by gate name (`docs/routing-and-tool-grant-map.md:70` `Authorisation is held per tool, not per gate name.`).
 - Extend every holder's surface when a name is added to the config (`docs/routing-and-tool-grant-map.md:70` `adding a name to the config extends the surface of every holder of that tool.`).
-- Validate the caller no further than a recorded stamp (`mcp/gate/server.py:222` `"calling_role": calling_role or "unknown",`).
+- Validate the caller no further than a recorded stamp (`mcp/gate/server.py:224` `"calling_role": calling_role or "unknown",`).
 - Keep `fmt-fix` unexercised, so its checks are refusals alone (`mcp/gate/selftest.py:13` `through the refusals that prove it is unreachable from the check surface.`).
 - Keep the retrieval corpus read-only and bounded (`docs/routing-and-tool-grant-map.md:74` `the operation is read-only, project-scoped and citation-bearing.`).
 - Carry four allow-lists, so the files must stay in step (`mcp/retrieval/allow-list.json:10` `Derived from docs/routing-and-tool-grant-map.json`).
@@ -113,9 +113,9 @@ Which artifacts settle this decision?
 - Coursetools deny-list for shell: (`mcp/roles.allowlist.json:5` `"shell": [],`).
 - Coursetools denial path: (`mcp/coursetools_server.py:76` `Authorization error: role`).
 - Storage classification ceiling: (`mcp/storage/server.py:121` `if classification not in WRITE_CLASSIFICATIONS:`; `docs/iteration-log.md:501` `is refused by classification enforcement with **no** new audit`).
-- Retrieval ceiling source and use: (`docs/routing-and-tool-grant-map.json:60` `"retrieval_ceiling": {`; `mcp/retrieval/server.py:807` `withheld = effective_ceiling != classification_ceiling`).
+- Retrieval ceiling source and use: (`docs/routing-and-tool-grant-map.json:60` `"retrieval_ceiling": {`; `mcp/retrieval/server.py:847` `withheld = effective_ceiling != classification_ceiling`).
 - Retrieval journal records a withholding: (`mcp/retrieval/server.py:23` `A withholding is journalled.`).
-- Gate journal opened append-only: (`mcp/gate/server.py:173` `The file is opened append-only.`).
+- Gate journal opened append-only: (`mcp/gate/server.py:175` `The file is opened append-only.`).
 - Journals: (`agentic.config.json:133` `".memory/storage-audit.log",`; `agentic.config.json:134` `".memory/retrieval-audit.log",`; `agentic.config.json:135` `".memory/gate-audit.log"`).
 - Read-only inputs: (`agentic.config.json:129` `"docs/routing-and-tool-grant-map.json",`).
 - Classification levels that bound the ceilings: (`docs/memory-architecture.md:149` `Do not store in agent memory.`; `docs/memory-architecture.md:151` `Must never appear in any memory file.`).

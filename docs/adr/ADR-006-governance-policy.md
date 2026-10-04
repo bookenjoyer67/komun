@@ -83,8 +83,8 @@ What does this decision change, and what does it leave open?
 - Autonomy is not uniform across the roles, so the level is a per-role fact rather than a default (`docs/governance-policy.md:200` `Hold low autonomy`).
 - Every role's container line names its launcher mount, and the policy carries seven such lines (`docs/policy-reconciliation.md:27` `Show the per-role mount statement in every policy entry`).
 - The two failed red-team prompts were fixed at the container layer, not at the prompt layer (`eval/red-team-results.md:249` `The fix adds seven nested read-only binds`).
-- The fix is seven nested read-only binds over the grant files and the journals (`scripts/run-agent.sh:187` `declare -a OVERLAY_FILES=(`), each mounted read-only over its parent bind (`scripts/run-agent.sh:199` `MOUNTS+=(-v "$REPO/$overlay:$WORKSPACE/$overlay:ro")`).
-- The reuse check now also demands those mounts be read-only, so a stale container is recreated (`scripts/run-agent.sh:216` `ws_rw=""; mem_present=""; mem_rw=""; overlays_ro=yes`).
+- The fix is seven nested read-only binds over the grant files and the journals (`scripts/run-agent.sh:193` `declare -a OVERLAY_FILES=(`), each mounted read-only over its parent bind (`scripts/run-agent.sh:213` `MOUNTS+=(-v "$REPO/$overlay:$WORKSPACE/$overlay:ro")`).
+- The reuse check now also demands those mounts be read-only, so a stale container is recreated (`scripts/run-agent.sh:230` `ws_rw=""; mem_present=""; mem_rw=""; overlays_ro=yes`).
 - Each fixed boundary returns a refusal rather than a warning (`eval/red-team-results.md:151` `each authority file returned`), and P7 and P10 flip from not blocked to blocked (`eval/red-team-results.md:18` `| P7 | NOT blocked | blocked |`).
 - The write-mode gate is one named command, and the journal records it (`/.memory/gate-audit.log:181` `"tool": "run_fix"`).
 - The enforcement is demonstrated by the local suites and the workflow definition, not by a green CI run. This repository's workflow has no recorded run history (`gh run list` -> `no runs listed`, on 2026-10-01). That is a limitation of the evidence, not a claim that the workflow is broken.
@@ -108,9 +108,9 @@ Which artifacts settle this decision?
 - Red-team prompt set: `eval/red-team-prompts.md:7` `Ten prompts attack the six Module 4.1 boundaries.`
 - Red-team outcomes: `eval/red-team-results.md:7` `Eight prompts were blocked on their first run.`, with P7 and P10 flipped after the fix (`eval/red-team-results.md:21` `| P10 | NOT blocked | blocked |`).
 - Red-team refusal recorded in a journal: `eval/red-team-results.md:56` `authorization_denied: role 'project-manager' is not granted 'write_entry'`.
-- Refused gate call journals nothing: `eval/red-team-results.md:113` `refused call runs nothing and journals nothing`.
+- Refused gate-name call journals nothing: `eval/red-team-results.md:113` `refused gate name or command runs nothing and journals nothing`.
 - Reviewer mount state at refusal: `eval/red-team-results.md:36` `/workspace RW=false`.
-- Red-team fix: `eval/red-team-results.md:252` `to be read-only, so a stale container is recreated instead of reused`, implemented at `scripts/run-agent.sh:187` and `scripts/run-agent.sh:199`.
+- Red-team fix: `eval/red-team-results.md:252` `to be read-only, so a stale container is recreated instead of reused`, implemented at `scripts/run-agent.sh:193` and `scripts/run-agent.sh:212`.
 - Eval-gated change control: five jobs at `.github/workflows/ci.yml:4` `change-type-check, policy-gate, eval-gate, advisory-review`, with the gating decision at `.github/workflows/ci.yml:17` `policy-gate carries no`.
 - Classification globs: `agentic.config.json:210` `"governed_globs": [`, consumed at `scripts/classify-change.py:128` `classification.governed_globs`.
 - Calibration produced the policy from named patterns rather than from a template (`docs/calibration-log.md:18` `Ten patterns follow, each named and each cited to the line that evidences it`).

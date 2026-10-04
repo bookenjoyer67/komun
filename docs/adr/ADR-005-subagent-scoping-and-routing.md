@@ -58,11 +58,11 @@ Four rules follow from the four near-misses:
 - Enumerate the denied MCP tools in every role definition, so confinement is stated positively rather than inferred from the union (`docs/calibration-log.md:86` `Enumerate denials in every definition`). This answers NM-3.
 - Give every checkpoint record one author, and route it to the project-manager (`docs/iteration-log.md:464` `assign checkpoint records to the project-manager`). This answers NM-4.
 
-The reservation of execution is the load-bearing clause. The gate server is the one path that runs a command (`docs/routing-and-tool-grant-map.md:70` `keep the gate server the one path that executes a command`). A role holds authorisation per tool rather than per gate name (`docs/routing-and-tool-grant-map.md:70` `Authorisation is held per tool, not per gate name`). The server validates no role, so its only call-time test is a membership check (`mcp/gate/server.py:120` `if gate not in GATES:`).
+The reservation of execution is the load-bearing clause. The gate server is the one path that runs a command (`docs/routing-and-tool-grant-map.md:70` `keep the gate server the one path that executes a command`). A role holds authorisation per tool rather than per gate name (`docs/routing-and-tool-grant-map.md:70` `Authorisation is held per tool, not per gate name`). The server binds each caller to the container's `AGENT_ROLE` and authorises the per-tool grant before the membership check (`mcp/gate/server.py:122` `if gate not in GATES:`).
 
 Each definition states its denials positively. The orchestrator's definition now lists every denied MCP tool (`docs/iteration-log.md:445` `enumerate the denied MCP tools in orchestrator.md`). Its frontmatter carries the denial list the map requires (`.claude/agents/orchestrator.md:11` `disallowedTools: Bash, mcp__coursetools__file_read`).
 
-The gate server refuses a command string as well as a non-allowlisted name, so a call cannot smuggle arguments (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments`). The check surface and the write surface stay on two different roles. The role that writes a fix never runs the gate that judges it (`docs/routing-and-tool-grant-map.md:76` `the role that repairs a file never grades the repair`).
+The gate server refuses a command string as well as a non-allowlisted name, so a call cannot smuggle arguments (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments`). The check surface and the write surface stay on two different roles. The role that writes a fix never runs the gate that judges it (`docs/routing-and-tool-grant-map.md:76` `the role that repairs a file never grades the repair`).
 
 Two recorded conflicts were resolved by fixing the definition to match the map. The orchestrator's file-tool conflict resolved to an empty grant list (`docs/governance-policy.md:41` `"orchestrator": []`). The reviewer's gate-tool conflict kept the check-mode gate denied (`docs/governance-policy.md:220` `keeps mcp__gate__run_gate denied`).
 
@@ -111,8 +111,8 @@ Which artifacts settle this decision?
 - Enforcement, the per-role container mounts: `scripts/run-agent.sh` (`scripts/run-agent.sh:92` `role_profile() {`).
 - The launcher's per-role mount matrix: `scripts/run-agent.sh` (`scripts/run-agent.sh:80` `| Role | Workspace mount | Memory mount | Network | Reason |`).
 - The storage grant table and its denial reasons: `docs/routing-and-tool-grant-map.md` (`docs/routing-and-tool-grant-map.md:39` `Denial reasons:`).
-- The gate server's single execution path: `mcp/gate/server.py` (`mcp/gate/server.py:120` `if gate not in GATES:`).
-- The gate server's refusal of a command string: `mcp/gate/server.py` (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments`).
+- The gate server's single execution path: `mcp/gate/server.py` (`mcp/gate/server.py:122` `if gate not in GATES:`).
+- The gate server's refusal of a command string: `mcp/gate/server.py` (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments`).
 - The two recorded definition conflicts and their fixes: `docs/governance-policy.md` (`docs/governance-policy.md:41` `"orchestrator": []`).
 - The least-privilege default the policy states: `docs/governance-policy.md` (`docs/governance-policy.md:23` `Start every role at no access`).
 - The two enforcement layers behind one denial: `docs/iteration-log.md` (`docs/iteration-log.md:376` `the denial is enforced, and it is enforced twice over`).

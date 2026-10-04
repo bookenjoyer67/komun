@@ -7,7 +7,7 @@ serves streamable HTTP at `http://localhost:8001/mcp`.
 
 It exposes five named operations and no raw SQL:
 `write_entry`, `read_entry`, `list_entries`, `update_entry`, `delete_entry`
-(`mcp/storage/server.py:298` `@mcp.tool` before each of the five definitions).
+(`mcp/storage/server.py:348` `@mcp.tool` before each of the five definitions).
 
 Runtime files inside the sandbox container:
 
@@ -25,7 +25,7 @@ Override `STORAGE_DB_PATH` and `STORAGE_AUDIT_PATH` for a local run
 The allow-list sits beside this file rather than under `MEMORY_DIR`, so it resolves the same way from
 any working directory (`mcp/storage/server.py:53`
 `os.getenv("STORAGE_ALLOW_LIST_PATH", str(Path(__file__).resolve().parent / "allow-list.json"))`).
-Override it with `STORAGE_ALLOW_LIST_PATH` or `--allowlist-path` (`mcp/storage/server.py:523`).
+Override it with `STORAGE_ALLOW_LIST_PATH` or `--allowlist-path` (`mcp/storage/server.py:15`).
 
 Which start command does the container use?
 
@@ -34,13 +34,13 @@ python3 mcp/storage/server.py --port 8001 --host 0.0.0.0
 python3 mcp/storage/server.py --port 8001 --allowlist-path /tmp/other-allow-list.json   # optional
 ```
 
-The flags are declared in the argument parser (`mcp/storage/server.py:516` `default=8001`) and
-`--host` defaults to `0.0.0.0` (`mcp/storage/server.py:517` `default="0.0.0.0"`).
+The flags are declared in the argument parser (`mcp/storage/server.py:566` `default=8001`) and
+`--host` defaults to `0.0.0.0` (`mcp/storage/server.py:567` `default="0.0.0.0"`).
 The help output confirms both defaults (`python3 mcp/storage/server.py --help` ->
 `--port PORT           HTTP port (default 8001)`).
 
 The server prints its grants as it starts, so the run states what it will allow
-(`mcp/storage/server.py:543` `print(f"storage grants: {json.dumps(ALLOW_LIST, sort_keys=True)}"`,
+(`mcp/storage/server.py:593` `print(f"storage grants: {json.dumps(ALLOW_LIST, sort_keys=True)}"`,
 which printed `storage grants: {"implementer": ["read_entry", "list_entries", "write_entry",
 "update_entry"], "orchestrator": [], ...}` on a live start).
 
@@ -53,7 +53,7 @@ Reject a value that fails the pattern with the literal message from the validato
 (`mcp/storage/server.py:102` `"project_id must contain only letters, numbers, and hyphens"`).
 
 Every read, list, update, and delete applies the project filter inside the SQL statement
-(`mcp/storage/server.py:291` `"SELECT * FROM entries WHERE project_id = ? AND entry_id = ? AND deleted = 0"`).
+(`mcp/storage/server.py:341` `"SELECT * FROM entries WHERE project_id = ? AND entry_id = ? AND deleted = 0"`).
 
 The project for this exercise is `proj-komun`.
 
@@ -85,18 +85,18 @@ The lesson tests exactly this: a `secret` write fails and the journal gains no l
 
 The grant is data, not code: it lives in `mcp/storage/allow-list.json`, one entry per role, naming
 exactly the operations that role may call. The server reads it at startup
-(`mcp/storage/server.py:265` `ALLOW_LIST: dict[str, list[str]] = load_allow_list(ALLOW_LIST_PATH)`),
+(`mcp/storage/server.py:315` `ALLOW_LIST: dict[str, list[str]] = load_allow_list(ALLOW_LIST_PATH)`),
 and `_authorize(calling_role, operation)` is the first statement of every operation
-(`mcp/storage/server.py:220` `def _authorize(`), so a refused call runs no validation, opens no
+(`mcp/storage/server.py:255` `def _authorize(`), so a refused call runs no validation, opens no
 database and writes nothing:
 
 | Operation | The guard, as the first statement of the tool |
 | --- | --- |
-| `write_entry` | `mcp/storage/server.py:308` `_authorize(calling_role, "write_entry", project_id=project_id)` |
-| `read_entry` | `mcp/storage/server.py:342` `_authorize(calling_role, "read_entry", project_id=project_id)` |
-| `list_entries` | `mcp/storage/server.py:370` `_authorize(calling_role, "list_entries", project_id=project_id)` |
-| `update_entry` | `mcp/storage/server.py:406` `_authorize(calling_role, "update_entry", project_id=project_id)` |
-| `delete_entry` | `mcp/storage/server.py:458` `_authorize(calling_role, "delete_entry", project_id=project_id)` |
+| `write_entry` | `mcp/storage/server.py:358` `_authorize(calling_role, "write_entry", project_id=project_id)` |
+| `read_entry` | `mcp/storage/server.py:392` `_authorize(calling_role, "read_entry", project_id=project_id)` |
+| `list_entries` | `mcp/storage/server.py:420` `_authorize(calling_role, "list_entries", project_id=project_id)` |
+| `update_entry` | `mcp/storage/server.py:456` `_authorize(calling_role, "update_entry", project_id=project_id)` |
+| `delete_entry` | `mcp/storage/server.py:508` `_authorize(calling_role, "delete_entry", project_id=project_id)` |
 
 Which grants does the file hold?
 
@@ -121,15 +121,15 @@ What does a refusal look like?
 It raises `AuthorizationDenied` (`mcp/storage/server.py:174`
 `class AuthorizationDenied(PermissionError):`) with a message carrying the literal token
 `authorization_denied`, the role, the operation and the roles that ARE allowed
-(`mcp/storage/server.py:248` `reason = (`), and it is journalled before it is raised
-(`mcp/storage/server.py:252` `audit_event(`). A live call as `project-manager` returned:
+(`mcp/storage/server.py:272` `reason = (`), and it is journalled before it is raised
+(`mcp/storage/server.py:140` `audit_event(`). A live call as `project-manager` returned:
 
 ```
 Error calling tool 'write_entry': authorization_denied: role 'project-manager' is not granted 'write_entry'. operation='write_entry' role='project-manager' allowed_roles=['implementer', 'planner', 'researcher', 'reviewer', 'tester']
 ```
 
 An unknown, blank or missing role is refused the same way and is never defaulted to an allowed one
-(`mcp/storage/server.py:238` `if not role or role == "unknown":`). A call that names no role at all
+(`mcp/storage/server.py:288` `if not role or role == "unknown":`). A call that names no role at all
 arrives as `calling_role="unknown"` and is refused, which a live call confirmed.
 
 What happens when the allow-list file is missing?
@@ -177,7 +177,7 @@ A denied access carries `false` and a cause (`read_entry` after a delete ->
 `"allowed": false, "operation": "read_entry", "reason": "no live entry for that project_id and entry_id"`).
 
 An authorization refusal is journalled to this same file, by the guard, before the operation runs, so
-the journal records refusals of access as well as changes (`mcp/storage/server.py:252`
+the journal records refusals of access as well as changes (`mcp/storage/server.py:140`
 `audit_event(` inside `_authorize` reaches the same `append_audit_record` at `:130`). The real line a
 refused `write_entry` left behind, beside the accepted writes in
 `/workspace/.memory/storage-audit.log`:
@@ -196,16 +196,16 @@ No tool edits or erases the journal; it is opened append-only
 ## `write_entry`: how is a new entry stored and journalled?
 
 The tool signature is the parameter authority
-(`mcp/storage/server.py:299` `async def write_entry(`).
+(`mcp/storage/server.py:349` `async def write_entry(`).
 
 Which parameters does it accept?
 
-- Pass `project_id` (`str`, required) as the project key (`mcp/storage/server.py:300` `project_id: str,`).
-- Pass `entry_type` (`str`, required) as a caller-defined category (`mcp/storage/server.py:301` `entry_type: str,`).
-- Pass `title` (`str`, required) as a short human-readable title (`mcp/storage/server.py:302` `title: str,`).
-- Pass `content` (`str`, required) as the full entry text (`mcp/storage/server.py:303` `content: str,`).
-- Pass `classification` (`str`, required) as `public` or `internal` (`mcp/storage/server.py:304` `classification: str,`).
-- Pass `calling_role` (`str`, optional) as the role name, defaulting to `unknown` (`mcp/storage/server.py:305` `calling_role: str = "unknown",`).
+- Pass `project_id` (`str`, required) as the project key (`mcp/storage/server.py:337` `project_id: str,`).
+- Pass `entry_type` (`str`, required) as a caller-defined category (`mcp/storage/server.py:351` `entry_type: str,`).
+- Pass `title` (`str`, required) as a short human-readable title (`mcp/storage/server.py:352` `title: str,`).
+- Pass `content` (`str`, required) as the full entry text (`mcp/storage/server.py:353` `content: str,`).
+- Pass `classification` (`str`, required) as `public` or `internal` (`mcp/storage/server.py:354` `classification: str,`).
+- Pass `calling_role` (`str`, optional) as the role name, defaulting to `unknown` (`mcp/storage/server.py:355` `calling_role: str = "unknown",`).
 
 Which value does it return?
 
@@ -218,18 +218,18 @@ A real call returned `{"entry_id": "92f70975-e88c-43e8-bab0-c53df19f59ba"}` on `
 Which journal record does it append?
 
 It appends one `write_entry` record with `allowed: true` and the stored classification
-(`mcp/storage/server.py:308` `"write_entry",` inside the `audit_event` call).
+(`mcp/storage/server.py:61` `"write_entry",` inside the `audit_event` call).
 
 ## `read_entry`: how is a single entry returned?
 
 The tool signature is the parameter authority
-(`mcp/storage/server.py:340` `async def read_entry(project_id: str, entry_id: str, calling_role: str = "unknown") -> dict:`).
+(`mcp/storage/server.py:390` `async def read_entry(project_id: str, entry_id: str, calling_role: str = "unknown") -> dict:`).
 
 Which parameters does it accept?
 
 - Pass `project_id` (`str`, required) to scope the lookup.
 - Pass `entry_id` (`str`, required) to identify the entry (`mcp/storage/server.py:99` `def validate_project_id`).
-- Pass `calling_role` (`str`, optional) so a denial can name the caller (`mcp/storage/server.py:340` `calling_role: str = "unknown"`).
+- Pass `calling_role` (`str`, optional) so a denial can name the caller (`mcp/storage/server.py:355` `calling_role: str = "unknown"`).
 
 Which value does it return?
 
@@ -242,15 +242,15 @@ exponential backoff` and `"classification": "internal"`.
 What happens when no live entry matches?
 
 The read fails and is journalled as a denial
-(`mcp/storage/server.py:355` `allowed=False,` with `reason="no live entry for that project_id and entry_id"`)
+(`mcp/storage/server.py:278` `allowed=False,` with `reason="no live entry for that project_id and entry_id"`)
 
 An allowed read appends nothing, so the journal stays a record of changes and denials
-(`mcp/storage/server.py:362` `return dict(row)` runs without an `audit_event` call).
+(`mcp/storage/server.py:412` `return dict(row)` runs without an `audit_event` call).
 
 ## `list_entries`: which metadata comes back, and which field never does?
 
 The tool signature is the parameter authority
-(`mcp/storage/server.py:366` `async def list_entries(` with `calling_role: str = "unknown"` at
+(`mcp/storage/server.py:416` `async def list_entries(` with `calling_role: str = "unknown"` at
 `:367`).
 
 Which parameters does it accept?
@@ -258,29 +258,29 @@ Which parameters does it accept?
 - Pass `project_id` (`str`, required) to select the project.
 - Pass `entry_type` (`str`, optional) to narrow the list to one category.
 - Pass `calling_role` (`str`, optional) for the guard and the journal, defaulting to `unknown`
-  (`mcp/storage/server.py:367` `calling_role: str = "unknown"`).
+  (`mcp/storage/server.py:355` `calling_role: str = "unknown"`).
 
 Which value does it return?
 
 Metadata only: `entry_id`, `title`, `entry_type`, `classification`, and `last_updated`
-(`mcp/storage/server.py:377` `"SELECT entry_id, title, entry_type, classification, last_updated "`).
+(`mcp/storage/server.py:427` `"SELECT entry_id, title, entry_type, classification, last_updated "`).
 
 Never return `content`, because the list is deliberately metadata-only
-(`mcp/storage/server.py:377` the select list names no content column).
+(`mcp/storage/server.py:427` the select list names no content column).
 
-Order the rows newest first (`mcp/storage/server.py:379` `"ORDER BY last_updated DESC, entry_id"`).
+Order the rows newest first (`mcp/storage/server.py:429` `"ORDER BY last_updated DESC, entry_id"`).
 
 ## `update_entry`: what changes, and what is preserved?
 
 The tool signature is the parameter authority
-(`mcp/storage/server.py:398` `async def update_entry(`).
+(`mcp/storage/server.py:448` `async def update_entry(`).
 
 Which parameters does it accept?
 
 - Pass `project_id` (`str`, required) and `entry_id` (`str`, required) to identify the entry.
-- Pass `content` (`str`, required) as the replacement text (`mcp/storage/server.py:401` `content: str,`).
-- Pass `title` (`str`, optional) to retitle the entry in the same call (`mcp/storage/server.py:402` `title: str | None = None,`).
-- Pass `calling_role` (`str`, optional) for the journal record (`mcp/storage/server.py:403` `calling_role: str = "unknown",`).
+- Pass `content` (`str`, required) as the replacement text (`mcp/storage/server.py:353` `content: str,`).
+- Pass `title` (`str`, optional) to retitle the entry in the same call (`mcp/storage/server.py:452` `title: str | None = None,`).
+- Pass `calling_role` (`str`, optional) for the journal record (`mcp/storage/server.py:355` `calling_role: str = "unknown",`).
 
 Which value does it return?
 
@@ -291,19 +291,19 @@ Which value does it return?
 Which field is preserved?
 
 The classification is read from the stored row and journalled unchanged
-(`mcp/storage/server.py:440` `classification = row["classification"]`).
+(`mcp/storage/server.py:490` `classification = row["classification"]`).
 
 A live update kept `"classification": "internal"` while the content changed to start with
 `Five attempts with exponential backoff`.
 
 What happens when no live entry matches?
 
-The update fails and is journalled as a denial (`mcp/storage/server.py:420` `allowed=False,`).
+The update fails and is journalled as a denial (`mcp/storage/server.py:278` `allowed=False,`).
 
 ## `delete_entry`: what does a delete actually do?
 
 The tool signature is the parameter authority
-(`mcp/storage/server.py:456` `async def delete_entry(project_id: str, entry_id: str, calling_role: str = "unknown") -> dict:`).
+(`mcp/storage/server.py:506` `async def delete_entry(project_id: str, entry_id: str, calling_role: str = "unknown") -> dict:`).
 
 Which parameters does it accept?
 
@@ -317,19 +317,19 @@ Which value does it return?
 ```
 
 Mark the row instead of removing it, so evidence survives
-(`mcp/storage/server.py:476` `"UPDATE entries SET deleted = 1, last_updated = ? "`).
+(`mcp/storage/server.py:526` `"UPDATE entries SET deleted = 1, last_updated = ? "`).
 
 A delete makes the entry unreadable (`read_entry` after a delete -> the tool reports no entry
 found) while the row and its journal records remain.
 
 What happens when no live entry matches?
 
-The delete fails and is journalled as a denial (`mcp/storage/server.py:468` `allowed=False,`).
+The delete fails and is journalled as a denial (`mcp/storage/server.py:278` `allowed=False,`).
 
 ## Which schema does the database carry?
 
 Create the table on every connection so a fresh container needs no migration step
-(`mcp/storage/server.py:272` `async def open_db() -> aiosqlite.Connection:`).
+(`mcp/storage/server.py:322` `async def open_db() -> aiosqlite.Connection:`).
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -346,7 +346,7 @@ Index the project and category columns for the filtered list query
 (`mcp/storage/server.py:78` `ON entries(project_id, entry_type, deleted)`).
 
 Run the store in WAL mode so a reader never blocks a writer
-(`mcp/storage/server.py:277` `await conn.execute("PRAGMA journal_mode=WAL")`).
+(`mcp/storage/server.py:327` `await conn.execute("PRAGMA journal_mode=WAL")`).
 
 ## Design notes
 
@@ -355,16 +355,16 @@ Does the server expose SQL, or hard deletes, or a journal editor?
 Answer: no to all three, and each choice is deliberate.
 
 - Expose named operations only, so a caller cannot widen its own access with a query string
-  (`mcp/storage/server.py:298` `@mcp.tool` marks the only five callable entries).
+  (`mcp/storage/server.py:348` `@mcp.tool` marks the only five callable entries).
 - Soft-delete rows so record history and audit evidence survive
-  (`mcp/storage/server.py:476` `deleted = 1`).
+  (`mcp/storage/server.py:526` `deleted = 1`).
 - Keep `list_entries` metadata-only, so a broad listing cannot become a bulk content leak
-  (`mcp/storage/server.py:377` the select names no content column).
+  (`mcp/storage/server.py:427` the select names no content column).
 - Record `calling_role` from the caller, so the orchestrator passes each subagent's role name
   (`mcp/storage/server.py:162` `"calling_role": calling_role or "unknown",`).
 - Keep the grants in a file rather than in the server, so a role change is a data change with a diff
   a reviewer can read, and no grant hides in a branch: the loader holds no copy of the grants and no
   permissive fallback (`mcp/storage/server.py:178` `def load_allow_list(path: Path) -> dict[str, list[str]]:`).
-- Refuse before validating anything else (`mcp/storage/server.py:220` `def _authorize(`, first
+- Refuse before validating anything else (`mcp/storage/server.py:255` `def _authorize(`, first
   statement of every tool), so a denied call cannot change state and cannot reveal whether an entry
   exists, which a check placed after the lookup would.

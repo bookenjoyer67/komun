@@ -83,7 +83,7 @@ Why was this step the strongest candidate in the repository?
 What moved the gate commands out of a role's hands?
 
 - Bind each gate to a name, with no command string and no extra argument
-  (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments`).
+  (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments`).
 - Keep the recorded evidence in one place per gate (`docs/iteration-log.md:473`
   `158 passed, 0 failed, 0 ignored`).
 - Note the record that motivated the conversion: an inert grant blocked every gate in the first

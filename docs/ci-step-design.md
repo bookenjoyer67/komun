@@ -190,7 +190,7 @@ files the guards touch, and the image's own default target path is not usable th
   touches (`.github/workflows/ci.yml:199` `-v "$GITHUB_WORKSPACE/crates/server/src/main.rs":${{ env.AGENT_WORKSPACE }}/crates/server/src/main.rs \`,
   `.github/workflows/ci.yml:200` `-v "$GITHUB_WORKSPACE/crates/core/src/tests.rs":${{ env.AGENT_WORKSPACE }}/crates/core/src/tests.rs \`).
 - Produces: `ci-artifacts/deterministic-report.json` and `ci-artifacts/gate-audit.log`, one journal
-  line per executed gate (`mcp/gate/server.py:494` `def run_gate(`).
+  line per executed gate (`mcp/gate/server.py:690` `def run_gate(`).
 - Classification: gating (deterministic; lesson 4.2 block [53] `Deterministic checks can gate
   immediately because they produce the same result for the same input.`).
 - Time limit: 1800 seconds per gate (`.github/workflows/ci.yml` `gate.run_gate(name, "ci", 1800)`),
@@ -201,7 +201,7 @@ The gate argv is never re-typed here: the server reads the three tuples from the
 (`agentic.config.json:20-24` `"argv": [ "cargo", "test", "--workspace" ],`,
 `agentic.config.json:31-39` `"argv": [ "cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings" ],`, `agentic.config.json:51-55` `"argv": [ "cargo", "fmt", "--check" ],`).
 Two writable binds exist because each cache-hit guard writes an mtime on its own file
-(`mcp/gate/server.py:263` `os.utime(touch_file, None)`) and then requires its own status line: `Compiling komun-core` for
+(`mcp/gate/server.py:459` `os.utime(touch_file, None)`) and then requires its own status line: `Compiling komun-core` for
 `test` (`agentic.config.json:26` `"marker": "Compiling komun-core"`) and `Checking komun-server` for `clippy` (`agentic.config.json:42` `"marker": "Checking komun-server",`).
 
 Repo-wide formatting is recorded but never tallied. This tree carries rustfmt drift that the
