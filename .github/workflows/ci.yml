@@ -322,6 +322,50 @@ jobs:
         working-directory: console
 
   # ---------------------------------------------------------------------------------------------
+  # The database-backed suites the workspace gate reports as ignored. They cannot run in the sandbox
+  # image: they need a live Postgres, and the image's route to one is exactly what an earlier probe
+  # failed to find (the local test database publishes to 127.0.0.1 only). This job runs them where the
+  # operator runs them -- on the host, against a disposable database -- with the command the suites'
+  # own documentation gives (`crates/server/src/tests/key_coherence.rs` `KOMUN_TEST_DATABASE_URL=
+  # postgres://... cargo test -p komun-server key_coherence -- --ignored`). Gating: deterministic.
+  # ---------------------------------------------------------------------------------------------
+  database-gate:
+    name: Database Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: change-type-check
+    services:
+      # Disposable and reachable only on the runner's loopback. The password is a literal on purpose:
+      # it protects nothing, it is destroyed with the container, and reading it from a secret would
+      # imply it is worth keeping. It is never echoed: the URL is built into the env of one step.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: komun
+          POSTGRES_PASSWORD: komun_test_only
+          POSTGRES_DB: komun_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d  # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2
+
+      # --test-threads=1 because every test in the crate shares this one database and each builds its
+      # own harness and user; the suites' documentation says the same. --ignored selects exactly the
+      # set the workspace gate reports as ignored, and nothing else.
+      - name: Run the database suites
+        env:
+          KOMUN_TEST_DATABASE_URL: postgres://komun:komun_test_only@127.0.0.1:5432/komun_test
+        run: cargo test -p komun-server -- --ignored --test-threads=1
+
+  # ---------------------------------------------------------------------------------------------
   # Row 3: "Evaluation Harness | Whether agent behavior remains acceptable | Can run both
   # deterministic and agentic tests | Agent-affecting changes | Yes | Evaluation reports".
   # Gating, and it runs only when the classifier says the change can affect agent behaviour.
@@ -742,7 +786,7 @@ jobs:
     # Every gating job, so the trail is assembled from a finished run. Its three recorded result
     # keys are the lesson table's, not an inventory of the jobs: web-gate and console-gate upload no
     # artifact, and their verdicts are read from the run itself.
-    needs: [change-type-check, policy-gate, web-gate, console-gate, eval-gate, advisory-review]
+    needs: [change-type-check, policy-gate, web-gate, console-gate, database-gate, eval-gate, advisory-review]
     if: always()
     continue-on-error: true
     steps:

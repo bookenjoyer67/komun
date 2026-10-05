@@ -426,9 +426,9 @@ This step runs before the assembly step, because the flattening is what the asse
 
 ## Which jobs does this repository add to the lesson's table, and what does each step do?
 
-Two jobs are additions rather than rows of the lesson's table, and their per-step design lives in
+Three jobs are additions rather than rows of the lesson's table, and their per-step design lives in
 the workflow's own comments. They are recorded here in one place because the table above indexes
-the lesson's five jobs step by step, and duplicating that shape for eleven more steps would bury
+the lesson's five jobs step by step, and duplicating that shape for every added step would bury
 the mapping it exists to show.
 
 `web-gate` (added for the two frontend gates the seam table already names,
@@ -446,6 +446,13 @@ GitHub reads workflows only from the repository root, and the crate is its own w
 cache, `cargo fmt --check`, `cargo clippy --release --all-targets -- -D warnings`, `cargo test
 --release`. The last three gate; the toolchain and cache steps cannot fail a build on their own.
 No credential is involved.
+
+`database-gate` (added for the ignored set, which needs a live Postgres the sandbox image cannot
+reach): checkout, install the Rust toolchain, restore the Rust cache, then `cargo test -p
+komun-server -- --ignored --test-threads=1` with `KOMUN_TEST_DATABASE_URL` built into the step's
+environment, against a disposable `postgres:16-alpine` service container with a readiness check.
+The test step gates. The password is a literal because the database is disposable and reachable
+only on the runner's loopback, and the URL is never echoed.
 
 ## How does the workflow classify a change as deterministic work or agentic work?
 
@@ -563,30 +570,40 @@ journal (`scripts/run-reviewer.py` `_redact()` scrubs secret-shaped values from 
 
 ## Which tests does the workspace gate run, and which does it never run?
 
-It runs every test that needs no database, and it reports the rest as ignored rather than passing
-them. The first run's own line reads `test result: ok. 184 passed; 0 failed; 36 ignored; 0 measured;
-0 filtered out` for the server crate, and no `KOMUN_TEST_DATABASE_URL` appears anywhere in
-`.github/workflows/ci.yml`, so the ignored set cannot run there. On the tree this branch starts
-from, four files carry `#[ignore]` attributes -- `key_coherence.rs` (27), `deal_and_moderation.rs`
-(39), `key_change.rs` (10) and `outbound_routes.rs` (2), 78 in total -- and they are the suites
-closest to the security audit: stored-key coherence, key replacement, outbound fetch and
-deal/moderation state.
+Two different sets, run in two different jobs, and the distinction is worth keeping straight.
 
-Their runner is the operator, not the workflow: they need the test Postgres, and the command is a
-host-side one (see the session log's operator steps rather than this document). Two consequences are
-worth stating plainly, because a green `Evaluation Harness` does not state them:
+The `test` gate inside the sandbox image runs every test that needs no database, and reports the rest
+as ignored rather than passing them. The first run's own line reads `test result: ok. 184 passed; 0
+failed; 36 ignored; 0 measured; 0 filtered out` for the server crate. Its argv is unchanged
+(`cargo test --workspace`), so that line stays what it is.
 
-- A change to any path those suites cover merges on tests the workflow reports as ignored. The
-  evaluation harness proves the unit suites, the lints, the formatting of the changed files, the
-  prose and citation drift and the retrieval floor; it does not prove the database behaviour.
+The `Database Suite` job -- added for this -- runs exactly the ignored set, in the place the tests can
+actually reach a database. They cannot run in the sandbox image: they need a live Postgres, and the
+image's route to one is what an earlier probe failed to find. So the job runs them on the runner
+against a disposable `postgres:16-alpine` service container, with the command the suites' own
+documentation gives:
+
+    KOMUN_TEST_DATABASE_URL=postgres://... cargo test -p komun-server -- --ignored --test-threads=1
+
+Three files carry `#[ignore]` attributes at the revision this document is committed with --
+`key_coherence.rs` (27), `key_change.rs` (10) and `outbound_routes.rs` (2), 39 attributes selecting 36
+ignored tests (measured locally against `postgres:16-alpine`: `36 passed; 0 failed; 0 ignored; 184
+filtered out`, 19.77s). They are the suites closest to the security audit: stored-key coherence, key
+replacement and outbound fetch. The count is a property of the revision, not of the pipeline: a branch
+that adds a database-backed suite changes it, which is why each figure above is stated with the
+revision or the command that produced it.
+
+Two consequences are worth stating plainly, because a green `Evaluation Harness` does not state them:
+
+- The evaluation harness still does not prove the database behaviour. The `Database Suite` job does,
+  and it gates: a red there blocks the merge the same way a red `test` gate does.
 - The one-pager's `0 ignored` figure (it quotes the workspace gate at `158 passed, 0 failed, 0
   ignored`) is a measurement from a revision that predates these suites, not a property of the
   pipeline.
 
-The decision this question leaves open: add a `postgres:16` service container and a
-`KOMUN_TEST_DATABASE_URL` to the evaluation harness so the ignored set runs, or record that the
-database suites stay an operator step. Until one of those is chosen, the count belongs in every report
-that quotes the workspace gate.
+What is still an operator step is any filter narrower than the whole ignored set, and any run against a
+database the workflow does not start. The job starts its own, and the sandbox remains unable to reach
+one.
 
 ## What remains unverified after the workflow's first real run, and what did that run settle?
 
@@ -617,6 +634,7 @@ Four things stay unverified, and each has an owner:
 - Whether a skipped required check satisfies branch protection, because `main` carries no protection
   rule at all (`Branch not protected`). The skip path exists to serve the lesson's docs-only case
   (lesson 4.2 block [134] `skips on a docs-only change`).
-- Whether a web-only change is gated, because the frontend jobs did not exist when the run above was
-  taken: `web-gate` and `console-gate` are additions to this branch and their first green run is the
-  one that settles them.
+- Whether the added gates are green, because none of them existed when the run above was taken:
+  `web-gate`, `console-gate` and `database-gate` each settle themselves on their first green run, and
+  the `Database Suite` job also settles whether this repository's database suites pass outside an
+  operator's shell.
