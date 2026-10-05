@@ -32,8 +32,7 @@
 		}
 
 		password = '';
-		// `ok` with an `error` means the session is good but the key bundle did not open. Worth
-		// saying out loud rather than letting messages silently fail to decrypt later.
+		// An `error` alongside `ok` means the key bundle did not open; warn now rather than let messages fail to decrypt later.
 		if (result.error) {
 			warning = result.error;
 			return;

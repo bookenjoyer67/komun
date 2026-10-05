@@ -1,9 +1,5 @@
-//! `/api/posts` — the flat post collection.
-//!
-//! A3.1: posts used to hang off a per-tenant path segment, and every handler began by resolving
-//! that segment to a row in a table the squashed schema no longer has. The path segment, the
-//! lookup and the membership/role checks that gated posting are all gone. `require_auth` is the
-//! only gate on the mutating half of this router.
+//! `/api/posts` — the flat post collection. `require_auth` is the only gate on the mutating half
+//! of this router.
 
 use axum::{
     extract::{Extension, Multipart, Path, Query, State},
@@ -42,14 +38,9 @@ pub fn router(state: AppState) -> Router {
     public.merge(protected).with_state(state)
 }
 
-/// The raw query string, every field a `String`.
-///
-/// M1.4: typing these (`Option<i64>`, `Option<ItemCondition>`) would hand the rejection to axum's
-/// extractor, which answers **422** with a serde message naming a Rust field. Worse, the values
-/// serde *can* parse but the database has never heard of — `?currency=dollars`,
-/// `?item_condition=mint` — would filter to nothing and answer `200 []`, which reads as "this
-/// marketplace is empty" rather than "you asked wrong". Parsing by hand is what buys a 400 that
-/// names the parameter.
+/// Every field is a `String`: typing them would let axum answer 422 naming a Rust type, and values
+/// serde parses but the database rejects would filter to an empty `200 []`. Parsing by hand buys a
+/// 400 that names the parameter.
 #[derive(Deserialize, Default)]
 pub(crate) struct PostFilters {
     pub(crate) kind: Option<String>,
@@ -73,8 +64,6 @@ async fn list_posts(
     Ok(Json(posts))
 }
 
-/// Turn a raw query string into a [`PostFilter`], or into the message of a 400.
-///
 /// Pure and `pub(crate)` so `tests::market` can pin every branch without a database.
 pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> {
     let kind = enum_filter(
@@ -103,8 +92,8 @@ pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> 
     let max_price_cents = price_filter("max_price_cents", raw.max_price_cents.as_deref())?;
     if let (Some(min), Some(max)) = (min_price_cents, max_price_cents) {
         if min > max {
-            // An inverted range can only ever match nothing, so answering `[]` would be a true
-            // but useless reply to what is plainly a mistake.
+            // An inverted range can only match nothing, so `[]` would be a true but useless reply
+            // to a plain mistake.
             return Err(format!(
                 "min_price_cents ({min}) is greater than max_price_cents ({max})"
             ));
@@ -121,8 +110,8 @@ pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> 
         }
     };
 
-    // Only the shape, not the existence: a well-formed slug nobody has created is a legitimately
-    // empty result, whereas `?category=Electronics!` can never match anything at all.
+    // Only the slug's shape is checked, not its existence: a well-formed unknown slug legitimately
+    // yields nothing.
     let category = match trimmed(raw.category.as_deref()) {
         None => None,
         Some(value) => {
@@ -145,14 +134,14 @@ pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> 
     })
 }
 
-/// An absent parameter and an empty one mean the same thing: no filter. `?kind=` comes from a
-/// form field the user left alone, and rejecting it would break every such form.
+/// An absent parameter and an empty one both mean no filter; `?kind=` comes from a form field the
+/// user left alone.
 fn trimmed(raw: Option<&str>) -> Option<&str> {
     raw.map(str::trim).filter(|value| !value.is_empty())
 }
 
-/// A filter whose value must be one of a DB enum's values. The error lists what is accepted,
-/// rendered from the enum itself so it cannot fall behind the `CHECK` the enum is pinned to.
+/// A filter restricted to a DB enum's values; the error lists them, rendered from the enum so it
+/// cannot fall behind the `CHECK`.
 fn enum_filter<T: Copy>(
     name: &str,
     raw: Option<&str>,
@@ -173,8 +162,7 @@ fn enum_filter<T: Copy>(
     }
 }
 
-/// Prices are whole cents. Negative is rejected here as well as by `chk_posts_price_cents`,
-/// because a negative bound is a client mistake worth naming rather than a range that matches
+/// Prices are whole cents; a negative bound is rejected as a client mistake rather than matching
 /// every priced post.
 fn price_filter(name: &str, raw: Option<&str>) -> Result<Option<i64>, String> {
     let Some(value) = trimmed(raw) else {
@@ -190,8 +178,7 @@ fn price_filter(name: &str, raw: Option<&str>) -> Result<Option<i64>, String> {
     Ok(Some(cents))
 }
 
-/// Rejected rather than clamped: a caller that asks for 5,000 posts and is handed 200 without
-/// being told has no way to know its pagination is wrong.
+/// Rejected rather than clamped, so a caller is not silently handed 200.
 fn bounded(name: &str, raw: Option<&str>, default: i64, min: i64, max: i64) -> Result<i64, String> {
     let Some(value) = trimmed(raw) else {
         return Ok(default);
@@ -241,9 +228,8 @@ async fn create_post(
 
     validate_market_fields(&input)?;
 
-    // M1.1 / SPEC B7. Validation first, so a caller's bad currency is still their 400 and not
-    // quietly replaced by the server's default; the configured value needs no check of its own
-    // because `Config::validate_market` refused to start if it was malformed.
+    // Resolve only after validation, so a caller's bad currency is their 400 rather than silently
+    // replaced by the server default.
     if input.kind.is_market() {
         let resolved = state
             .config
@@ -256,9 +242,8 @@ async fn create_post(
     Ok(Json(post))
 }
 
-/// The `chk_posts_market_fields` and `chk_posts_currency` constraints are the real authority on
-/// this; checking here turns a constraint violation (a 500, with the SQL in the log) into a 400
-/// that says what is wrong.
+/// `chk_posts_market_fields` and `chk_posts_currency` are the authority; checking here turns a 500
+/// into a 400.
 fn validate_market_fields(input: &CreatePost) -> Result<(), StatusError> {
     if !input.kind.is_market()
         && (input.market_listed || input.price_cents.is_some() || input.item_condition.is_some())
@@ -284,8 +269,7 @@ fn validate_market_fields(input: &CreatePost) -> Result<(), StatusError> {
 struct UpdatePostRequest {
     title: Option<String>,
     body: Option<String>,
-    /// Typed, so an unknown value is a 422 from serde rather than a CHECK violation at the
-    /// bottom of the stack.
+    /// Typed, so an unknown value is a 422 from serde rather than a CHECK violation.
     urgency: Option<Urgency>,
     status: Option<PostStatus>,
 }
@@ -304,8 +288,8 @@ async fn update_post(
         ));
     }
 
-    // `hidden` and `flagged` are moderation states; an author setting either on their own post
-    // would either hide it from moderators' queues or fake a report outcome.
+    // `hidden` and `flagged` are moderation states; an author setting either could hide a post
+    // from moderators' queues or fake a report outcome.
     if matches!(
         input.status,
         Some(PostStatus::Hidden) | Some(PostStatus::Flagged)
@@ -428,8 +412,7 @@ async fn upload_images(
     Ok(Json(json!({"images": urls})))
 }
 
-/// A missing post is a 404. The old code let `anyhow!("post not found")` fall through the
-/// blanket `From` impl and answered 500.
+/// A missing post is a 404, not a 500 from the blanket `From` impl.
 async fn load_post(state: &AppState, id: Uuid) -> Result<Post, StatusError> {
     crate::db::posts::get(&state.pool, id)
         .await?

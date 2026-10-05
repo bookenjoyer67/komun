@@ -1,55 +1,93 @@
 //! Outbound rate limiting for the Nominatim geocode proxy.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
-use tokio::sync::Mutex;
+use tokio::sync::Semaphore;
 use tokio::time::Instant;
 
-/// Spaces outbound calls so that no two start less than `interval` apart.
-///
-/// Callers `acquire().await` a slot. The first caller runs immediately; every
-/// later caller is assigned a slot one `interval` after the previous one and
-/// sleeps until then, so requests **queue** instead of being dropped or fired
-/// early. A single instance is shared by the whole process, which matches
-/// Nominatim's per-application usage policy.
+/// Past this expected wait a caller is refused at once: an unbounded queue lets anonymous
+/// callers hold requests open for as long as they keep sending.
+pub const MAX_BACKLOG: Duration = Duration::from_secs(10);
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Busy;
+
+/// Spaces outbound calls at least `interval` apart. One instance is shared process-wide, matching
+/// Nominatim's per-application usage policy. Nothing is reserved until a call fires, so a caller
+/// dropped while it waits gives its place back.
 pub struct RateLimiter {
     interval: Duration,
-    next_slot: Mutex<Option<Instant>>,
+    /// One permit, handed out in FIFO order.
+    gate: Semaphore,
+    last_fire: Mutex<Option<Instant>>,
+    waiting: AtomicUsize,
+}
+
+struct InQueue<'a>(&'a AtomicUsize);
+
+impl Drop for InQueue<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl RateLimiter {
     pub fn new(interval: Duration) -> Self {
         Self {
             interval,
-            next_slot: Mutex::new(None),
+            gate: Semaphore::new(1),
+            last_fire: Mutex::new(None),
+            waiting: AtomicUsize::new(0),
         }
     }
 
-    /// Waits until this caller's slot is due, then returns.
-    pub async fn acquire(&self) {
-        let wait_until = {
-            let mut next_slot = self.next_slot.lock().await;
-            let now = Instant::now();
-            let slot = next_slot.map_or(now, |scheduled| scheduled.max(now));
-            *next_slot = Some(slot + self.interval);
-            slot
-        };
+    pub async fn acquire(&self) -> Result<(), Busy> {
+        let ahead = self.waiting.fetch_add(1, Ordering::SeqCst);
+        let _in_queue = InQueue(&self.waiting);
 
-        tokio::time::sleep_until(wait_until).await;
+        if self.expected_wait(ahead) > MAX_BACKLOG {
+            return Err(Busy);
+        }
+
+        let _permit = self.gate.acquire().await.map_err(|_| Busy)?;
+        if let Some(last) = self.last_fire() {
+            tokio::time::sleep_until(last + self.interval).await;
+        }
+        *self
+            .last_fire
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Instant::now());
+        Ok(())
+    }
+
+    fn last_fire(&self) -> Option<Instant> {
+        *self
+            .last_fire
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn expected_wait(&self, ahead: usize) -> Duration {
+        let current = self.last_fire().map_or(Duration::ZERO, |last| {
+            (last + self.interval).saturating_duration_since(Instant::now())
+        });
+        let queued = u32::try_from(ahead)
+            .ok()
+            .and_then(|n| self.interval.checked_mul(n))
+            .unwrap_or(Duration::MAX);
+        queued.saturating_add(current)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
-    // The clock is paused, so `Instant::now()` and both sleeps below read
-    // tokio's timer rather than the wall clock. The 50 ms checkpoint and the
-    // 200 ms slot are then exact, instead of being eaten into by the first
-    // caller's own latency. `acquire()` is already on that timer and is
-    // unchanged.
+    // The paused clock makes `Instant::now()` and the sleeps below read tokio's timer, so the
+    // 50 ms checkpoint and 200 ms slot are exact.
     #[tokio::test(start_paused = true)]
     async fn second_lookup_is_queued_not_dropped_or_fired_early() {
         let limiter = Arc::new(RateLimiter::new(Duration::from_millis(200)));
@@ -60,7 +98,10 @@ mod tests {
             let limiter = limiter.clone();
             let upstream = upstream.clone();
             tokio::spawn(async move {
-                limiter.acquire().await;
+                limiter
+                    .acquire()
+                    .await
+                    .expect("a second lookup is well inside the backlog");
                 upstream.fetch_add(1, Ordering::SeqCst);
                 Instant::now()
             })
@@ -90,5 +131,87 @@ mod tests {
             2,
             "the queued lookup must still run"
         );
+    }
+
+    /// T8
+    #[tokio::test(start_paused = true)]
+    async fn a_cancelled_waiter_gives_its_slot_back() {
+        let interval = Duration::from_millis(200);
+        let limiter = Arc::new(RateLimiter::new(interval));
+        let start = Instant::now();
+
+        let _ = limiter.acquire().await;
+
+        let cancelled = {
+            let limiter = limiter.clone();
+            tokio::spawn(async move {
+                let _ = limiter.acquire().await;
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        cancelled.abort();
+        let _ = cancelled.await;
+
+        let _ = limiter.acquire().await;
+        let fired = Instant::now().duration_since(start);
+
+        assert!(
+            fired < interval * 2,
+            "the next caller waited behind a cancelled one ({fired:?})"
+        );
+    }
+
+    /// T9
+    #[tokio::test(start_paused = true)]
+    async fn a_caller_past_the_backlog_is_answered_at_once() {
+        let limiter = Arc::new(RateLimiter::new(Duration::from_secs(1)));
+        let start = Instant::now();
+
+        let mut callers: Vec<_> = (0..12)
+            .map(|_| {
+                let limiter = limiter.clone();
+                tokio::spawn(async move {
+                    let _ = limiter.acquire().await;
+                    Instant::now()
+                })
+            })
+            .collect();
+
+        let last = callers.pop().expect("twelve callers");
+        let answered = last.await.unwrap().duration_since(start);
+        for caller in callers {
+            caller.abort();
+        }
+
+        assert!(
+            answered < Duration::from_millis(50),
+            "the twelfth caller queued for {answered:?} instead of being refused"
+        );
+    }
+
+    /// T9b
+    #[tokio::test(start_paused = true)]
+    async fn the_backlog_bound_is_busy_and_the_callers_inside_it_still_run() {
+        let limiter = Arc::new(RateLimiter::new(Duration::from_secs(1)));
+
+        let mut callers: Vec<_> = (0..12)
+            .map(|_| {
+                let limiter = limiter.clone();
+                tokio::spawn(async move { limiter.acquire().await })
+            })
+            .collect();
+
+        let last = callers.pop().expect("twelve callers");
+        assert_eq!(last.await.unwrap(), Err(Busy));
+
+        let within = callers.pop().expect("the eleventh caller");
+        assert_eq!(
+            within.await.unwrap(),
+            Ok(()),
+            "a caller about ten seconds back must still be served"
+        );
+        for caller in callers {
+            caller.abort();
+        }
     }
 }

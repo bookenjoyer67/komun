@@ -50,11 +50,11 @@ Enforcement lives in configuration and in named artifacts. Prose holds no rule a
 - Fix the layer that failed and re-run the same prompt (`eval/red-team-results.md:7` `Eight prompts were blocked on their first run.`).
 - Gate a governed change with five CI jobs named for the lesson's rows (`/.github/workflows/ci.yml:4` `change-type-check, policy-gate, eval-gate, advisory-review`).
 - Keep the deterministic gates binding and the agentic ones advisory (`/.github/workflows/ci.yml:17` `policy-gate carries no`).
-- Mark the four advisory or report jobs continue-on-error, so a review cannot fail a merge (`/.github/workflows/ci.yml:485` `continue-on-error: true`).
+- Mark the four advisory or report jobs continue-on-error, so a review cannot fail a merge (`/.github/workflows/ci.yml:486` `continue-on-error: true`).
 - Run the policy suite in the sandbox with the workspace read-only (`/.github/workflows/ci.yml:137` `python -m pytest eval/test_policy.py -v`).
 - Run the eval gate only on a governed change (`/.github/workflows/ci.yml:160` `if: needs.change-type-check.outputs.requires-governed-check == 'true'`).
-- Decide which changes are governed from two glob tables in one config file (`scripts/classify-change.py:129` `classification.governed_globs`).
-- Treat a policy file as agent-affecting whatever the globs say (`scripts/classify-change.py:180` `governed = governed or policy`).
+- Decide which changes are governed from two glob tables in one config file (`scripts/classify-change.py:128` `classification.governed_globs`).
+- Treat a policy file as agent-affecting whatever the globs say (`scripts/classify-change.py:162` `governed = governed or policy`).
 - Keep the policy document inside the governed set, so a policy edit triggers the gate (`agentic.config.json:219` `"docs/governance-policy.md"`).
 
 **Provenance:** every rejection in the next section is recorded in this repository at the cited line, except the cases where this record writes exactly "Not recorded at decision time."
@@ -112,7 +112,7 @@ Which artifacts settle this decision?
 - Reviewer mount state at refusal: `eval/red-team-results.md:36` `/workspace RW=false`.
 - Red-team fix: `eval/red-team-results.md:252` `to be read-only, so a stale container is recreated instead of reused`, implemented at `scripts/run-agent.sh:187` and `scripts/run-agent.sh:199`.
 - Eval-gated change control: five jobs at `.github/workflows/ci.yml:4` `change-type-check, policy-gate, eval-gate, advisory-review`, with the gating decision at `.github/workflows/ci.yml:17` `policy-gate carries no`.
-- Classification globs: `agentic.config.json:210` `"governed_globs": [`, consumed at `scripts/classify-change.py:129` `classification.governed_globs`.
+- Classification globs: `agentic.config.json:210` `"governed_globs": [`, consumed at `scripts/classify-change.py:128` `classification.governed_globs`.
 - Calibration produced the policy from named patterns rather than from a template (`docs/calibration-log.md:18` `Ten patterns follow, each named and each cited to the line that evidences it`).
 - NM-8 records a self-report that does not reproduce (`docs/calibration-log.md:66` `a role's self-reported count can drift while the artifact stays correct`).
 - NM-9 records permission bits a root process ignores (`docs/calibration-log.md:72` `a filesystem permission is not a guardrail when the writing process runs as root`).

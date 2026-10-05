@@ -11,11 +11,11 @@ Each invocation returns the exit code, the captured stdout and stderr, the wall-
 verdict, and appends one journal line naming the ``tool`` that ran it and its ``writes`` mode. A
 refused call runs nothing and journals nothing, so the journal holds only executed commands.
 
-The ``clippy`` gate carries the project's cache-hit guard, whose marker line and touched file are
-read from ``toolchain.commands.clippy.guard``. cargo's second run over an unchanged tree prints
-nothing and exits 0, which is indistinguishable from a clean lint, so the gate touches a file
-under test before invoking cargo and then requires the configured marker line in the output.
-``passed`` for clippy is therefore exit code 0 *and* a satisfied guard. This image runs cargo with
+A gate that declares a ``guard`` carries the project's cache-hit guard, and its marker line and
+touched file are read from that gate's own ``toolchain.commands.<name>.guard`` block. cargo's
+second run over an unchanged tree prints nothing and exits 0, which is indistinguishable from a
+clean run, so the gate touches a file under test before invoking cargo and then requires that
+gate's own configured marker line. ``passed`` is exit code 0 *and* a satisfied guard. This image runs cargo with
 ``CARGO_TERM_COLOR=always``, so status lines arrive wrapped in SGR escapes and the guard matches the
 output with the escapes stripped; the returned stdout and stderr are stripped for the same reason.
 
@@ -39,8 +39,8 @@ from pathlib import Path
 from typing import Any
 
 # --- The portability seam: the gate vocabulary lives in agentic.config.json -------------------
-# `gate_vocabulary.py` reads the command names and the argv tuples, the mode of each, the clippy
-# cache-hit guard and the container paths the commands run in from the config
+# `gate_vocabulary.py` reads the command names and the argv tuples, the mode of each, each
+# command's cache-hit guard and the container paths the commands run in from the config
 # (`toolchain.commands` and `containers`), and falls back to its own embedded defaults, which are
 # this repository's values. A run with no config file behaves as this server did before it existed.
 _SCRIPTS = next(
@@ -53,7 +53,7 @@ if str(_SCRIPTS) not in sys.path:
 _GATE_DIR = Path(__file__).resolve().parent
 if str(_GATE_DIR) not in sys.path:
     sys.path.insert(0, str(_GATE_DIR))
-from gate_vocabulary import (COMMANDS, FIX_COMMANDS, GATES, GUARD_MARKER_PATTERN,  # noqa: E402
+from gate_vocabulary import (COMMANDS, FIX_COMMANDS, GATES, guard_marker_search,  # noqa: E402
                              MEMORY_DIR, SUMMARY_PATTERNS, WORKSPACE, AUDIT_PATH, TOOLS_IMAGE, print_config_if_requested)
 
 # A supported entry point: it answers before the MCP and HTTP imports, so a host without fastmcp
@@ -74,8 +74,8 @@ from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 # cargo honours CARGO_TERM_COLOR=always in this image even when stderr is a pipe, so the status
 # lines arrive wrapped in SGR escapes (a ``Checking`` status line arrives as
 # "\x1b[1m\x1b[92m    Checking\x1b[0m <crate>"). The guard matches against output with the escapes
-# removed; a naive substring search over the raw bytes finds nothing and would report every clippy
-# run as a cache hit. The pattern is `gate_vocabulary.py`'s, from the config's marker_regex.
+# removed; a naive substring search over the raw bytes finds nothing and would report every guarded
+# run as a cache hit. Each pattern is `gate_vocabulary.py`'s, from that command's marker_regex.
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 DEFAULT_TIMEOUT_SECONDS = int(os.getenv("GATE_TIMEOUT_SECONDS", "900"))
@@ -241,7 +241,7 @@ def read_audit_records(limit: int) -> list[dict[str, Any]]:
     return records[-limit:]
 
 
-# --- The clippy cache-hit guard -------------------------------------------------------------
+# --- The per-command cache-hit guard ----------------------------------------------------------
 def apply_cache_hit_guard(command: str) -> dict[str, Any]:
     """Touch a file under test, so the command that follows cannot be a cached no-op.
 
@@ -279,17 +279,17 @@ def apply_cache_hit_guard(command: str) -> dict[str, Any]:
     }
 
 
-def guard_satisfied(guard: dict[str, Any], combined_output: str) -> dict[str, Any]:
-    """Require the gate's marker line in the output, and record why when it is absent."""
+def guard_satisfied(command: str, guard: dict[str, Any], combined_output: str) -> dict[str, Any]:
+    """Require the gate's own marker line in the output, and record why when it is absent."""
     if not guard["applied"]:
         return guard
-    match = GUARD_MARKER_PATTERN.search(strip_ansi(combined_output))
+    match, unusable = guard_marker_search(command, strip_ansi(combined_output))
     missing = (
         f"cache-hit guard not satisfied: no '{guard['marker']}' line in the output, so a clean "
         "run cannot be told apart from a cached no-op"
     )
     guard["satisfied"] = bool(match)
-    guard["detail"] = f"found '{guard['marker']}' in the cargo output" if match else missing
+    guard["detail"] = unusable or (f"found '{guard['marker']}' in the cargo output" if match else missing)
     return guard
 
 
@@ -415,7 +415,7 @@ def execute_gate(
         raw_stderr = _decode(expired.stderr)
     duration_seconds = round(time.monotonic() - started, 3)
 
-    guard = guard_satisfied(guard, raw_stdout + "\n" + raw_stderr)
+    guard = guard_satisfied(command, guard, raw_stdout + "\n" + raw_stderr)
     # Counted on the raw capture, above the clamp below, so the counts describe the whole run and
     # not the head of it. The summary never enters `passed` or `verdict`, which follow unchanged.
     summary = compute_output_summary(command, raw_stdout, raw_stderr)

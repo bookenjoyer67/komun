@@ -9,12 +9,6 @@ use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
 use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey, StaticSecret};
 
-// A2.10: the signature keypair, `generate_keypair`, `sign` and `verify` are deleted along with the
-// registration challenge that was their only caller. A signature from a key the browser minted
-// seconds earlier proved nothing an unauthenticated POST did not already prove, and it forced every
-// account to carry a second long-lived secret whose compromise was never modelled. Identity is now
-// the password; the only key material left is the x25519 secret used to read messages.
-
 #[wasm_bindgen]
 pub struct X25519KeyPair {
     secret_key: Vec<u8>,
@@ -188,13 +182,7 @@ pub fn generate_salt() -> Vec<u8> {
     salt
 }
 
-/// Argon2id over the account password, used for both halves of Part 1.5's split: the *verifier*
-/// that is sent to the server, and the *wrap key* that never leaves the browser. Which one comes
-/// out is decided entirely by the salt the caller passes in.
-///
-/// A2.11 renamed this from `derive_key_from_passphrase`. There is no separate passphrase any more —
-/// the user types one password, and asking them for a second secret to unlock their own key was
-/// the reason the old flow needed an unlock prompt on every login.
+/// Argon2id over the account password, producing either the server verifier or the browser wrap key — the salt the caller passes decides which.
 #[wasm_bindgen]
 pub fn derive_key_from_password(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, JsValue> {
     let params =
@@ -209,13 +197,7 @@ pub fn derive_key_from_password(password: &[u8], salt: &[u8]) -> Result<Vec<u8>,
     Ok(key)
 }
 
-/// Wrap the account's single secret — the x25519 message key — under a key derived from the
-/// password or from the recovery code.
-///
-/// A2.10: this used to concatenate two secrets and wrap 64 bytes. The signature half no longer
-/// exists, so the bundle is exactly the 32-byte x25519 secret. Taking one slice rather than two
-/// also removes the only reason a caller had to know the layout, which is what the old
-/// `bytes.slice(0, 32)` unwrap on the JS side was getting wrong.
+/// Wrap the account's single secret — the 32-byte x25519 message key — under a key derived from the password or the recovery code.
 #[wasm_bindgen]
 pub fn encrypt_key_bundle(x25519_secret: &[u8], derived_key: &[u8]) -> Result<Vec<u8>, JsValue> {
     let key_bytes: [u8; 32] = derived_key
@@ -244,12 +226,7 @@ pub fn encrypt_key_bundle(x25519_secret: &[u8], derived_key: &[u8]) -> Result<Ve
     Ok(result)
 }
 
-/// Unwrap a bundle written by `encrypt_key_bundle`, returning the 32-byte x25519 secret.
-///
-/// The length is asserted rather than assumed. AEAD tells us the plaintext is authentic, not that
-/// it is the shape this version expects: a bundle written by the two-secret format would decrypt
-/// cleanly and hand back 64 bytes, and a caller that then used the first 32 would be holding the
-/// wrong key and getting silent decryption failures for every message.
+/// Unwrap a bundle written by `encrypt_key_bundle` and assert the result is the 32-byte x25519 secret. AEAD proves the plaintext is authentic, not that it has this version's shape: a two-secret bundle would decrypt cleanly to 64 bytes and be used as the wrong key.
 #[wasm_bindgen]
 pub fn decrypt_key_bundle(encrypted: &[u8], derived_key: &[u8]) -> Result<Vec<u8>, JsValue> {
     if encrypted.len() < 24 + 16 {
@@ -276,12 +253,6 @@ pub fn decrypt_key_bundle(encrypted: &[u8], derived_key: &[u8]) -> Result<Vec<u8
 
     Ok(secret)
 }
-
-// The recovery-lookup helper is deleted (A2a / SPEC F1). It derived Argon2id(passphrase,
-// salt = b"komun-recovery-v1")[..16] from a hardcoded salt compiled into the WASM and identical on
-// every deployment — a cross-deployment dictionary oracle, reachable through an unauthenticated and
-// unthrottled /auth/recover. Recovery is now a 12-word code that wraps the x25519 secret
-// client-side; the server never sees a recovery identifier at all.
 
 const BIP39_WORDS: &[&str; 2048] = &[
     "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "absurd",
@@ -509,13 +480,4 @@ pub fn generate_recovery_code() -> String {
         .join(" ")
 }
 
-// A2.10: `hash_recovery_code` is deleted. It ran Argon2id over the phrase under the hardcoded
-// salt `komun-recovery-code-v1` and handed the digest to the server, which stored it as
-// `users.recovery_code_hash` — a column the squashed schema no longer has. Two things were wrong
-// with it: the server held a verifier for the very secret that is supposed to make the server
-// irrelevant, and a salt baked into the WASM is the same on every deployment, so one precomputed
-// table would have covered all of them at once.
-//
-// The recovery code now derives a wrapping key exactly the way the password does — through
-// `derive_key_from_password`, under the account's own `recovery_bundle_salt` — and that key wraps
-// a second copy of the x25519 secret. Nothing derived from the code is ever transmitted.
+// The recovery code derives a wrapping key the same way the password does — `derive_key_from_password` under the account's own `recovery_bundle_salt` — wrapping a second copy of the x25519 secret; nothing derived from the code is transmitted.

@@ -21,8 +21,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/users", get(list_users))
         .route("/admin/users/{id}", delete(delete_user))
         .route("/admin/users/{id}/role", patch(change_role))
-        // A2b.1: an account reported as compromised has to be kickable without waiting for its
-        // sessions to expire on their own.
+        // A compromised account has to be kickable without waiting for its sessions to expire.
         .route(
             "/admin/users/{id}/sessions",
             get(list_user_sessions).delete(revoke_user_sessions),
@@ -91,8 +90,6 @@ async fn delete_user(
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, StatusError> {
     if id == auth.user_id {
-        // Was HTTP 200 with an `error` key in the body — the same shape A2b fixed on
-        // `change_role`, and just as unreadable to a client that checks the status code.
         return Err(StatusError::with_status(
             StatusCode::BAD_REQUEST,
             "cannot delete yourself",
@@ -110,8 +107,7 @@ struct ChangeRoleRequest {
     role: String,
 }
 
-/// Promote or demote an account. Superadmin only — the whole router is behind
-/// [`require_superadmin`], and the role backing that check is re-read from `users` on every
+/// Promote or demote an account. Superadmin only; the role backing that check is re-read on every
 /// request, so a demotion lands on the demoted admin's very next call.
 async fn change_role(
     State(state): State<AppState>,
@@ -119,9 +115,6 @@ async fn change_role(
     Path(id): Path<Uuid>,
     Json(input): Json<ChangeRoleRequest>,
 ) -> Result<Json<serde_json::Value>, StatusError> {
-    // A2b: these two refusals used to be 200 responses with an `error` key in the body, so a
-    // client following the status code saw "cannot change your own role" as a success and had no
-    // way to tell a rejected request from an applied one.
     if id == auth.user_id {
         return Err(StatusError::with_status(
             StatusCode::BAD_REQUEST,
@@ -136,11 +129,8 @@ async fn change_role(
         ));
     }
 
-    // Read the old role in the same statement that writes the new one. As two queries a
-    // concurrent change could slip in between and be audited as though it had never happened.
-    // The `FROM users old` self-join is the Postgres idiom for this: `old` is resolved against the
-    // statement's snapshot, so it still holds the pre-update row. An empty result means no such
-    // user, which is also what tells us to answer 404.
+    // Read the old role in the same statement that writes the new one; as two queries a concurrent
+    // change could slip between them and be audited as though it never happened.
     let previous: Option<String> = sqlx::query_scalar(
         "UPDATE users u SET role = $2 FROM users old
          WHERE u.id = $1 AND old.id = $1
@@ -158,8 +148,8 @@ async fn change_role(
         ));
     };
 
-    // Granting and revoking admin is the change most worth being able to reconstruct later, so it
-    // gets a row whether or not it moved — including the no-op, which is itself evidence of intent.
+    // Admin changes are audited whether or not the role moved; the no-op is itself evidence of
+    // intent.
     record_audit(
         &state.pool,
         Some(auth.user_id),
@@ -176,8 +166,8 @@ async fn change_role(
     })))
 }
 
-/// Where an account is signed in. Same shape as the owner's own `/auth/sessions`, and the same
-/// omissions: no token hash, no raw user agent.
+/// Where an account is signed in. Like `/auth/sessions`, it omits the token hash and raw user
+/// agent.
 #[derive(Serialize)]
 struct AdminSession {
     id: Uuid,
@@ -207,8 +197,8 @@ async fn list_user_sessions(
     ))
 }
 
-/// Sign an account out everywhere. Revocation is a column update and the middleware checks it on
-/// every request, so the effect is immediate rather than at token expiry.
+/// Sign an account out everywhere. Revocation is a column update the middleware checks on every
+/// request, so the effect is immediate rather than at token expiry.
 async fn revoke_user_sessions(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
@@ -240,8 +230,6 @@ struct AdminDirectoryEntry {
 async fn list_directory(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AdminDirectoryEntry>>, StatusError> {
-    // A3.2: `directory_entries.communities_count` is not a column in the squashed schema, so
-    // this SELECT was failing at runtime before the field came out.
     let entries = sqlx::query_as::<_, AdminDirectoryEntry>(
         "SELECT url, name, location_name, last_seen, registered_at FROM directory_entries ORDER BY registered_at DESC"
     )

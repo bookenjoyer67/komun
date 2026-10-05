@@ -344,5 +344,119 @@ def test_report_names_its_rule_source(tmp_path: Path) -> None:
     assert report["inputs"][0]["rules_enabled"] == ["R1"]
 
 
+# --- The gate vocabulary's guard-pattern fallback ------------------------------------------------
+# These three tests cover mcp/gate/gate_vocabulary.py, not the conformance checker above. Run
+# run-2026-10-03-gate-guard-per-command added them to pin three things. An unusable cache-hit guard
+# pattern never stops the vocabulary, or the server entry point, at import. It falls back to the
+# built-in default when that default is usable. Otherwise only that command's guard fails, with a
+# message naming the config key. Each case runs in a child process against a temporary config
+# chosen through AGENTIC_CONFIG, so the loader's module-level cache cannot leak between cases.
+
+GATE_DIR = REPO / "mcp" / "gate"
+GATE_SERVER = GATE_DIR / "server.py"
+GUARD_SAMPLE = "   Compiling komun-core v0.1.0 (/workspace/crates/core)"
+GUARD_PROBE = textwrap.dedent("""\
+    import json
+    import sys
+
+    sys.path.insert(0, sys.argv[1])
+    import gate_vocabulary as vocabulary
+
+    searches = {}
+    for name, definition in vocabulary.COMMANDS.items():
+        if definition["guard"]:
+            for label, text in (("sample", sys.argv[2]), ("empty", "")):
+                match, message = vocabulary.guard_marker_search(name, text)
+                searches[name + ":" + label] = [match is not None, message]
+    defaults = vocabulary.agentic_config.DEFAULT["toolchain"]["commands"]
+    print(json.dumps({
+        "patterns": {name: p.pattern for name, p in vocabulary.GUARD_MARKER_PATTERNS.items()},
+        "fallbacks": vocabulary.GUARD_PATTERN_FALLBACKS,
+        "errors": vocabulary.GUARD_PATTERN_ERRORS,
+        "searches": searches,
+        "default_test": defaults["test"]["guard"]["marker_regex"],
+    }))
+    """)
+
+
+def guarded_test_command(**guard_fields: object) -> dict:
+    """The `test` command as a config entry, with its guard's fields replaced or added."""
+    guard = {"marker": "Compiling komun-core", "touch_file": "crates/core/src/tests.rs", "reason": "r"}
+    guard.update(guard_fields)
+    return {"argv": ["cargo", "test", "--workspace"], "guard": guard, "summary": None, "writes": False}
+
+
+def probe_guards(tmp_path: Path, commands: dict) -> dict:
+    """Load the vocabulary and the server entry point against a temporary config; return the probe.
+
+    Both children must exit 0, which is the proof that neither one raises at import, whatever the
+    configured guard patterns are.
+    """
+    import os  # imported here so the top-level imports, and every line cited into this file, stay put
+
+    config = tmp_path / "agentic.config.json"
+    config.write_text(json.dumps({"schema_version": 1, "toolchain": {"commands": commands}}),
+                      encoding="utf-8")
+    env = {**os.environ, "AGENTIC_CONFIG": str(config)}
+    probe = subprocess.run([sys.executable, "-c", GUARD_PROBE, str(GATE_DIR), GUARD_SAMPLE],
+                           capture_output=True, text=True, cwd=REPO, env=env, check=False)
+    assert probe.returncode == 0, f"gate_vocabulary must load, not raise: {probe.stderr}"
+    server = subprocess.run([sys.executable, str(GATE_SERVER), "--print-config"],
+                            capture_output=True, text=True, cwd=REPO, env=env, check=False)
+    assert server.returncode == 0, f"the server entry point must get past the import: {server.stderr}"
+    assert "toolchain.commands.test.guard.marker_regex" in json.loads(server.stdout)
+    return json.loads(probe.stdout)
+
+
+def assert_test_guard_falls_back(report: dict) -> None:
+    """The `test` guard runs on the built-in default, with the fallback recorded and no error."""
+    assert report["patterns"]["test"] == report["default_test"], "the built-in default answers"
+    assert "toolchain.commands.test.guard.marker_regex" in report["fallbacks"]["test"]
+    assert "test" not in report["errors"]
+    assert report["searches"]["test:sample"] == [True, None], "the default matches the marker line"
+    assert report["searches"]["test:empty"] == [False, None], "nothing matches empty output"
+
+
+def test_guard_pattern_empty_blank_or_not_a_string_falls_back_to_the_default(tmp_path: Path) -> None:
+    """Cases C4 and C5: an empty, blank or non-string marker_regex is replaced by the default."""
+    for marker_regex in ("", "   ", 5):
+        report = probe_guards(tmp_path, {"test": guarded_test_command(marker_regex=marker_regex)})
+        assert_test_guard_falls_back(report)
+
+
+def test_guard_pattern_uncompilable_or_matching_empty_falls_back_to_the_default(tmp_path: Path) -> None:
+    """Cases C6 and C7: a pattern that will not compile, or that matches empty text, is replaced."""
+    for marker_regex in ("(", ".*"):
+        report = probe_guards(tmp_path, {"test": guarded_test_command(marker_regex=marker_regex)})
+        assert_test_guard_falls_back(report)
+
+
+def test_guard_with_no_usable_default_fails_only_its_own_gate(tmp_path: Path) -> None:
+    """Case C8 on a fork-added command: its guard fails naming the key, and `test` is untouched.
+
+    `test` leaves its marker_regex out, so the loader hands back the default (case C2). `lint` is
+    absent from the built-in defaults and carries a pattern that will not compile.
+    """
+    commands = {
+        "test": guarded_test_command(),
+        "lint": {
+            "argv": ["true"],
+            "guard": {"marker": "Linting x", "marker_regex": "(", "touch_file": "x", "reason": "r"},
+            "summary": None,
+            "writes": False,
+        },
+    }
+    report = probe_guards(tmp_path, commands)
+    key = "toolchain.commands.lint.guard.marker_regex"
+    assert "lint" not in report["patterns"], "no pattern, so nothing can match for this gate"
+    assert key in report["errors"]["lint"]
+    matched, message = report["searches"]["lint:sample"]
+    assert matched is False, "the guard of a command with no usable pattern is never satisfied"
+    assert key in message, "the detail names the config key to fix"
+    assert report["patterns"]["test"] == report["default_test"]
+    assert "test" not in report["fallbacks"] and "test" not in report["errors"]
+    assert report["searches"]["test:sample"] == [True, None], "only the lint gate's guard fails"
+
+
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-v"]))

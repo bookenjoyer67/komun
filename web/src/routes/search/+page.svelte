@@ -12,8 +12,7 @@
     let loading = $state(true);
     let error = $state('');
 
-    // The box is an editable copy seeded once from the URL's `q`, not a mirror of it — typing
-    // must not be overwritten by the prop. `untrack` marks that one-time read as deliberate.
+    // Editable copy seeded once from the URL's `q`; `untrack` keeps typing from being overwritten by the prop.
     let searchQuery = $state(untrack(() => data.q || ''));
 
     onMount(async () => {
@@ -31,9 +30,6 @@
             posts = await fetch(`${getActiveServer()}/api/search?q=${encodeURIComponent(searchQuery)}`).then(r => r.json());
         } catch (e) { }
     }
-
-    // A3 deleted `/api/search/communities` along with the model it searched. What is left to
-    // search on a flat server is posts and people.
 
     async function searchUsers() {
         try {

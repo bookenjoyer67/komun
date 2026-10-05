@@ -85,7 +85,7 @@ REVIEW_REPORT = "review-report.json"
 REVIEW_SUMMARY = "review-summary.md"
 CLASSIFICATION = "change-classification.json"
 
-# Every file name the audit trail knows how to consume. A file that matches none of these is
+# A file that matches none of these is
 # left alone: this script records evidence, it does not guess at it.
 RECOGNISED_EXACT = {
     POLICY_REPORT,
@@ -202,7 +202,6 @@ def build_metadata(args: argparse.Namespace, secrets: list[str]) -> dict:
     event = args.event or os.environ.get("GITHUB_EVENT_NAME", "")
     pull_request = args.pull_request or ""
 
-    # Read the PR number off the event payload when the workflow did not pass it.
     if not pull_request:
         event_path = os.environ.get("GITHUB_EVENT_PATH", "")
         if event_path and Path(event_path).is_file():
@@ -222,7 +221,7 @@ def build_metadata(args: argparse.Namespace, secrets: list[str]) -> dict:
             pull_request = match.group(1)
 
     return {
-        "sha": sha,  # verbatim key
+        "sha": sha,
         "event": event,
         "pull_request": str(pull_request),  # verbatim template keeps this a string
         "timestamp": _now(),
@@ -275,10 +274,8 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.artifacts_dir)
     out_path = Path(args.out) if args.out else root / "audit-trail.json"
 
-    # 1. Merge: flatten whatever landed in a subdirectory, tolerating an empty/missing dir.
     merged = [] if args.no_merge else flatten_artifacts(root)
 
-    # 2. Discover. Every lookup tolerates a missing file.
     policy_report = root / POLICY_REPORT
     review_report = root / REVIEW_REPORT
     harness_reports = [
@@ -314,7 +311,6 @@ def main(argv: list[str] | None = None) -> int:
     for path in audit_logs:
         consume(path, "audit_log")
 
-    # 3. Sections.
     metadata = build_metadata(args, secrets)
     classification = build_classification(root)
     results = build_results(args)
@@ -372,7 +368,6 @@ def main(argv: list[str] | None = None) -> int:
         },
     }
 
-    # 4. Write, with every secret value scrubbed out (block [169]).
     payload = _redact(json.dumps(trail, indent=2) + "\n", secrets)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(payload, encoding="utf-8")

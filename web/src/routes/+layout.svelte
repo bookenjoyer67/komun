@@ -268,7 +268,7 @@
 	}
 
 	.join-link {
-		/* A2b turned this from a <button> into an <a>, so it inherits anchor defaults now. */
+		/* An <a>: reset the inherited anchor defaults. */
 		display: inline-block;
 		text-decoration: none;
 		background: var(--accent);

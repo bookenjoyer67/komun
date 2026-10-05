@@ -39,10 +39,7 @@ async function requestOn<T>(base: string, path: string, options?: RequestInit & 
 	return res.json();
 }
 
-/**
- * Multipart upload. `fetch` has to set `Content-Type` itself here so the boundary is correct,
- * which is why this does not go through `requestOn`.
- */
+/** Multipart upload: `fetch` must set `Content-Type` itself so the boundary is correct, so this bypasses `requestOn`. */
 async function upload<T>(path: string, form: FormData): Promise<T> {
 	const headers: Record<string, string> = {};
 	const token = getToken();
@@ -57,11 +54,7 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
 	return res.json();
 }
 
-/**
- * A3 flattened the backend: posts are a server-wide collection at `/api/posts`, there is no
- * tenant segment in any path, and `/api/communities` and `/api/alliances` are gone (they 404).
- * A6 flattens the client to match — every call below corresponds to a route that exists.
- */
+/** Every call below corresponds to a route that exists on the flat backend. */
 export const api = {
 	posts: {
 		list: (filters?: Record<string, string>) => {
@@ -100,9 +93,8 @@ export const api = {
 		list: () => request<any[]>('/me/conversations', { auth: true }),
 		get: (matchId: string) => request<any>(`/conversations/${matchId}`, { auth: true }),
 		/**
-		 * A3.3 sealed the wire: the server stores an opaque blob and never sees plaintext, so
-		 * both of these take a ciphertext. `nonce` is optional because `encryptMessage` prepends
-		 * the 24-byte XChaCha20 nonce to the blob it returns.
+		 * The server stores an opaque blob and never sees plaintext, so this takes a ciphertext.
+		 * `nonce` is optional because `encryptMessage` prepends the 24-byte XChaCha20 nonce.
 		 */
 		respond: (postId: string, ciphertext: string, serverUrl?: string) => {
 			const base = serverUrl ? `${serverUrl}/api` : getBase();

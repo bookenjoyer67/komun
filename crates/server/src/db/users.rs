@@ -12,9 +12,8 @@ pub struct UserProfileRow {
     pub post_count: i64,
     pub verified_post_count: i64,
     pub endorsement_count: i64,
-    /// M3.4 — the mean of this user's ratings to one decimal, or `None` when nobody has reviewed
-    /// them. `None` and `0.0` are different facts: one is "no deals reviewed yet", the other is a
-    /// rating no star range can produce, and a new trader must not look like a rated-zero one.
+    /// The mean of this user's ratings to one decimal, or `None` when nobody has reviewed them.
+    /// `None` and `0.0` are different facts: a new trader must not look like a rated-zero one.
     pub rating_avg: Option<f64>,
     pub rating_count: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -26,11 +25,6 @@ pub async fn get_profile(
     pool: &PgPool,
     user_id: Uuid,
 ) -> Result<Option<UserProfileRow>, sqlx::Error> {
-    // A2a: the previous version joined LATERAL against `members` and selected `u.public_key`,
-    // both of which A1 dropped — so every call failed at runtime with an undefined-column error.
-    // A3.2 removes the two stand-ins A2a left behind: `public_key` (an alias of
-    // `encryption_public_key`, kept only so the response shape did not change mid-flight) and
-    // `community_count` (a literal 0 standing in for the dropped `members` table).
     sqlx::query_as::<_, UserProfileRow>(
         r#"SELECT
             u.id, u.display_name, u.bio, u.avatar_path,

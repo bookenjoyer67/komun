@@ -8,30 +8,25 @@ use komun_core::models::{
 };
 
 /// Every column the `Post` model is built from, in one place so `list` and `get` cannot drift.
-///
-/// Qualified with `p.` because both queries now join `categories` for the human label, and
-/// `created_at` / `updated_at` are ambiguous across the two tables.
+/// Qualified with `p.` because both queries join `categories`, making `created_at`/`updated_at`
+/// ambiguous.
 const POST_COLUMNS: &str = r#"p.id, p.author_id, p.kind, p.category, p.title, p.body,
     p.location_name, p.location_lat, p.location_lon, p.urgency, p.quantity, p.status,
     p.visibility, p.expires_at, p.tags, p.contact_method, p.images, p.verified_by, p.verified_at,
     p.market_listed, p.price_cents, p.currency, p.price_negotiable, p.item_condition,
     p.sold_at, p.buyer_id, p.created_at, p.updated_at"#;
 
-/// `LEFT JOIN`, not `JOIN`: `posts.category` is a NOT NULL foreign key so the row always exists
-/// today, but an inner join would silently drop a post if that ever stopped being true, and
-/// losing a post from the feed is a worse failure than showing one without a label.
+/// `LEFT JOIN`, not `JOIN`: an inner join would silently drop a post if the category row ever
+/// went missing, and losing a post from the feed is worse than showing one without a label.
 const CATEGORY_JOIN: &str = "LEFT JOIN categories c ON c.slug = p.category";
 
-/// A list request with no `limit` still gets one. An unbounded feed is a denial of service the
-/// caller does not have to ask for, and it grows with the server.
+/// An unbounded feed is a denial of service the caller need not ask for.
 pub const DEFAULT_LIMIT: i64 = 100;
 pub const MAX_LIMIT: i64 = 200;
 
-/// The validated shape of a list request.
-///
-/// Built by `api::posts::validate_filters`, which is where a malformed query string becomes a 400
-/// naming the offending parameter. By the time one of these exists every field is known-good, so
-/// this layer only binds it — there is no second, divergent idea here of what a legal filter is.
+/// The validated shape of a list request. Built by `api::posts::validate_filters`, which turns a
+/// malformed query string into a 400, so every field here is known-good and this layer only binds
+/// it.
 #[derive(Debug, Clone)]
 pub struct PostFilter {
     pub kind: Option<PostKind>,
@@ -63,19 +58,12 @@ impl Default for PostFilter {
     }
 }
 
-/// The public feed.
+/// The public feed: a flat, server-wide collection.
 ///
-/// A3.1: no tenant column and no tenant argument — posts are a flat, server-wide collection.
-///
-/// Two filters beyond the old `status != 'withdrawn'`:
-/// `visibility = 'public'` (a `private` post is "visible to nobody but its author", and this
-/// route has no authenticated caller to compare against), and the two moderation statuses —
-/// `db/reports.rs` sets `status = 'hidden'` when a report is upheld, and the old predicate put
-/// the hidden post straight back in the feed.
-///
-/// M1.4 adds the marketplace predicates. Note what a price filter does to an aid post: its
-/// `price_cents` is NULL, `NULL >= $5` is NULL, and the row drops out — asking for a price range
-/// asks for things that have a price, which is what a market view wants.
+/// Filters `visibility = 'public'` because this route has no authenticated caller to compare a
+/// `private` post against, and excludes the moderation statuses so a hidden post does not return
+/// to the feed. A price filter also drops aid posts: their `price_cents` is NULL, so `NULL >= $5`
+/// is NULL — asking for a price range asks for things that have a price.
 pub async fn list(pool: &PgPool, filter: &PostFilter) -> Result<Vec<Post>> {
     let search = filter.q.as_deref().map(|s| format!("%{}%", s));
     let rows = sqlx::query_as::<_, PostRow>(&format!(
@@ -135,9 +123,8 @@ pub async fn create(pool: &PgPool, author_id: Uuid, input: CreatePost) -> Result
     let id = Uuid::now_v7();
     let now = Utc::now();
 
-    // SPEC P4: the DB string comes from the enum itself. The old code round-tripped through
-    // `serde_json::to_string` and trimmed the quotes off, which put the wire format in charge of
-    // what lands in a CHECK-constrained column.
+    // The DB string comes from the enum itself: the value lands in a CHECK-constrained column, so
+    // the wire format must not be in charge of it.
     let kind = input.kind.as_str();
     let urgency = input.urgency.map(|u| u.as_str());
     let visibility = input.visibility.unwrap_or(Visibility::Public).as_str();
@@ -258,15 +245,11 @@ impl From<PostRow> for Post {
         Post {
             id: r.id,
             author_id: r.author_id,
-            // SPEC P4 again, on the way back out. The hand-written match this replaces knew
-            // three kinds and folded everything else — including `listing` and `want`, which the
-            // schema has allowed since A1.1 — into `Need`, so a marketplace listing came back
-            // over the wire as an aid need.
+            // Parses every kind the schema allows; a `listing` or `want` must not fold into `Need`.
             kind: PostKind::parse(&r.kind).unwrap_or(PostKind::Need),
             category: r.category,
-            // SPEC 1.6: the label is what a human reads, and it is the only part of the taxonomy
-            // that can be renamed at runtime. Serving the slug alone forced every client to keep
-            // its own copy of the list to render a post.
+            // The label is what a human reads and the only part of the taxonomy renamable at
+            // runtime; serving the slug alone forces every client to keep its own copy.
             category_label: r.category_label,
             title: r.title,
             body: r.body,
@@ -335,8 +318,6 @@ mod tests {
         }
     }
 
-    /// The bug the `PostKind::parse` switch fixes: `listing` and `want` are legal in the schema
-    /// and were being served as `need`.
     #[test]
     fn every_kind_the_schema_allows_survives_the_row_conversion() {
         for kind in PostKind::ALL {
@@ -362,8 +343,8 @@ mod tests {
         assert_eq!(post.item_condition, Some(ItemCondition::LikeNew));
     }
 
-    /// A value no enum knows must not panic and must not silently become a different valid one
-    /// in a way that changes meaning; `need`/`active`/`public` are the inert defaults.
+    /// A value no enum knows must not panic or silently become a different valid value;
+    /// `need`/`active`/`public` are the inert defaults.
     #[test]
     fn an_unrecognised_column_value_degrades_instead_of_panicking() {
         let mut r = row("something_new");

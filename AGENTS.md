@@ -10,14 +10,14 @@ What is Komun, what is it built from, and what has been deliberately left out of
 Komun is a **single-server** marketplace and mutual aid hub (`docs/ARCHITECTURE.md:5` `A single-server
 marketplace and mutual aid hub.`). People post needs, offers and resources, plus marketplace listings and wants
 (`crates/core/src/models/post.rs:8-12` `Resource => "resource",` through `Want => "want",`). They
-search those posts (`crates/server/src/api/mod.rs:44` `.merge(search::router(state.clone()))`). They
+search those posts (`crates/server/src/api/mod.rs:38` `.merge(search::router(state.clone()))`). They
 negotiate over conversations whose `messages` rows hold `ciphertext` and `nonce` only
 (`migrations/001_schema.sql:232-233` `ciphertext BYTEA NOT NULL,` / `nonce BYTEA,`; `:227`
 `-- Message content is never readable by the server: ciphertext only, no plaintext body.`). That
-ciphertext is produced in the browser, in WASM (`crates/wasm/src/lib.rs:49` `pub fn
+ciphertext is produced in the browser, in WASM (`crates/wasm/src/lib.rs:43` `pub fn
 encrypt_message(plaintext: &[u8], recipient_x25519_pk: &[u8])`). For a completed deal a participant
 leaves a star review, and completion is checked inside the insert transaction
-(`crates/server/src/api/reviews.rs:95` `// Whether the deal is completed is decided inside the
+(`crates/server/src/api/reviews.rs:78` `// Whether the deal is completed is decided inside the
 transaction, with the row locked —`). A rating is one to five stars
 (`migrations/001_schema.sql:264` `CONSTRAINT chk_deal_reviews_rating CHECK (rating BETWEEN 1 AND
 5),`).
@@ -125,16 +125,16 @@ Which boundaries does client-side encryption rest on, and where is each one writ
   (`docs/CONVENTIONS.md:81` `Only public keys and wrapped key bundles are server-visible`;
   `migrations/001_schema.sql:25-26` `encryption_public_key BYTEA,` / `encrypted_key_bundle BYTEA,`).
   A password-derived *verifier* is sent, but never the password itself
-  (`crates/wasm/src/lib.rs:191` `Argon2id over the account password, used for both halves of Part
-  1.5's split`; more in `docs/CRYPTO.md`).
+  (`crates/wasm/src/lib.rs:185` `Argon2id over the account password, producing either the server
+  verifier or the browser wrap key`; more in `docs/CRYPTO.md`).
 - The schema has **no plaintext message column**: `messages` carries `ciphertext` + `nonce` only
   (`migrations/001_schema.sql:227` `-- Message content is never readable by the server: ciphertext
   only, no plaintext body.`). The plaintext `matches.message` column was dropped
   (`migrations/003_drop_matches_message.sql:22` `ALTER TABLE matches DROP COLUMN message;`).
 - **Never log** keys, bundles, passwords, derived keys, or message plaintext.
-- There is no ed25519 key and no JWT (`rg -i 'ed25519|jwt|jsonwebtoken' crates` -> 5 hits, all
-  removal notes, e.g. `crates/server/src/config.rs:59` `the signing-key setting is gone with the
-  JWTs`). Sessions are opaque database rows (`migrations/001_schema.sql:38` `token_hash BYTEA NOT
+- There is no ed25519 key and no JWT (`rg -i 'ed25519|jwt|jsonwebtoken' crates` -> no hits, in
+  code or comments, so neither the key type nor a token library remains). Sessions are
+  opaque database rows (`migrations/001_schema.sql:38` `token_hash BYTEA NOT
   NULL UNIQUE,`).
 
 ## Code layout

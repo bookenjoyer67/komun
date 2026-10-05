@@ -18,7 +18,7 @@ Which files must a fork copy, and which config values must it change?
 
 1. Copy the tree and keep `agentic.config.json` at its root, because every consumer resolves paths from there (`agentic.config.json:2` `"schema_version": 1`).
 2. Replace the toolchain commands, because three of the five gates are Rust and cargo today (`agentic.config.json:20` `"argv": ["cargo", "test", "--workspace"]`).
-3. Rewrite the clippy guard, because its marker names this repository's crate (`agentic.config.json:28` `"marker": "Checking komun-server"`, `agentic.config.json:30` `"touch_file": "crates/server/src/main.rs"`).
+3. Rewrite both cache-hit guards, because each marker names one of this repository's crates (`agentic.config.json:26` `"marker": "Compiling komun-core"`, `agentic.config.json:42` `"marker": "Checking komun-server",`, `agentic.config.json:44` `"touch_file": "crates/server/src/main.rs",`).
 4. Rebuild both images under the fork's own tags (`agentic.config.json:43` `"base_image": "agent-sandbox:komun"`, `agentic.config.json:44` `"tools_image": "agent-sandbox:komun-m3"`).
 5. Rename the cargo registry volume, because the tester mounts it read-write (`agentic.config.json:48` `"registry_volume": "komun-cargo-registry"`).
 6. Rename both networks, because the launcher creates one and requires the other (`agentic.config.json:50` `"internal": "agent-internal"`, `agentic.config.json:51` `"broker": "agent-net"`).
@@ -122,8 +122,8 @@ What does the fork get to watch the gate with, without reading journals by hand?
 
 Which command proves which layer still works?
 
-- Run the policy suite, the 75-check permission regression (`python3 -m pytest eval/test_policy.py --collect-only -q` -> `75 tests collected in 0.07s`).
-- Run the doc-conformance step test, the 15-check validator regression (`python3 -m pytest eval/test_deterministic_step.py --collect-only -q` -> `15 tests collected in 0.04s`).
+- Run the policy suite, the 80-check permission regression (`python3 -m pytest eval/test_policy.py --collect-only -q` -> `80 tests collected in 0.02s`).
+- Run the doc-conformance step test, the 18-check validator regression (`python3 -m pytest eval/test_deterministic_step.py --collect-only -q` -> `18 tests collected in 0.06s`).
 - Run the gate server's own self-test against a live server (`mcp/gate/selftest.py:13` `python3 mcp/gate/selftest.py --url http://localhost:8003/mcp`).
 - Run the launcher's matrix, one row per role (`bash scripts/run-agent.sh --matrix` -> seven rows).
 - Run the launcher's config report, the keys it consumes (`bash scripts/run-agent.sh --print-config` -> `"containers.tools_image": "agent-sandbox:komun-m3"`).

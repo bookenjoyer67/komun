@@ -67,7 +67,6 @@ import re
 import sys
 from pathlib import Path
 
-# --- The portability seam: the rule source lives in agentic.config.json -----------------------
 # `artifacts.style_rules` names the standard this checker applies, so a fork points the checker at
 # its own file by editing the config. The loader is stdlib only and falls back to its own embedded
 # defaults, so the checker behaves exactly as it does today when the config file is absent.
@@ -125,7 +124,7 @@ CODE_SPAN_RE = re.compile(r"`[^`]+`")
 # Only punctuation may sit between a pointer and a literal that lies outside the pointer's
 # parenthetical; prose between them means the span is another clause's quote, not this authority.
 PUNCTUATION_GAP_RE = re.compile(r"[\s(),.;:—–\->]*")
-# A literal that is itself only a pointer (":68", "docs/x.md:38") quotes no text, so it is skipped.
+# A literal that is itself only a pointer quotes no text, so it is skipped.
 POINTER_LITERAL_RE = re.compile(
     r"^:?\d+$|^[A-Za-z0-9_][A-Za-z0-9_./-]*\.(?P<ext>[A-Za-z0-9]+):\d+(?:-\d+)?$"
 )

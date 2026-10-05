@@ -46,7 +46,7 @@ never deletes an entry.
 - Write only the files the plan names. A file the change needs that the plan does not name is a scope
   change: return it to the orchestrator instead of writing it.
 - Consult `.memory/knowledge/coding-standards.md` before writing code — the directory `Read-only`
-  (`CLAUDE.md:54`) — and follow its eight rules.
+  (`CLAUDE.md:54`) — and follow its nine rules.
 - Keep the repository rules while writing:
   - Leave `migrations/001_schema.sql` alone: it `is checksum-bookmarked in every provisioned database`
     (`AGENTS.md:111`). Write schema changes as additive files (`AGENTS.md:115` `Schema changes are additive
@@ -59,6 +59,9 @@ never deletes an entry.
   - Never log key material, key bundles, passwords, derived keys, recovery codes or message plaintext
     (`AGENTS.md:134` `**Never log** keys, bundles, passwords, derived keys, or message plaintext.`).
   - Keep a message body in `ciphertext` and `nonce` columns only: the schema has `no plaintext message column` (`AGENTS.md:130`).
+  - Write the minimum commentary: the invariant, the constraint or the failure mode, never the mechanics
+    (`.memory/knowledge/coding-standards.md` rule 9). A comment that restates the code is deleted, not
+    trimmed.
 - Record each significant decision as one `write_entry` call: `project_id: "proj-komun"`,
   `entry_type: "decision"`, `classification: "internal"`, `calling_role: "implementer"`. Write
   `classification: "public"` when the content is public on its face, and `classification: "internal"`

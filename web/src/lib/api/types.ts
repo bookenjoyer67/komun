@@ -1,9 +1,4 @@
-/**
- * The post shape, written once. A6 flattened the frontend onto A3's flat backend, and before
- * that every consumer re-declared its own near-copy of this interface — which is how
- * `AidCard.test.ts` ended up with twelve type errors nobody could fix locally. One definition
- * now: the card, the detail route, the aggregator and the tests all speak this.
- */
+/** The post shape, written once: the card, the detail route, the aggregator and the tests all speak this. */
 
 /** Mirrors `komun_core::models::post::PostKind` (`chk_posts_kind`). */
 export type PostKind = 'resource' | 'need' | 'offer' | 'listing' | 'want';

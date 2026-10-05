@@ -1,15 +1,8 @@
 //! `/api/categories` — the taxonomy, served as rows rather than compiled in as an enum.
 //!
-//! Two halves with two different audiences:
-//!
-//! * `GET /api/categories?scope=` is public and unauthenticated. The aid form and the market form
-//!   both read it at load, so it has to answer without a session.
-//! * `POST /api/admin/categories` and `PATCH /api/admin/categories/{slug}` are the runtime editor
-//!   (plan decision B8), open to **admin or superadmin**.
-//!
-//! The admin routes live here rather than in `api/admin.rs` because that module layers
-//! [`require_superadmin`](crate::auth::require_superadmin) over everything it holds, and curating
-//! a category list is not in the same class as granting somebody admin.
+//! `GET /api/categories` is public and unauthenticated: the aid and market forms both read it at
+//! load. The admin routes live here rather than in `api/admin.rs`, which layers
+//! `require_superadmin` over everything it holds, and are open to admin or superadmin.
 
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -27,8 +20,7 @@ use crate::AppState;
 
 use super::StatusError;
 
-/// Audit actions, namespaced the same way `admin.role_change` is so one prefix filter finds every
-/// administrative act.
+/// Audit actions namespaced so one prefix filter finds every administrative act.
 pub(crate) const AUDIT_CREATE: &str = "admin.category_create";
 pub(crate) const AUDIT_UPDATE: &str = "admin.category_update";
 
@@ -51,14 +43,9 @@ struct ScopeQuery {
     scope: Option<String>,
 }
 
-/// The `POST /api/admin/categories` body, with `scope` left as a `String`.
-///
-/// P1: this is M1.4's reasoning applied to a body rather than a query string. Typing the field
-/// `CategoryScope` hands the rejection to axum's `Json` extractor, which never reaches this module
-/// and answers **422** in serde's own vocabulary — "unknown variant `nope`, expected one of `aid`,
-/// `market`, `both`" — while `GET /api/categories?scope=nope` answers a **400** that names the
-/// accepted values. One endpoint family cannot hold two opinions about what a bad scope is, so the
-/// body goes through [`parse_body_scope`] like every other market input.
+/// `scope` is a `String`, not a `CategoryScope`: typing it would let axum's `Json` extractor answer
+/// 422 in serde's vocabulary, while `GET /api/categories?scope=nope` answers a 400 naming the
+/// accepted values, and one endpoint family cannot hold two opinions about a bad scope.
 #[derive(Deserialize)]
 pub(crate) struct CreateCategoryBody {
     slug: String,
@@ -78,12 +65,8 @@ impl CreateCategoryBody {
     }
 }
 
-/// The `PATCH /api/admin/categories/{slug}` body. Same defect, same fix: `scope` was an
-/// `Option<CategoryScope>`, so `{"scope":"nope"}` was a 422 from the extractor here too.
-///
-/// An absent `scope` and an explicit `"scope": null` both mean "leave the scope alone", exactly as
-/// they did when the field was typed — what changes is only that a *present* wrong value is now
-/// this endpoint's own 400.
+/// `scope` is a `String` for the same reason [`CreateCategoryBody`]'s is. An absent `scope` and an
+/// explicit `"scope": null` both mean "leave the scope alone".
 #[derive(Deserialize)]
 struct UpdateCategoryBody {
     label: Option<String>,
@@ -103,11 +86,9 @@ impl UpdateCategoryBody {
     }
 }
 
-/// What a caller without a session sees: the three fields a form needs.
-///
-/// `sort_order` is an ordering mechanism rather than information — the rows arrive in that order
-/// already — and `active` would always be `true`, because an inactive row never reaches this
-/// serializer at all.
+/// What a caller without a session sees: the three fields a form needs. `sort_order` is dropped
+/// because rows already arrive in that order, and `active` because an inactive row never reaches
+/// this serializer.
 #[derive(Serialize)]
 struct CategoryView {
     slug: String,
@@ -125,7 +106,7 @@ impl From<&Category> for CategoryView {
     }
 }
 
-/// `GET /api/categories?scope=aid|market|both` — public, active rows only.
+/// Public; active rows only.
 async fn list_categories(
     State(state): State<AppState>,
     Query(query): Query<ScopeQuery>,
@@ -135,7 +116,7 @@ async fn list_categories(
     Ok(Json(rows.iter().map(CategoryView::from).collect()))
 }
 
-/// The admin view: retired categories included, and every column the editor needs to show them.
+/// Admin view: retired categories included.
 async fn admin_list_categories(
     State(state): State<AppState>,
     Query(query): Query<ScopeQuery>,
@@ -145,16 +126,14 @@ async fn admin_list_categories(
     Ok(Json(rows))
 }
 
-/// `pub(crate)` for the same reason the validators are: `crate::tests::market` mounts this handler
-/// on a bare router to pin the status and the message a bad `scope` now produces, which is a fact
-/// about the `Json` extractor and so cannot be observed by calling a pure function.
+/// `pub(crate)` so `crate::tests::market` can mount the handler and pin the status a bad `scope`
+/// produces.
 pub(crate) async fn create_category(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
     Json(body): Json<CreateCategoryBody>,
 ) -> Result<(StatusCode, Json<Category>), StatusError> {
-    // Before the slug and the label, because that is the order the caller saw yesterday: the
-    // extractor rejected a bad scope before this function ran at all.
+    // Scope is checked before slug and label so a bad scope is reported first.
     let input = body.into_input().map_err(bad_request)?;
 
     validate_slug(&input.slug).map_err(bad_request)?;
@@ -173,8 +152,8 @@ pub(crate) async fn create_category(
         &state.pool,
         Some(auth.user_id),
         AUDIT_CREATE,
-        // `audit_events.subject_id` is a UUID column and a category is keyed by its TEXT slug, so
-        // the subject travels in `detail`. See [`audit_detail_create`].
+        // `subject_id` is a UUID column but a category is keyed by its TEXT slug, so the subject
+        // travels in `detail`.
         None,
         audit_detail_create(&created),
     )
@@ -194,8 +173,8 @@ async fn update_category(
     if let Some(label) = &input.label {
         validate_label(label).map_err(bad_request)?;
     }
-    // An all-empty body would otherwise be a successful no-op that writes an audit row saying
-    // nothing changed, which is indistinguishable from a client bug that dropped its payload.
+    // An all-empty body would otherwise be a successful no-op whose audit row is indistinguishable
+    // from a client bug that dropped its payload.
     if input.label.is_none()
         && input.scope.is_none()
         && input.sort_order.is_none()
@@ -213,8 +192,8 @@ async fn update_category(
         .await?
         .ok_or_else(|| not_found(&slug))?;
 
-    // SPEC 1.6: the FTS trigger indexes the label, so a rename is a two-part operation — without
-    // this, every post in the category stays searchable only under the word it used to have.
+    // The FTS trigger indexes the label, so a rename must also refresh the search vectors or posts
+    // stay searchable only under the old label.
     let reindexed = if after.label != before.label {
         crate::db::categories::refresh_search_vectors(&state.pool, &slug).await?
     } else {
@@ -233,12 +212,8 @@ async fn update_category(
     Ok(Json(after))
 }
 
-/// The `detail` payload for a creation.
-///
-/// Pulled out of the handler because `audit_events.subject_id` cannot hold a category's identity:
-/// it is a `UUID` column and a category is keyed by a TEXT slug. A function is what guarantees
-/// the slug is present on every category audit row, since the column that would normally carry it
-/// is always NULL for these two actions.
+/// The `detail` payload for a creation. A function guarantees the slug is on every category audit
+/// row, since the `UUID` `subject_id` column cannot carry it.
 pub(crate) fn audit_detail_create(created: &Category) -> serde_json::Value {
     serde_json::json!({
         "slug": created.slug,
@@ -249,8 +224,7 @@ pub(crate) fn audit_detail_create(created: &Category) -> serde_json::Value {
     })
 }
 
-/// The `detail` payload for an edit: before and after, so the change can be reconstructed rather
-/// than merely noticed, plus how many posts the relabel forced back through the FTS trigger.
+/// The `detail` payload for an edit: before and after, plus how many posts the relabel reindexed.
 pub(crate) fn audit_detail_update(
     slug: &str,
     before: &Category,
@@ -275,12 +249,8 @@ pub(crate) fn audit_detail_update(
     })
 }
 
-/// Parse `?scope=`. `None` means "every active category", which is the unfiltered list both forms
-/// fall back to.
-///
-/// An unrecognised value is an error rather than an empty result: `?scope=markets` answering
-/// `200 []` is indistinguishable to the caller from a server with no categories configured, and
-/// the caller would have no way to find the typo.
+/// Parse `?scope=`; `None` means "every active category". An unrecognised value is an error rather
+/// than an empty result, which the caller could not tell from a server with no categories.
 pub(crate) fn parse_scope(raw: Option<&str>) -> Result<Option<CategoryScope>, String> {
     let Some(value) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(None);
@@ -289,20 +259,15 @@ pub(crate) fn parse_scope(raw: Option<&str>) -> Result<Option<CategoryScope>, St
     parse_body_scope(value).map(Some)
 }
 
-/// Parse a `scope` that arrived in a request body.
-///
-/// Unlike [`parse_scope`], where an absent or empty `?scope=` means "no filter", a body that
-/// mentions `scope` at all is naming one, so `""` is as wrong as `"nope"` and gets the same
-/// answer. The message is not merely similar to the query path's — it *is* the query path's, since
-/// `parse_scope` delegates here, which is what keeps one endpoint family from growing two
-/// vocabularies for the same mistake.
+/// Parse a `scope` that arrived in a body: unlike `?scope=`, where blank means "no filter", a body
+/// that mentions `scope` is naming one, so `""` fails exactly as `"nope"` does.
 pub(crate) fn parse_body_scope(raw: &str) -> Result<CategoryScope, String> {
     let value = raw.trim();
     CategoryScope::parse(value)
         .ok_or_else(|| format!("scope must be one of {} (got {value:?})", accepted_scopes()))
 }
 
-/// The accepted `?scope=` values, rendered from the enum so the error message cannot fall behind
+/// The accepted `?scope=` values, rendered from the enum so the message cannot fall behind
 /// `chk_categories_scope`.
 pub(crate) fn accepted_scopes() -> String {
     CategoryScope::ALL
@@ -312,12 +277,9 @@ pub(crate) fn accepted_scopes() -> String {
         .join(", ")
 }
 
-/// Slugs are lowercase-kebab and immutable after creation.
-///
-/// Immutable because `posts.category` is a foreign key onto this column: the slug is an
-/// identifier other rows depend on, not a display string. Constrained to lowercase-kebab because
-/// it appears in query strings and in `?category=` filters, where a slug with a space or an
-/// uppercase letter is a source of silent mismatches.
+/// Slugs are lowercase-kebab and immutable after creation: `posts.category` is a foreign key onto
+/// this column, and the slug appears in `?category=` filters where spaces or uppercase cause silent
+/// mismatches.
 pub(crate) fn validate_slug(slug: &str) -> Result<(), String> {
     if slug.is_empty() {
         return Err("slug must not be empty".to_string());
@@ -342,8 +304,7 @@ pub(crate) fn validate_slug(slug: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The label is what a human reads and what full-text search indexes, so a blank one makes the
-/// category unusable in both places.
+/// The label is displayed and full-text indexed, so a blank one makes the category unusable.
 pub(crate) fn validate_label(label: &str) -> Result<(), String> {
     if label.trim().is_empty() {
         return Err("label must not be empty".to_string());
