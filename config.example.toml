@@ -16,7 +16,7 @@ max_connections = 20
 [node]
 # This server's identity — how users and the public directory see it.
 name = "My Community"
-description = "Mutual aid for our neighborhood"
+description = "Local listings for our neighborhood"
 # Public base URL of this node. Used for emailed links and the advertised domain.
 # public_url = "https://komun.example.org"
 # Optional location, shown in the directory and used as the default map centre.

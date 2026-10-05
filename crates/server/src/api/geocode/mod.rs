@@ -37,7 +37,7 @@ const CACHE_CAPACITY: usize = 512;
 const DEFAULT_USER_AGENT: &str = concat!(
     "Komun/",
     env!("CARGO_PKG_VERSION"),
-    " (nominatim proxy; mutual-aid app)"
+    " (nominatim proxy; local-listings app)"
 );
 
 #[derive(Deserialize)]

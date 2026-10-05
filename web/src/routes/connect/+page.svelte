@@ -44,7 +44,7 @@
 <div class="container">
 	<div class="connect-page">
 		<h1>komun</h1>
-		<p class="tagline">Connect to a server to browse mutual aid.</p>
+		<p class="tagline">Connect to a server to browse local listings.</p>
 
 		{#if browseLoading}
 			<p class="browse-status">Loading available servers...</p>
