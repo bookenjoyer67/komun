@@ -1,5 +1,6 @@
 //! Passwords, timing, single-use tokens and session revocation.
 
+mod deal_and_moderation;
 mod key_change;
 mod key_coherence;
 /// The marketplace foundation: `[market]` config, category scopes, market filters.
