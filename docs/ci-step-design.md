@@ -3,9 +3,11 @@
 ## Which pipeline does this document describe, and where does its rule set come from?
 
 This document records one design entry per step of `.github/workflows/ci.yml`, the Module 4.2
-governed pipeline. The workflow holds five jobs, keyed exactly `change-type-check`, `policy-gate`,
-`eval-gate`, `advisory-review` and `audit-trail` (`.github/workflows/ci.yml` `needs: [change-type-check,
-policy-gate, eval-gate, advisory-review]`). Each entry below covers one workflow step: what it does,
+governed pipeline. The workflow holds seven jobs. Five are the lesson's, keyed exactly
+`change-type-check`, `policy-gate`, `eval-gate`, `advisory-review` and `audit-trail`
+(`.github/workflows/ci.yml` `needs: [change-type-check, policy-gate, web-gate, console-gate,
+eval-gate, advisory-review]`); two are additions this repository makes to the lesson's table, and
+they are indexed in their own section below. Each entry covers one workflow step: what it does,
 what it consumes, what it produces, whether it can fail the build, its time limit, and the
 credentials it receives.
 
@@ -37,13 +39,18 @@ The table indexes every step entry in this document, in workflow order.
 | `change-type-check` | Classify the pull request's changed files | gating, fail-closed |
 | `change-type-check` | Upload the change classification | advisory |
 | `policy-gate` | Checkout the pull request | gating |
+| `policy-gate` | Resolve the portability config | gating |
 | `policy-gate` | Build the sandbox image | gating |
 | `policy-gate` | Run policy tests | gating |
 | `policy-gate` | Upload policy report | advisory |
 | `eval-gate` | Checkout the pull request | gating |
+| `eval-gate` | Resolve the portability config | gating |
 | `eval-gate` | Build the sandbox image | gating |
 | `eval-gate` | Restore the cargo caches | advisory |
+| `eval-gate` | Verify the pull request's base revision is present | gating |
 | `eval-gate` | Run the deterministic gates through the gate server | gating |
+| `eval-gate` | Check out the base revision for comparison | gating |
+| `eval-gate` | Format check scoped to the changed files | gating |
 | `eval-gate` | Run the retrieval ground-truth harness | gating |
 | `eval-gate` | Write the retrieval report the audit trail consumes | advisory |
 | `eval-gate` | Upload the deterministic gate reports | advisory |
@@ -117,16 +124,17 @@ the entry for the same step under `eval-gate`.
 
 ## Step: Run policy tests (policy-gate)
 
-- Does: Run the policy suite inside the sandbox image, with the workspace read-only and a report
-  directory mounted writable.
+- Does: Run the two policy suites the gate table's `policy` gate names (`eval/test_policy.py` and
+  `eval/test_deterministic_step.py`) inside the sandbox image, with the workspace read-only and a
+  report directory mounted writable.
 - Input: the repository mounted read-only at `/workspace` (`.github/workflows/ci.yml` `-v
   "$GITHUB_WORKSPACE":/workspace:ro`).
 - Produces: `ci-artifacts/policy-report.json` (`.github/workflows/ci.yml`
   `--json-report-file=/reports/policy-report.json`).
 - Classification: gating, and never advisory (lesson 4.2 block [89] `Policy gates should run before
   agent steps and should never be advisory or demotable.`).
-- Time limit: 30 minutes (`.github/workflows/ci.yml` `timeout-minutes: 30`); the suite itself finished
-  in `0.15s` against this tree.
+- Time limit: 30 minutes (`.github/workflows/ci.yml` `timeout-minutes: 30`); the two suites together
+  finished in `19.56s` against this tree on 2026-10-05.
 - Credentials: none (`eval/test_policy.py` reads repository files only).
 
 The step keeps the lesson's YAML verbatim (lesson 4.2 block [93] `-v "$GITHUB_WORKSPACE":/workspace:ro`,
@@ -137,8 +145,11 @@ guarded install is what makes the verbatim pytest line run at all here.
 
 The report flag comes from a pinned dependency rather than a run-time install:
 `sandbox/requirements-m3.txt` carries `pytest-json-report==1.5.0`, so this step runs the lesson's
-command verbatim. Measured in `agent-sandbox:komun-m3`: `75 passed, 1 warning in 0.33s`, with
-`summary: {'passed': 75, 'total': 75, 'collected': 75}` written to the mounted reports directory.
+command with the second suite added. Two measurements, both in `agent-sandbox:komun-m3`:
+`eval/test_policy.py` alone reported `80 passed, 1 warning in 0.48s` in the workflow's first run,
+and the two suites together reported `119 passed in 19.56s` on 2026-10-05. An earlier revision of
+this document recorded `75 passed`, which was the single suite before the validator suite was added
+to it; the number moves with the tests, so quote the command beside it.
 
 ## Step: Upload policy report (policy-gate)
 
@@ -185,7 +196,7 @@ files the guards touch, and the image's own default target path is not usable th
 ## Step: Run the deterministic gates through the gate server (eval-gate)
 
 - Does: Load `mcp/gate/server.py` inside the container and call its `run_gate` tool for `test`,
-  `clippy`, `fmt`, `policy` and `conformance`.
+  `clippy`, `fmt` and `conformance`.
 - Input: the repository read-only at `/workspace`, plus one writable bind per file a cache-hit guard
   touches (`.github/workflows/ci.yml:199` `-v "$GITHUB_WORKSPACE/crates/server/src/main.rs":${{ env.AGENT_WORKSPACE }}/crates/server/src/main.rs \`,
   `.github/workflows/ci.yml:200` `-v "$GITHUB_WORKSPACE/crates/core/src/tests.rs":${{ env.AGENT_WORKSPACE }}/crates/core/src/tests.rs \`).
@@ -200,7 +211,16 @@ files the guards touch, and the image's own default target path is not usable th
 The gate argv is never re-typed here: the server reads the three tuples from the config
 (`agentic.config.json:20-24` `"argv": [ "cargo", "test", "--workspace" ],`,
 `agentic.config.json:31-39` `"argv": [ "cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings" ],`, `agentic.config.json:51-55` `"argv": [ "cargo", "fmt", "--check" ],`).
-Two writable binds exist because each cache-hit guard writes an mtime on its own file
+The conformance gate compares the working tree against the revision named in `CONFORMANCE_BASE_REF`,
+which this step sets to the pull request's base commit (`.github/workflows/ci.yml` `-e
+CONFORMANCE_BASE_REF=${{ github.event.pull_request.base.sha }}`). Without it the gate compares the
+checkout against itself: a CI working tree *is* its `HEAD`, so the gate would pass on any change and
+would be a check that cannot fail. The step before it refuses to run when that base commit is not in
+the checkout, and the gate itself refuses a base that names no commit rather than reporting every file
+as having no baseline.
+
+`policy` is not called here: it is the `policy-gate` job's whole purpose, and calling it twice would
+run the same suite twice for no verdict. Two writable binds exist because each cache-hit guard writes an mtime on its own file
 (`mcp/gate/server.py:459` `os.utime(touch_file, None)`) and then requires its own status line: `Compiling komun-core` for
 `test` (`agentic.config.json:26` `"marker": "Compiling komun-core"`) and `Checking komun-server` for `clippy` (`agentic.config.json:42` `"marker": "Checking komun-server",`).
 
@@ -404,6 +424,29 @@ This step runs before the assembly step, because the flattening is what the asse
 - Time limit: inside the job's 10 minutes (`.github/workflows/ci.yml` `timeout-minutes: 10`).
 - Credentials: none.
 
+## Which jobs does this repository add to the lesson's table, and what does each step do?
+
+Two jobs are additions rather than rows of the lesson's table, and their per-step design lives in
+the workflow's own comments. They are recorded here in one place because the table above indexes
+the lesson's five jobs step by step, and duplicating that shape for eleven more steps would bury
+the mapping it exists to show.
+
+`web-gate` (added for the two frontend gates the seam table already names,
+`agentic.config.json` `toolchain.commands.webcheck`): checkout, resolve the portability config,
+build the wasm package `web/package.json` imports, set up Node 22.23.2, `npm ci`, assert the two
+commands still match the gate table, `npm --prefix web run check`, `npm --prefix web run test`.
+Every step gates: a deterministic check gates immediately, and a broken frontend is exactly the
+failure the job exists to catch. It receives no credential and no secret. Its wasm step is not
+optional: the artifact is gitignored, and measured without it `svelte-check found 2 errors`
+("Cannot find module 'komun-wasm'").
+
+`console-gate` (added because `console/.github/workflows/ci.yml` cannot run in this repository:
+GitHub reads workflows only from the repository root, and the crate is its own workspace root, so
+`cargo test --workspace` never sees it): checkout, install the Rust toolchain, restore the Rust
+cache, `cargo fmt --check`, `cargo clippy --release --all-targets -- -D warnings`, `cargo test
+--release`. The last three gate; the toolchain and cache steps cannot fail a build on their own.
+No credential is involved.
+
 ## How does the workflow classify a change as deterministic work or agentic work?
 
 The classifier separates a change that alters what an agent does or may do from a change that alters
@@ -452,23 +495,30 @@ Two facts about the four outputs are worth stating plainly.
   policy-control file is already agent-affecting (`scripts/classify-change.py` `governed = governed
   or policy`).
 
-## Which gate fails against the current tree, and why is that reported rather than hidden?
+## Which gate fails against the current tree, and why is the repo-wide result not tallied?
 
-One deterministic gate fails today, and the workflow reports it instead of weakening it.
+No deterministic gate is red against the tree the workflow was last measured on, and the earlier
+version of this section was wrong to say one was. Re-measured on 2026-10-05, at the revision this
+document is committed with:
 
-- Expect `cargo fmt --check` to exit 1 (`cargo fmt --check | grep -c "^Diff in"` -> `213`).
-- Expect `cargo test --workspace` to pass (`cargo test --workspace` -> `test result: ok`, exit 0).
-- Expect `cargo clippy --release --all-targets -- -D warnings` to pass with the guard satisfied
+- `cargo fmt --check` exits 0 (`cargo fmt --check | grep -c "^Diff in"` -> `0`), and the gate's own row
+  in the workflow's first run reads `GATE fmt argv=['cargo', 'fmt', '--check'] exit=0 passed=True
+  guard_applied=False guard_satisfied=True verdict=pass` with `hunks 0`. The formatting drift this
+  section used to describe (`213 hunks`, `DETERMINISTIC_RESULT passed=2 failed=1 total=3`) was repaired
+  by the comment-trim commits that followed it, and the section outlived its truth.
+- `cargo test --workspace` passes; the first run reported `184 passed; 0 failed; 36 ignored` in the
+  server crate. The ignored count is the subject of its own question below.
+- `cargo clippy --release --all-targets -- -D warnings` passes with both guards satisfied
   (`GATE clippy argv=['cargo', 'clippy', '--release', '--all-targets', '--', '-D', 'warnings'] exit=0
   passed=True guard_applied=True guard_satisfied=True`).
-- Keep the format gate gating, because the lesson gates deterministic checks on first sight (lesson
-  4.2 block [53] `Deterministic checks can gate immediately`).
-
-So this pipeline is red against the current tree until the formatting drift is repaired. The
-`eval-gate` job failed in the local dry run for exactly this reason (`DETERMINISTIC_RESULT passed=2
-failed=1 total=3`). Making the format gate advisory would hide a real, reproducible failure, and the
-lesson's promotion rule runs the other way (lesson 4.2 block [53] `Every new agentic step should start
-as advisory, rather than gating.`).
+- The repo-wide `fmt` result stays recorded and never tallied, because it would judge the whole
+  repository on every pull request; the scoped step below carries the formatting gate, and it judges
+  each changed file against its own revision at the base commit.
+- The three tallied gates are `test`, `clippy` and `conformance`
+  (`DETERMINISTIC_RESULT passed=3 failed=0 total=3` once this branch lands), with `fmt` recorded
+  separately as `fmt_recorded_only`. Keep the format gate gating on the scoped comparison, because the
+  lesson gates deterministic checks on first sight (lesson 4.2 block [53] `Deterministic checks can
+  gate immediately`).
 
 ## Which repository settings does the pipeline depend on, and which of them live outside this file?
 
@@ -511,25 +561,62 @@ The reviewer step receives one credential and the comment step receives the othe
 both. The reviewer script writes no key and no key length into its report, its summary or its audit
 journal (`scripts/run-reviewer.py` `_redact()` scrubs secret-shaped values from everything it writes).
 
-## What remains unverified without a GitHub Actions run?
+## Which tests does the workspace gate run, and which does it never run?
 
-These claims need a real workflow run, and no run has happened yet: this pipeline has never executed
-on GitHub Actions.
+It runs every test that needs no database, and it reports the rest as ignored rather than passing
+them. The first run's own line reads `test result: ok. 184 passed; 0 failed; 36 ignored; 0 measured;
+0 filtered out` for the server crate, and no `KOMUN_TEST_DATABASE_URL` appears anywhere in
+`.github/workflows/ci.yml`, so the ignored set cannot run there. On the tree this branch starts
+from, four files carry `#[ignore]` attributes -- `key_coherence.rs` (27), `deal_and_moderation.rs`
+(39), `key_change.rs` (10) and `outbound_routes.rs` (2), 78 in total -- and they are the suites
+closest to the security audit: stored-key coherence, key replacement, outbound fetch and
+deal/moderation state.
 
-- Verify the workflow is accepted by GitHub's own parser, because a local YAML parser proves syntax
-  and not workflow-schema validity.
-- Verify every `uses:` step resolves, because `actions/checkout@v4`, `actions/upload-artifact@v4`,
-  `actions/download-artifact@v4` and `actions/cache@v4` were read here and not executed.
-- Verify the artifact round trip, because `merge-multiple: true` was emulated on the host by one flat
-  directory rather than by the download action.
-- Verify that a skipped `eval-gate` satisfies branch protection, because the skip path exists to
-  serve the lesson's docs-only case (lesson 4.2 block [134] `skips on a docs-only change`).
-- Verify the docker build duration of `sandbox/Dockerfile.m3` on a hosted runner, because the local
-  image was prebuilt and no build was timed here.
-- Verify the cargo cache binds work under Actions, because a local cache hit was emulated by copying
-  the warm volumes into `$RUNNER_TEMP`.
-- Verify the reviewer's model call, because no `OPENROUTER_API_KEY` was present and the script
-  recorded `Status: not_run`.
-- Verify the pull request comment post, because `gh pr comment` needs a live pull request.
-- Verify the `change-classifier` skip and fail-closed behaviour on a real diff, because the host diff
-  held one commit (`changed files (1):` `.memory/project/MEMORY_INDEX.md`).
+Their runner is the operator, not the workflow: they need the test Postgres, and the command is a
+host-side one (see the session log's operator steps rather than this document). Two consequences are
+worth stating plainly, because a green `Evaluation Harness` does not state them:
+
+- A change to any path those suites cover merges on tests the workflow reports as ignored. The
+  evaluation harness proves the unit suites, the lints, the formatting of the changed files, the
+  prose and citation drift and the retrieval floor; it does not prove the database behaviour.
+- The one-pager's `0 ignored` figure (it quotes the workspace gate at `158 passed, 0 failed, 0
+  ignored`) is a measurement from a revision that predates these suites, not a property of the
+  pipeline.
+
+The decision this question leaves open: add a `postgres:16` service container and a
+`KOMUN_TEST_DATABASE_URL` to the evaluation harness so the ignored set runs, or record that the
+database suites stay an operator step. Until one of those is chosen, the count belongs in every report
+that quotes the workspace gate.
+
+## What remains unverified after the workflow's first real run, and what did that run settle?
+
+The pipeline has run on GitHub Actions. Run `37259644200` (pull request, `security/consolidated-audit-stack`,
+conclusion `success`, 6m23s) settles most of what this section used to list as unverified, and the artifacts
+it uploaded are the evidence:
+
+- GitHub's parser accepts the workflow, and every `uses:` resolves: the run's five jobs each reached
+  `completed`.
+- The artifact round trip is real, not emulated: `Audit Trail` ran `merge-multiple: true` and assembled
+  a trail from nine artifacts (`artifacts_consumed` in `audit-trail.json`).
+- The sandbox image builds on a hosted runner: `Policy Test Suite` built both images and finished in
+  86s.
+- The cargo cache binds work under Actions: `Evaluation Harness` restored the caches, ran the gates with
+  `guard_applied=True, guard_satisfied=True` for both guarded gates, and finished in 238s.
+- `cargo fmt --check` is clean on a hosted runner, and the scoped formatting gate judged 45 changed
+  Rust files with zero regressions.
+- The retrieval floor holds in CI with the two model variables set: `HARNESS_RESULT passed=8 total=8
+  rate=100.0 floor=80.0`.
+
+Four things stay unverified, and each has an owner:
+
+- The reviewer's model call, because no `OPENROUTER_API_KEY` is in the repository secrets: the artifact
+  records `"status": "not_run"` and `"api_key_present": false`. Register the secret and re-run one pull
+  request to settle it.
+- The pull request comment path on a fork, because a fork's token is read-only. The same run shows the
+  non-fork path works: `github-actions[bot]` posted the summary comment.
+- Whether a skipped required check satisfies branch protection, because `main` carries no protection
+  rule at all (`Branch not protected`). The skip path exists to serve the lesson's docs-only case
+  (lesson 4.2 block [134] `skips on a docs-only change`).
+- Whether a web-only change is gated, because the frontend jobs did not exist when the run above was
+  taken: `web-gate` and `console-gate` are additions to this branch and their first green run is the
+  one that settles them.
