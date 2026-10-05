@@ -1,5 +1,8 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { resolveMapTiles } from './map-tiles.config.js';
+
+const mapTiles = resolveMapTiles(process.env);
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -20,10 +23,9 @@ const config = {
 					'self',
 					'data:',
 					'blob:',
-					// Map tiles (LocationMap / /map). An operator pointing
-					// [map] tile_url at another tile host must add it here too.
-					'https://tile.openstreetmap.org',
-					'https://*.tile.openstreetmap.org'
+					// Must come from the same build environment as LocationMap's tile URL
+					// (vite.config.ts), or the map's tiles are blocked.
+					...mapTiles.cspOrigins
 				],
 				'frame-src': ['self', 'https://localhost:5174', 'https://www.openstreetmap.org'],
 				'connect-src': ['self', 'http://localhost:*', 'https://localhost:5174'],

@@ -4,7 +4,7 @@ use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 use komun_core::models::{
-    CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency, Visibility,
+    coarsen_coordinate, CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency, Visibility,
 };
 
 /// Every column the `Post` model is built from, in one place so `list` and `get` cannot drift.
@@ -131,6 +131,8 @@ pub async fn get(pool: &PgPool, id: Uuid) -> Result<Option<Post>> {
     Ok(row.map(Into::into))
 }
 
+/// The caller validates the coordinates first: coarsening here would turn an out-of-range value
+/// into a legal one.
 pub async fn create(pool: &PgPool, author_id: Uuid, input: CreatePost) -> Result<Post> {
     let id = Uuid::now_v7();
     let now = Utc::now();
@@ -159,8 +161,8 @@ pub async fn create(pool: &PgPool, author_id: Uuid, input: CreatePost) -> Result
     .bind(&input.title)
     .bind(&input.body)
     .bind(&input.location_name)
-    .bind(input.location_lat)
-    .bind(input.location_lon)
+    .bind(input.location_lat.map(coarsen_coordinate))
+    .bind(input.location_lon.map(coarsen_coordinate))
     .bind(urgency)
     .bind(input.quantity)
     .bind(visibility)
@@ -272,8 +274,10 @@ impl From<PostRow> for Post {
             title: r.title,
             body: r.body,
             location_name: r.location_name,
-            location_lat: r.location_lat,
-            location_lon: r.location_lon,
+            // Coarsened again on read: rows written before coarsening keep their exact stored
+            // values, and this is the only place they leave the database.
+            location_lat: r.location_lat.map(coarsen_coordinate),
+            location_lon: r.location_lon.map(coarsen_coordinate),
             urgency: r.urgency.as_deref().and_then(Urgency::parse),
             quantity: r.quantity,
             status: PostStatus::parse(&r.status).unwrap_or(PostStatus::Active),
@@ -377,5 +381,25 @@ mod tests {
         assert_eq!(post.visibility, Visibility::Public);
         assert_eq!(post.urgency, None);
         assert_eq!(post.item_condition, None);
+    }
+
+    /// Rows written before coarsening keep their exact values, so the read path is what serves
+    /// them coarse.
+    #[test]
+    fn an_exact_stored_location_is_served_coarse() {
+        let mut r = row("need");
+        r.location_lat = Some(37.80443);
+        r.location_lon = Some(-122.27121);
+
+        let post: Post = r.into();
+        assert_eq!(post.location_lat, Some(37.8));
+        assert_eq!(post.location_lon, Some(-122.3));
+    }
+
+    #[test]
+    fn a_post_without_a_location_still_has_none() {
+        let post: Post = row("need").into();
+        assert_eq!(post.location_lat, None);
+        assert_eq!(post.location_lon, None);
     }
 }

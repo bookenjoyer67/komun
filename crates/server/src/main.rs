@@ -128,6 +128,12 @@ async fn main() -> anyhow::Result<()> {
         .layer(middleware::from_fn(security_headers::security_headers))
         .layer(TraceLayer::new_for_http());
 
+    if api::geocode::contact_is_missing() {
+        tracing::warn!(
+            "no geocode contact: set [geocode] contact or KOMUN_GEOCODE_CONTACT for Nominatim"
+        );
+    }
+
     let bind = config.bind_addr();
     let listener = tokio::net::TcpListener::bind(&bind)
         .await

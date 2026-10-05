@@ -277,6 +277,7 @@ async fn create_post(
         ));
     }
 
+    validate_location(&input)?;
     validate_market_fields(&input)?;
 
     // Resolve only after validation, so a caller's bad currency is their 400 rather than silently
@@ -291,6 +292,31 @@ async fn create_post(
 
     let post = crate::db::posts::create(&state.pool, auth.user_id, input).await?;
     Ok(Json(post))
+}
+
+/// Checks the coordinates as sent, because `db::posts::create` coarsens them and `90.04` coarsens
+/// to a legal `90.0`. Refused, never clamped: a clamped value is a location the author did not
+/// give. NaN and the infinities fall outside both ranges.
+fn validate_location(input: &CreatePost) -> Result<(), StatusError> {
+    match (input.location_lat, input.location_lon) {
+        (None, None) => Ok(()),
+        (Some(lat), Some(lon)) => {
+            if !(-90.0..=90.0).contains(&lat) {
+                return Err(bad_request(
+                    "location_lat must be a finite number from -90 to 90",
+                ));
+            }
+            if !(-180.0..=180.0).contains(&lon) {
+                return Err(bad_request(
+                    "location_lon must be a finite number from -180 to 180",
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(bad_request(
+            "location_lat and location_lon must be sent together",
+        )),
+    }
 }
 
 /// `chk_posts_market_fields` and `chk_posts_currency` are the authority; checking here turns a 500
@@ -522,6 +548,7 @@ async fn load_post(state: &AppState, id: Uuid) -> Result<Post, StatusError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::response::IntoResponse;
     use chrono::Utc;
     use komun_core::models::Visibility;
 
@@ -655,5 +682,77 @@ mod tests {
 
         let unsold = post(PostStatus::Active, Visibility::Public, author);
         assert_eq!(redact_buyer(unsold, Some(author)).buyer_id, None);
+    }
+
+    fn located(lat: Option<f64>, lon: Option<f64>) -> CreatePost {
+        CreatePost {
+            kind: PostKind::Need,
+            category: "food".to_string(),
+            title: "t".to_string(),
+            body: None,
+            location_name: None,
+            location_lat: lat,
+            location_lon: lon,
+            urgency: None,
+            quantity: None,
+            visibility: None,
+            expires_at: None,
+            tags: None,
+            contact_method: None,
+            market_listed: false,
+            price_cents: None,
+            currency: None,
+            price_negotiable: false,
+            item_condition: None,
+        }
+    }
+
+    fn refused_with_400(lat: Option<f64>, lon: Option<f64>) {
+        let Err(refused) = validate_location(&located(lat, lon)) else {
+            panic!("{lat:?},{lon:?} must be refused");
+        };
+        let status = refused.into_response().status();
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{lat:?},{lon:?}");
+    }
+
+    #[test]
+    fn a_location_on_the_boundaries_is_accepted() {
+        for lat in [90.0, -90.0] {
+            for lon in [180.0, -180.0] {
+                let input = located(Some(lat), Some(lon));
+                assert!(validate_location(&input).is_ok(), "{lat},{lon}");
+            }
+        }
+        let inside = located(Some(37.80443), Some(-122.27121));
+        assert!(validate_location(&inside).is_ok());
+    }
+
+    #[test]
+    fn a_post_without_a_location_is_accepted() {
+        assert!(validate_location(&located(None, None)).is_ok());
+    }
+
+    /// Each of these coarsens to a legal grid value, so a check run after coarsening would pass
+    /// them; it must run on the value as sent, and refuse rather than clamp.
+    #[test]
+    fn an_out_of_range_location_is_refused_even_when_coarsening_would_hide_it() {
+        refused_with_400(Some(90.04), Some(0.0));
+        refused_with_400(Some(-90.04), Some(0.0));
+        refused_with_400(Some(0.0), Some(180.04));
+        refused_with_400(Some(0.0), Some(-180.04));
+    }
+
+    #[test]
+    fn a_non_finite_location_is_refused() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            refused_with_400(Some(bad), Some(0.0));
+            refused_with_400(Some(0.0), Some(bad));
+        }
+    }
+
+    #[test]
+    fn half_a_location_is_refused() {
+        refused_with_400(Some(37.8), None);
+        refused_with_400(None, Some(-122.3));
     }
 }

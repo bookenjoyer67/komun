@@ -3,6 +3,7 @@
 mod deal_and_moderation;
 mod key_change;
 mod key_coherence;
+mod location_privacy;
 /// The marketplace foundation: `[market]` config, category scopes, market filters.
 #[cfg(test)]
 mod market;

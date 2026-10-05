@@ -1,6 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+// Leaflet has no TypeScript declarations here, as in LocationMap.svelte.
+// @ts-ignore
+import * as L from 'leaflet';
 import AidCard from '$lib/components/AidCard.svelte';
 import { auth } from '$lib/stores/auth';
 import type { PostLike } from '$lib/api/types';
@@ -139,5 +142,61 @@ describe('AidCard', () => {
 	it('hides body when not provided', () => {
 		render(AidCard, { props: { post: makePost({ body: undefined }) } });
 		expect(screen.queryByText('Can someone help with groceries this week?')).not.toBeInTheDocument();
+	});
+});
+
+/**
+ * The card may show a post from another server that still sends exact coordinates, so the
+ * map must be fed the coarse values whatever arrives. The Leaflet spies read what the map was
+ * actually given, not what the card meant to give it.
+ */
+describe('AidCard map', () => {
+	let setView: ReturnType<typeof vi.spyOn>;
+	let marker: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		auth.set({ keypair: null, servers: {} });
+		setView = vi.spyOn(L.Map.prototype, 'setView');
+		marker = vi.spyOn(L.Marker.prototype, 'initialize');
+	});
+
+	afterEach(() => {
+		setView.mockRestore();
+		marker.mockRestore();
+	});
+
+	const exact = { location_lat: 37.80443, location_lon: -122.27121 };
+	const coarse = { lat: 37.8, lng: -122.3 };
+
+	function latLngs(spy: ReturnType<typeof vi.spyOn>) {
+		return spy.mock.calls.map((args: unknown[]) => {
+			const point = L.latLng(args[0]);
+			return { lat: point.lat, lng: point.lng };
+		});
+	}
+
+	async function openMap() {
+		const user = userEvent.setup();
+		render(AidCard, { props: { post: makePost({ author_id: 'other', ...exact }) } });
+		await user.click(screen.getByTitle('View on map'));
+	}
+
+	it('embeds no third-party map frame', async () => {
+		await openMap();
+		expect(document.querySelector('iframe')).toBeNull();
+		expect(document.body.innerHTML).not.toContain('openstreetmap.org/export');
+	});
+
+	it('centres and pins the in-app map on the coarse coordinates', async () => {
+		await openMap();
+
+		await waitFor(() => expect(setView).toHaveBeenCalled());
+		await waitFor(() => expect(marker).toHaveBeenCalled());
+		for (const centre of latLngs(setView)) {
+			expect(centre).toEqual(coarse);
+		}
+		for (const pin of latLngs(marker)) {
+			expect(pin).toEqual(coarse);
+		}
 	});
 });
