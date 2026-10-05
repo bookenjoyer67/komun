@@ -175,11 +175,20 @@ jobs:
         run: |
           cfg() { local v; v="$(python3 scripts/agentic_config.py --get "$1" --default "$2" 2>/dev/null)" || v="$2"; [ -n "$v" ] || v="$2"; printf '%s' "$v"; }
           {
+            echo "AGENT_IMAGE_BASE=$(cfg containers.base_image 'agent-sandbox:komun')"
             echo "AGENT_IMAGE_TOOLS=$(cfg containers.tools_image 'agent-sandbox:komun-m3')"
             echo "AGENT_WORKSPACE=$(cfg containers.workspace '/workspace')"
             echo "AGENT_CACHE_TARGET=${RUNNER_TEMP}/$(cfg containers.cargo_target_cache 'cargo-target')"
             echo "AGENT_CACHE_REGISTRY=${RUNNER_TEMP}/$(cfg containers.cargo_registry_cache 'cargo-registry')"
           } >> "$GITHUB_ENV"
+
+      # The tools image is this job's toolchain, and a jobs starts on a fresh runner with no local
+      # image: without these two builds the wasm step fails with `pull access denied for
+      # agent-sandbox` (measured on this branch's first run, job 111965569371).
+      - name: Build the sandbox image
+        run: |
+          docker build -t ${{ env.AGENT_IMAGE_BASE }} .
+          docker build -f sandbox/Dockerfile.m3 -t ${{ env.AGENT_IMAGE_TOOLS }} .
 
       # `web/package.json` depends on `komun-wasm: file:../crates/wasm/pkg`, and that package is a
       # gitignored build artifact (`docs/DEVELOPMENT.md:129` `wasm-pack build crates/wasm --target web`),
@@ -289,7 +298,12 @@ jobs:
     needs: [change-type-check, policy-gate]
     if: needs.change-type-check.outputs.requires-governed-check == 'true'
     steps:
+      # Full history, because the conformance gate reads the pull request's base commit out of this
+      # checkout's object database (`git show <base>:<file>`), and the default depth-1 clone carries
+      # only the merge commit. The base-presence step below makes a regression here fail loudly.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
 
       # Every repository-specific value this job needs is read from agentic.config.json through
       # scripts/agentic_config.py, each with this repository's current value as the fallback
