@@ -1,6 +1,6 @@
 # Coding Standards
 
-Last reviewed: 2026-09-28
+Last reviewed: 2026-10-04
 Maintained by: the Komun maintainers
 
 These standards apply to all code in this project. The agent should consult this file before writing
@@ -40,3 +40,8 @@ count names the search that produced it. A claim that cannot be traced is marked
 ## 8. Never commit local state or build output
 `config.toml`, `.env`, `.env.local`, `crates/wasm/pkg/`, `web/build/`, `data/avatars/` and
 `data/post-images/` stay out of commits. They hold credentials or reproducible artifacts.
+
+## 9. Comment only what the code cannot say
+A comment earns its place only by stating an invariant, a constraint, a failure mode, or why the
+obvious alternative is wrong. Anything that restates the code, narrates the change, or cites a line
+number that will move is deleted. When in doubt, leave it out.

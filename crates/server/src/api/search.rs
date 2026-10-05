@@ -35,8 +35,8 @@ struct SearchResult {
     location_name: Option<String>,
     urgency: Option<String>,
     status: String,
-    // `posts.tags` is `TEXT[]`. It was typed `Option<serde_json::Value>` here, which sqlx decodes
-    // only from json/jsonb — every call to this route failed on the decode.
+    // `posts.tags` is `TEXT[]`, so it must decode as `Vec<String>`; sqlx decodes
+    // `serde_json::Value` only from json/jsonb.
     tags: Option<Vec<String>>,
     author_id: Uuid,
     verified_by: Option<Uuid>,
@@ -52,12 +52,6 @@ struct UserSearchResult {
     endorsement_count: Option<i64>,
 }
 
-/// A3.2: no `JOIN communities`, no tenant parameter.
-///
-/// With that filter gone there is at most one optional predicate left, so the placeholders are
-/// fixed and the string is no longer assembled by hand. The old builder was also wrong — it
-/// wrapped `${}` around a value that already carried its own `$`, so the predicate it appended
-/// came out with a doubled placeholder marker and the query would not parse.
 async fn search(
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,

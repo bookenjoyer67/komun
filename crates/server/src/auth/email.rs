@@ -1,4 +1,4 @@
-//! Transactional mail for verification and password reset (A2a / SPEC Part 1.5).
+//! Transactional mail for verification and password reset (SPEC Part 1.5).
 //!
 //! Composition and delivery are separated on purpose. [`verification_message`] and
 //! [`password_reset_message`] are pure functions from data to a [`Message`], so the contents of
@@ -120,7 +120,6 @@ impl Mailer {
     }
 }
 
-/// `https://host/verify-email?token=...`
 pub fn verification_link(public_url: &str, token: &str) -> String {
     format!(
         "{}/verify-email?token={}",
@@ -129,7 +128,6 @@ pub fn verification_link(public_url: &str, token: &str) -> String {
     )
 }
 
-/// `https://host/reset-password?token=...`
 pub fn password_reset_link(public_url: &str, token: &str) -> String {
     format!(
         "{}/reset-password?token={}",
@@ -138,9 +136,8 @@ pub fn password_reset_link(public_url: &str, token: &str) -> String {
     )
 }
 
-/// Percent-encode everything that is not unreserved. Session tokens are URL-safe base64 already,
-/// but encoding is the correct thing to do with a value going into a query string and costs
-/// nothing.
+/// Session tokens are URL-safe base64 already, but a value going into a query string should still
+/// be encoded.
 fn urlencode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -216,8 +213,7 @@ pub fn password_reset_message(
         .map_err(|e| anyhow::anyhow!("failed to compose password reset email: {e}"))
 }
 
-/// Render a composed message as the bytes that would go on the wire. Used by the tests to assert
-/// on content without a network, and by `--dry-run`-style operator tooling.
+/// Used by the tests to assert on content without a network, and by `--dry-run`-style tooling.
 pub fn render(message: &Message) -> String {
     String::from_utf8_lossy(&message.formatted()).into_owned()
 }

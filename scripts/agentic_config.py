@@ -302,12 +302,12 @@ DEFAULT: dict[str, Any] = {
             "artifacts.style_rules": "docs/DOC-STYLE.md",
         },
         "language_specific_note": [
-            "The cargo toolchain commands, the clippy cache guard and the build cache are Rust and"
+            "The cargo toolchain commands, the cache-hit guards and the build cache are Rust and"
             " cargo",
-            "specific. A Node or Python fork replaces the whole `toolchain` block and drops the"
+            "specific. A Node or Python fork replaces the whole `toolchain` block and drops each"
             " guard, or",
-            "writes a guard of its own: the guard exists only because a cached linter prints"
-            " nothing.",
+            "writes guards of its own: each guard exists because a cached cargo run can mislead"
+            " its gate.",
         ],
     },
     "gates": {
@@ -494,7 +494,6 @@ _CACHE: dict[str, Any] | None = None
 _SOURCE: str | None = None
 
 
-# --- Reading the config ----------------------------------------------------------------------
 def _read_json(path: Path | None) -> dict[str, Any] | None:
     """The JSON object at `path`, or None when it is missing, unreadable or not a JSON object."""
     if path is None:
@@ -606,7 +605,6 @@ def get(dotted_key: str, default: Any = None) -> Any:
     return default if value is None else value
 
 
-# --- CLI -------------------------------------------------------------------------------------
 USAGE = "usage: agentic_config.py (--print-config | --source | --get <dotted.key> [--default <v>])"
 
 

@@ -1,16 +1,15 @@
-//! Queries over `sessions` and `one_time_tokens` (A2a / SPEC Part 1.5).
+//! Queries over `sessions` and `one_time_tokens`.
 //!
-//! The raw session token never reaches this module's storage path: every function takes or
-//! returns a `token_hash`, which is `SHA-256(raw token)`. A database dump therefore contains no
-//! usable credential — the hash cannot be replayed as a bearer token.
+//! The raw session token never reaches storage: every function takes or returns a `token_hash`,
+//! so a database dump contains no credential that can be replayed.
 
 use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-/// A session as the *owner* of the account may see it. `token_hash` is absent by construction, and
-/// so is the raw `user_agent`: `device_label` is the readable summary derived from it at creation
-/// time, and echoing the full header back adds nothing but fingerprinting surface.
+/// A session as its owner may see it. `token_hash` is absent by construction, as is the raw
+/// `user_agent`: `device_label` is the readable summary, and echoing the header back only adds
+/// fingerprinting surface.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SessionRow {
     pub id: Uuid,
@@ -21,10 +20,9 @@ pub struct SessionRow {
     pub expires_at: DateTime<Utc>,
 }
 
-/// What the middleware needs on every authenticated request: who the caller is, and what they are
-/// allowed to do *right now*. `role` and `email_verified` come from `users` in the same round trip,
-/// so a demotion or a revoked verification takes effect on the very next request rather than when
-/// some cached token happens to expire.
+/// What the middleware needs per authenticated request: who the caller is and what they may do
+/// *now*. `role` and `email_verified` come from `users` in the same round trip, so a demotion
+/// takes effect on the next request rather than when a cached token expires.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct AuthenticatedSession {
     pub session_id: Uuid,
@@ -34,8 +32,7 @@ pub struct AuthenticatedSession {
     pub last_used_at: DateTime<Utc>,
 }
 
-/// Insert a session for an already-authenticated user. The caller generates the token and passes
-/// only its hash; this function never sees the secret.
+/// Insert a session; the caller passes only the token's hash, so this function never sees the secret.
 pub async fn create(
     pool: &PgPool,
     user_id: Uuid,
@@ -64,9 +61,8 @@ pub async fn create(
     .await
 }
 
-/// Look a session up by token hash, rejecting revoked and expired rows in SQL so no caller can
-/// forget the check. Returns `None` for "no such session" and for "session no longer valid"
-/// alike — the distinction is not the client's business.
+/// Look a session up by token hash; revoked and expired rows are rejected in SQL so no caller can
+/// forget the check. `None` covers both "no such session" and "no longer valid".
 pub async fn lookup(
     pool: &PgPool,
     token_hash: &[u8],
@@ -88,8 +84,7 @@ pub async fn lookup(
     .await
 }
 
-/// Sliding expiry. Throttled by the caller to at most one write per minute per session, so a
-/// chatty client does not turn every read into a write.
+/// Sliding expiry; the caller throttles it to at most one write per minute per session.
 pub async fn touch(pool: &PgPool, session_id: Uuid) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE sessions SET last_used_at = now() WHERE id = $1")
         .bind(session_id)
@@ -98,7 +93,7 @@ pub async fn touch(pool: &PgPool, session_id: Uuid) -> Result<(), sqlx::Error> {
         .map(|_| ())
 }
 
-/// Every live session for a user, newest first — the "where am I signed in?" list.
+/// Every live session for a user, newest first.
 pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<SessionRow>, sqlx::Error> {
     sqlx::query_as::<_, SessionRow>(
         r#"SELECT id, device_label, ip, created_at, last_used_at, expires_at
@@ -111,8 +106,8 @@ pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<SessionRo
     .await
 }
 
-/// Revoke one session, but only if it belongs to `user_id` — otherwise any authenticated user
-/// could sign out any other by guessing a session id. Returns false when nothing matched.
+/// Revoke one session only if it belongs to `user_id`; otherwise any user could sign out another
+/// by guessing a session id. Returns false when nothing matched.
 pub async fn revoke(pool: &PgPool, user_id: Uuid, session_id: Uuid) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE sessions SET revoked_at = now() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
@@ -124,8 +119,8 @@ pub async fn revoke(pool: &PgPool, user_id: Uuid, session_id: Uuid) -> Result<bo
     Ok(result.rows_affected() > 0)
 }
 
-/// Revoke every session for a user except the one making the request. Used after a password
-/// change and by the "sign out everywhere else" control.
+/// Revoke every session for a user except the current one — after a password change, or "sign
+/// out everywhere else".
 pub async fn revoke_all_except(
     pool: &PgPool,
     user_id: Uuid,
@@ -141,8 +136,8 @@ pub async fn revoke_all_except(
     Ok(result.rows_affected())
 }
 
-/// Revoke every session for a user, including the current one. Used when an admin disables an
-/// account and when a password reset completes.
+/// Revoke every session for a user, including the current one; used when an account is disabled
+/// or a password reset completes.
 pub async fn revoke_all(pool: &PgPool, user_id: Uuid) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
@@ -153,8 +148,8 @@ pub async fn revoke_all(pool: &PgPool, user_id: Uuid) -> Result<u64, sqlx::Error
     Ok(result.rows_affected())
 }
 
-/// Delete rows that can never authenticate again: expired, or revoked long enough ago that they
-/// are no longer interesting for an audit trail. Run periodically by the background task.
+/// Delete rows that can never authenticate again: expired, or revoked past the audit window. Run
+/// periodically by the background task.
 pub async fn delete_stale(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         "DELETE FROM sessions WHERE expires_at < now() - interval '30 days'
@@ -165,16 +160,12 @@ pub async fn delete_stale(pool: &PgPool) -> Result<u64, sqlx::Error> {
     Ok(result.rows_affected())
 }
 
-// ---------------------------------------------------------------------------
-// one_time_tokens — email verification and password reset
-// ---------------------------------------------------------------------------
-
-/// The two kinds the `chk_one_time_tokens_kind` CHECK allows. Spelling them once here keeps a typo
-/// from becoming a runtime constraint violation.
+/// The two kinds `chk_one_time_tokens_kind` allows; spelling them once keeps a typo from becoming a
+/// runtime constraint violation.
 pub const KIND_EMAIL_VERIFY: &str = "email_verify";
 pub const KIND_PASSWORD_RESET: &str = "password_reset";
 
-/// Mint a one-time token row. As with sessions, only the hash is stored.
+/// Mint a one-time token row; as with sessions, only the hash is stored.
 pub async fn create_one_time_token(
     pool: &PgPool,
     user_id: Uuid,
@@ -198,9 +189,8 @@ pub async fn create_one_time_token(
     Ok(id)
 }
 
-/// Atomically claim a one-time token: the `used_at IS NULL` predicate and the `SET used_at` live
-/// in the same statement, so two concurrent requests cannot both succeed. Single-use is enforced
-/// by the database, not by a check-then-act in Rust.
+/// Atomically claim a one-time token: `used_at IS NULL` and `SET used_at` live in one statement,
+/// so two concurrent requests cannot both succeed.
 pub async fn consume_one_time_token(
     pool: &PgPool,
     kind: &str,
@@ -221,8 +211,8 @@ pub async fn consume_one_time_token(
     .await
 }
 
-/// Invalidate any outstanding tokens of a kind for a user, so that issuing a new verification
-/// link retires the old one instead of leaving several live at once.
+/// Invalidate outstanding tokens of a kind for a user, so a new verification link retires the old
+/// one instead of leaving several live.
 pub async fn invalidate_one_time_tokens(
     pool: &PgPool,
     user_id: Uuid,
@@ -238,8 +228,8 @@ pub async fn invalidate_one_time_tokens(
     Ok(result.rows_affected())
 }
 
-/// How many tokens of a kind were minted for a user recently — the per-account half of the
-/// resend rate limit (the other half is by IP, in `rate_limit`).
+/// Recent tokens of a kind for a user — the per-account half of the resend rate limit (the other
+/// half is by IP, in `rate_limit`).
 pub async fn count_recent_one_time_tokens(
     pool: &PgPool,
     user_id: Uuid,
@@ -257,7 +247,6 @@ pub async fn count_recent_one_time_tokens(
     .await
 }
 
-/// Drop one-time tokens that are spent or long expired.
 pub async fn delete_stale_one_time_tokens(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         "DELETE FROM one_time_tokens WHERE expires_at < now() - interval '7 days'

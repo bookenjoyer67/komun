@@ -10,8 +10,7 @@ db_enum!(
     }
 );
 
-/// A row of the `categories` table. The taxonomy is seed data, not a Rust enum:
-/// an admin adds, renames, reorders or retires a category without a release.
+/// A row of the `categories` table; the taxonomy is seed data, not a Rust enum, editable without a release.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Category {
     pub slug: String,

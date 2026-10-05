@@ -1,12 +1,5 @@
 <script lang="ts">
-	/**
-	 * The one and only time a recovery code is ever on screen.
-	 *
-	 * It is generated in the browser, used to wrap the account's encryption key, and then exists
-	 * nowhere else: the server stores the ciphertext, not the code, and no endpoint returns it.
-	 * That is what makes it a real second way in — and why this component refuses to let the user
-	 * past without confirming they have written it down.
-	 */
+	/** The only time a recovery code is on screen: the server stores its ciphertext, never the code. */
 	interface Props {
 		code: string;
 		email?: string;

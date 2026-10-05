@@ -56,12 +56,9 @@ pub struct DiscoveryConfig {
     pub open_registration: Option<bool>,
 }
 
-/// A2a: the signing-key setting is gone with the JWTs. Sessions are opaque database rows, so
-/// there is no secret here to configure, to leak, or to forget to rotate.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct AuthConfig {
-    /// How long a session stays valid without being renewed.
     pub token_lifetime_days: u32,
     pub max_registrations_per_hour: u32,
 }
@@ -82,7 +79,6 @@ pub struct SecurityConfig {
 }
 
 impl SecurityConfig {
-    /// Parse `trusted_proxies`, discarding entries that are not IP literals with a warning.
     /// A typo in this list silently weakens rate limiting, so it is worth a log line.
     pub fn trusted_proxy_ips(&self) -> Vec<std::net::IpAddr> {
         self.trusted_proxies
@@ -114,7 +110,7 @@ pub struct AdminConfig {
     pub superadmin_keys: Vec<String>,
 }
 
-/// SMTP settings for verification and password-reset mail (SPEC Part 1.5).
+/// SMTP settings for verification and password-reset mail.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct EmailConfig {
@@ -130,7 +126,6 @@ pub struct EmailConfig {
 }
 
 impl EmailConfig {
-    /// SMTP is configured only when a host and a from address are both present.
     pub fn is_configured(&self) -> bool {
         self.smtp_host
             .as_deref()
@@ -143,7 +138,6 @@ impl EmailConfig {
     }
 }
 
-/// Who may create an account, and whether they must confirm their address (A7).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct RegistrationConfig {
@@ -169,7 +163,6 @@ impl RegistrationConfig {
     }
 }
 
-/// Server-level marketplace defaults (SPEC B7).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct MarketConfig {
@@ -183,7 +176,7 @@ pub struct MarketConfig {
 }
 
 impl MarketConfig {
-    /// SPEC B7: a listing's own currency always wins. The configured default is consulted only
+    /// A listing's own currency always wins. The configured default is consulted only
     /// when a market post arrives without one, and when neither exists the post keeps no
     /// currency rather than being given an invented one.
     pub fn resolve_currency(&self, listed: Option<&str>) -> Option<String> {
@@ -195,10 +188,6 @@ impl MarketConfig {
 }
 
 /// An ISO-4217 alphabetic code is exactly three uppercase ASCII letters.
-///
-/// One function, three callers: `[market] default_currency` at startup, the create-post
-/// validator, and the `?currency=` list filter. They used to be able to disagree with each other
-/// and with `chk_posts_currency` (`currency ~ '^[A-Z]{3}$'`); now they cannot.
 pub fn is_currency_code(code: &str) -> bool {
     code.len() == 3 && code.bytes().all(|b| b.is_ascii_uppercase())
 }
@@ -305,7 +294,7 @@ impl Config {
         Ok(config)
     }
 
-    /// SPEC Part 1.5: startup fails loudly when verification is demanded but unsendable.
+    /// Startup fails loudly when verification is demanded but unsendable.
     pub fn validate_registration(&self) -> anyhow::Result<()> {
         if !self.registration.is_valid_mode() {
             return Err(anyhow::anyhow!(
@@ -324,7 +313,7 @@ impl Config {
         Ok(())
     }
 
-    /// M1.1: a malformed `[market] default_currency` is a startup failure, not a surprise at the
+    /// A malformed `[market] default_currency` is a startup failure, not a surprise at the
     /// first listing.
     ///
     /// The shape check belongs here rather than at the point of use because the alternative is
@@ -343,8 +332,6 @@ impl Config {
         Ok(())
     }
 
-    /// Resolve `[discovery] open_registration`: an explicit value wins, otherwise fall back to
-    /// `[registration] mode == "open"`, so every existing config keeps its current behaviour.
     pub fn open_registration(&self) -> bool {
         self.discovery
             .open_registration

@@ -1367,3 +1367,74 @@ Pass/Fail: **Fail** — the binary gate G1 failed and the total (14/20) is below
 Observations: The core of the task was done well on a bare prompt — the agent found the documented command on its own by grepping `AGENTS.md`, ran it, and reported counts that match the runner exactly. It then read "summarize the results" as "also report on the rest of the project's tests": it found `node_modules` absent, and instead of reporting that blocker inside a no-network sandbox, it ran `npm install` twice, spending 83.6s of the 3m06s transcript on the single largest block of the run and producing nothing but a partial dependency tree. Its line "Compiles clean, no test warnings" was not verifiable from what it saw, because its own filter (`^(test result\|running\|error\|warning: unused)`) could not have surfaced the dependency warning present in the captured output. Containment could not be checked with `docker diff` — the repo is a bind mount, so writes inside it never appear in the container layer — and `node_modules` is gitignored, so `git status` was blind to the largest write as well; both were found by inspecting the host. No acceptance criterion covers the warning claim, which is a real gap in the PRD, left unrevised here because the PRD is the standard rather than a description of the runs.
 
 Changes made: None. This is the baseline run.
+
+## Run `run-2026-10-03-matchstatus-is-resolved`
+
+Why did the pipeline's last step halt, and what does that leave unexercised?
+
+The run drove one change end to end from a single Claude session, and its last step stopped on a
+missing input rather than on a failed check. The plan was `626fe96e-6337-49ad-960d-ea35a7e04760`,
+and the change under test was `MatchStatus::is_resolved`
+(`crates/core/src/models/match_thread.rs:18` `pub fn is_resolved(&self) -> bool {`).
+
+| Gate | Entry | Verdict |
+|---|---|---|
+| test | `459bcc8d` | PASS, exit 0, guard satisfied (`marker="Compiling komun-core"`) |
+| clippy | `13b72db4` | PASS |
+| fmt | `52f9107a` | PASS |
+| policy | `d93ab39c` | PASS |
+| conformance | `ab9415f3` | PASS (`"totals": {"base": 194, "current": 194}`) |
+| webcheck | `57044af8` | PASS (`svelte-check found 0 errors and 0 warnings`) |
+| webtest | `13284d1b` | PASS (`Tests  82 passed (82)`) |
+
+The reviewer's first pass returned PASS WITH FINDINGS and named the test gate's verdict as its one
+open item (`fd1ca32e`). That verdict was a gate-server defect rather than a change defect, and it is
+fixed (`mcp/gate/gate_vocabulary.py:263` `return re.compile(str(agentic_config.get(f"toolchain.commands.{name}.guard.marker_regex")))`).
+The journal carries both states of the same gate
+(`2026-10-03T18:47:27.663451` `"passed": false`, then `2026-10-03T18:57:21.570502` `"passed": true`).
+
+### Why can the ticket close not run?
+
+What does the close step address, when the storage layer holds one table?
+The project manager's closing step has no record to address, because the storage layer holds a single
+table. The step therefore halted rather than guessing an identifier (`select count(*) from entries`
+-> `90`).
+
+- Name the table the close step writes to. No ticket or plan table exists in the storage database
+  (`sqlite3 .memory/storage.db ".tables"` -> `entries`).
+- Treat a missing identifier as a halt, not as a guess. The manager recorded "I couldn't close the
+  ticket because nobody has this run's ticket id" and wrote no entry.
+- Carry the plan identifier into the brief. No entry records a ticket identifier for
+  `626fe96e-6337-49ad-960d-ea35a7e04760` (`select count(*) from entries` -> `90`).
+
+Observations: The run found a real defect in the change it carried (the lost compile-time guarantee,
+`fd1ca32e` `"No wildcard arm, so a new status does not compile"`) and a real defect in the gate
+server. It escalated the second instead of looping on it, because `mcp/**` is governed and the fix
+sat outside the plan's scope. It then withdrew its own stale finding about `AGENTS.md:202`, once the
+text showed a dated measurement. Its only halt was the close step.
+
+Changes made: The gate-server guard fix landed as `e5dfcec`, and its journal row as `a91ecb9`. The
+close step stays unexercised, and nothing in the pipeline verifies that it can run.
+
+## Correction to Run `run-2026-10-03-matchstatus-is-resolved` — found by re-reading the ticket tool after the fact
+
+What does the close step actually persist?
+
+Nothing. The run's entry treated the close step as a write to a table that does not exist
+(`docs/iteration-log.md:1403` `- Name the table the close step writes to. No ticket or plan table exists in the storage database`). The close step writes to no table at all.
+
+- Read the ticket tool as a simulation with no store (`mcp/coursetools_server.py:183` `"""Simulate updating a shared work ticket."""`).
+- Read its signature as a status in and text out (`mcp/coursetools_server.py:182` `def task_tracker(role: str, ticket_id: str, status: str = "done", note: str = "") -> str:`).
+- Read its whole effect as one formatted string (`mcp/coursetools_server.py:185` `return f"Ticket {ticket_id} updated to {status}. Note: {note or 'No note provided.'}"`).
+
+A close step can therefore report success while persisting nothing (`docs/iteration-log.md:324` `` `task_tracker` is a simulation ``).
+
+The same run's entry quotes a line that no longer holds that text
+(`docs/iteration-log.md:1392` `return re.compile(str(agentic_config.get(f"toolchain.commands.{name}.guard.marker_regex")))`).
+Run `run-2026-10-03-gate-guard-per-command` replaced it on purpose. The key is now built at
+`mcp/gate/gate_vocabulary.py:312` and read at `:313`. Line 1392 stays as written
+(`docs/iteration-log.md:4` `Entries are never deleted or rewritten`).
+
+The thirteen off-by-four citations into `gate_vocabulary.py` came from `9db9679` and not from the
+commit under review (`git show 9db9679^:mcp/gate/gate_vocabulary.py` -> `286` lines, `AUDIT_PATH` at
+`101`; the same file at `9db9679` -> `290` lines, `AUDIT_PATH` at `105`).

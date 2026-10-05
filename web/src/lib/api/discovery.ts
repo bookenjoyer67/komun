@@ -12,11 +12,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 	return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * A3.2 squashed `directory_entries`: a server registering itself advertises one location, its
- * own. `communities_count` and `matched_community` are no longer columns and no longer
- * serialised, so they are gone from here too rather than reading as `undefined` forever.
- */
+/** A server advertising itself lists one location, its own. */
 export interface NearbyServer {
 	url: string;
 	name: string;
@@ -27,7 +23,6 @@ export interface NearbyServer {
 	distance_km?: number;
 }
 
-/** A post gathered from another server, tagged with where it came from. */
 export interface AggregatedPost extends PostLike {
 	server_url: string;
 	server_name: string;
@@ -114,14 +109,8 @@ export async function discoverAllServers(): Promise<NearbyServer[]> {
 }
 
 /**
- * One request per server now. A3.1 made posts a flat, server-wide collection, so there is no
- * community index to walk first and no per-community fan-out — `GET /api/posts` is the whole
- * feed of a server.
- *
- * `searchCenter` used to filter on the community's location, the only coordinate the old model
- * had. Posts carry their own, so the radius is applied to the post: a post without coordinates
- * falls back to the server's advertised location, and is kept if neither is known rather than
- * silently dropped.
+ * One request per server. A post without coordinates falls back to the server's advertised
+ * location, and is kept if neither is known rather than silently dropped.
  */
 export async function fetchFromServers(
 	servers: NearbyServer[],

@@ -5,8 +5,7 @@
     let open = $state(false);
     let input: HTMLInputElement | null = $state(null);
 
-    // `autofocus` steals focus on page load; focusing here only happens once the user has
-    // opened the box themselves, which is what the attribute was actually trying to express.
+    // `autofocus` steals focus on page load; focus only once the user opens the box themselves.
     $effect(() => { if (open) input?.focus(); });
 
     function handleSubmit(e: Event) {

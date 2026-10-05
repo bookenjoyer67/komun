@@ -28,19 +28,15 @@
 	let limit = $state(PAGE_SIZE);
 	let connected = $state(false);
 
-	// The URL is the single source of truth for the filters; the widgets below
-	// are views of it and write back through `applyFilters`, so a filtered view
-	// is linkable and the browser's Back button works.
+	// URL is the single source of truth for filters, so a filtered view is linkable and Back works.
 	let filters = $derived(queryToFilters($page.url.searchParams));
 
-	// Editable drafts of the text inputs, kept apart from the URL so typing does
-	// not rewrite history on every keystroke.
+	// Text-input drafts, kept apart from the URL so typing does not rewrite history on every keystroke.
 	let searchText = $state('');
 	let minPriceText = $state('');
 	let maxPriceText = $state('');
 
-	// Guards the effect below against re-loading the URL it just applied. `null`
-	// rather than `''` so a bare `/market` visit (empty query string) still loads.
+	// Guards the effect from re-loading the URL it just applied; `null` (not `''`) so a bare `/market` still loads.
 	let lastLoaded = $state<string | null>(null);
 
 	onMount(async () => {
@@ -52,17 +48,14 @@
 		try {
 			categories = await fetchMarketCategories();
 		} catch {
-			// The filter still works from the URL; the category <select> just
-			// falls back to the raw slug. Browsing must not fail because the
-			// taxonomy request did.
+			// Browsing must not fail if the taxonomy request did; the category select falls back to the raw slug.
 			categories = [];
 		}
 	});
 
 	$effect(() => {
 		const query = $page.url.searchParams.toString();
-		// Tracked, not untracked: the connection check lives in onMount, and this
-		// effect must run once `connected` flips true even if it ran before that.
+		// Tracked, not untracked: the effect must run once `connected` flips true even if it ran first.
 		if (!connected) return;
 		if (query === untrack(() => lastLoaded)) return;
 
@@ -81,9 +74,7 @@
 		try {
 			posts = await listMarketPosts({ ...active, limit: size });
 		} catch (e) {
-			// A rejected filter (bad price, unknown condition) is an error the
-			// server names, not an empty result — showing "no listings" here
-			// would hide the mistake.
+			// A rejected filter is a server-named error, not an empty result; "no listings" would hide the mistake.
 			error = e instanceof Error ? e.message : 'Failed to load the marketplace';
 			posts = [];
 		} finally {
@@ -156,8 +147,7 @@
 				filters.max_price_cents != null
 		)
 	);
-	// The server truncates at `limit`; once we are at the cap we cannot promise
-	// there is nothing newer beyond it, so say so instead of implying the end.
+	// At the cap, newer posts may exist beyond the truncation, so say so rather than imply the end.
 	let capped = $derived(posts.length >= limit && limit >= MAX_LIMIT);
 </script>
 

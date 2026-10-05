@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 db_enum!(
-    /// Aid kinds (`resource`, `need`, `offer`) and marketplace kinds (`listing`, `want`).
     PostKind {
         Resource => "resource",
         Need => "need",
@@ -42,7 +41,6 @@ db_enum!(
 );
 
 db_enum!(
-    /// A post is either visible to everyone or to nobody but its author.
     Visibility {
         Public => "public",
         Private => "private",

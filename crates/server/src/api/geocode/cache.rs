@@ -11,12 +11,9 @@ struct Entry {
     stored_at: Instant,
 }
 
-/// A small fixed-capacity cache keyed on the normalised query.
-///
-/// Entries older than `ttl` are treated as misses, and once `capacity` entries
-/// are present the oldest one is evicted, so the map can never grow without
-/// bound. Lookups served from here never touch the network or occupy a rate
-/// limiter slot.
+/// A fixed-capacity cache keyed on the normalised query. Entries older than `ttl` are misses, the
+/// oldest is evicted once `capacity` is reached, and a hit never touches the network or a limiter
+/// slot.
 pub struct GeocodeCache {
     ttl: Duration,
     capacity: usize,

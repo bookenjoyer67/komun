@@ -12,9 +12,8 @@
 	} from '$lib/api/reviews';
 
 	/**
-	 * SPEC B4: a review is writable only against a completed deal, which is why this modal is only
-	 * ever mounted from a `completed` thread. It stays honest when it is wrong anyway: the server
-	 * answers 409 and its sentence is what the reviewer sees, rather than a generic failure.
+	 * A review is writable only against a completed deal, so this modal is mounted only from a
+	 * `completed` thread; a server 409 keeps its own sentence rather than a generic failure.
 	 */
 	interface Props {
 		matchId: string;

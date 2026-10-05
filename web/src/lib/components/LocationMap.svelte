@@ -10,10 +10,7 @@
 		lon: number;
 	}
 
-	/**
-	 * Clamp a pair to a valid latitude/longitude. Returns `null` for anything
-	 * non-finite, so a nonsense click is ignored rather than pinning `NaN`.
-	 */
+	/** Clamp a pair to a valid latitude/longitude, or `null` for anything non-finite. */
 	export function clampLatLon(lat: unknown, lon: unknown): PickedCoords | null {
 		const la = typeof lat === 'number' ? lat : Number(lat);
 		const lo = typeof lon === 'number' ? lon : Number(lon);
@@ -23,12 +20,21 @@
 			lon: Math.min(180, Math.max(-180, lo))
 		};
 	}
+
+	/**
+	 * Leaflet assigns string popup content with innerHTML and appends an element as-is, so an
+	 * untrusted label must reach `bindPopup` as an element holding text, never as a string.
+	 */
+	export function popupContent(label: string): HTMLElement {
+		const node = document.createElement('span');
+		node.textContent = label;
+		return node;
+	}
 </script>
 
 <script lang="ts">
-	// Leaflet ships without TypeScript declarations in this image and no
-	// @types/leaflet is installed (and none can be — no egress), so keep the
-	// import untyped rather than adding a diagnostic to the frozen baseline.
+	// Leaflet has no TypeScript declarations here and none can be installed (no egress); keep the
+	// import untyped rather than add a diagnostic to the frozen baseline.
 	// @ts-ignore
 	import * as L from 'leaflet';
 	import 'leaflet/dist/leaflet.css';
@@ -108,8 +114,7 @@
 		};
 	});
 
-	// Markers live in their own effect so picking a point updates the pin without
-	// tearing down and rebuilding the map (and its view).
+	// Markers live in their own effect so updating a pin does not tear down and rebuild the map.
 	$effect(() => {
 		const layer = markerLayer;
 		if (!layer) return;
@@ -117,7 +122,7 @@
 		layer.clearLayers();
 		for (const marker of markers) {
 			L.marker([marker.lat, marker.lon], { icon: markerIcon })
-				.bindPopup(marker.label ?? '')
+				.bindPopup(popupContent(marker.label ?? ''))
 				.addTo(layer);
 		}
 		if (pickable && pickedLat != null && pickedLon != null) {

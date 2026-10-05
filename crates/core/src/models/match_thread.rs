@@ -11,6 +11,16 @@ db_enum!(
     }
 );
 
+impl MatchStatus {
+    /// The two terminal statuses: `resolved_at` is set and no further offer may be appended; no wildcard arm, so a new status must pick a side.
+    pub fn is_resolved(&self) -> bool {
+        match self {
+            MatchStatus::Completed | MatchStatus::Withdrawn => true,
+            MatchStatus::Proposed | MatchStatus::Accepted => false,
+        }
+    }
+}
+
 db_enum!(
     /// A step in a marketplace negotiation, carried on the same thread as the messages.
     OfferKind {
@@ -43,8 +53,7 @@ pub struct CreateMatch {
     pub amount_cents: Option<i64>,
 }
 
-/// A message on a match thread. The server stores and relays ciphertext only —
-/// there is no plaintext body column and no key with which to read one.
+/// A message on a match thread; the server stores and relays ciphertext only, with no plaintext body column.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: Uuid,

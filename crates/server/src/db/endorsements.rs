@@ -67,7 +67,3 @@ pub async fn list_for_user(
     .fetch_all(pool)
     .await
 }
-
-// A3: `count_for_user` had no callers. Both places that want the number — `api/users.rs`'s
-// profile query and `api/search.rs`'s user search — count it in SQL alongside the row they are
-// already fetching, rather than making a second round trip.

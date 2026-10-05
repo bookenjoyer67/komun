@@ -1,13 +1,10 @@
-//! Opaque session tokens (A2a / SPEC Part 1.5).
+//! Opaque session tokens.
 //!
 //! A session token is 256 bits from the OS CSPRNG, handed to the client once and never stored.
 //! What the database holds is `SHA-256(token)`. That is deliberately *not* a slow hash: the token
 //! is full-entropy random, so there is no dictionary to run against it and no reason to pay
 //! Argon2's cost on every single request. Passwords get Argon2 (see [`crate::auth::password`]);
 //! random tokens get SHA-256.
-//!
-//! The replaced JWT scheme could not do any of this: a signed token is valid until it expires, so
-//! sign-out was a client-side gesture and a demoted admin kept their powers for up to a week.
 
 use rand::RngCore;
 use sha2::{Digest, Sha256};
@@ -23,7 +20,7 @@ pub const DEFAULT_LIFETIME_DAYS: i64 = 30;
 pub const EMAIL_VERIFY_TTL_MINUTES: i64 = 24 * 60;
 
 /// Password-reset links last 30 minutes. They are strictly more dangerous than a verification
-/// link, so they get the shorter window (SPEC Part 1.5).
+/// link, so they get the shorter window.
 pub const PASSWORD_RESET_TTL_MINUTES: i64 = 30;
 
 /// A freshly minted token: the raw secret to return to the client exactly once, and the hash to
@@ -34,7 +31,6 @@ pub struct NewToken {
     pub hash: Vec<u8>,
 }
 
-/// Generate a URL-safe, unpadded base64 token and its hash.
 pub fn generate_token() -> NewToken {
     let mut bytes = [0u8; TOKEN_BYTES];
     rand::rngs::OsRng.fill_bytes(&mut bytes);
@@ -50,8 +46,6 @@ pub fn hash_token(raw: &str) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-/// Pull the bearer token out of an `Authorization` header value.
-///
 /// The scheme is matched case-insensitively (RFC 7235 says it is case-insensitive, and real
 /// clients send `bearer`), but the token itself is taken verbatim.
 pub fn bearer_token(header_value: &str) -> Option<&str> {
@@ -72,13 +66,12 @@ pub fn bearer_token(header_value: &str) -> Option<&str> {
 /// every authenticated GET into an UPDATE.
 pub const TOUCH_THROTTLE_SECONDS: i64 = 60;
 
-/// Whether this request should refresh `last_used_at`.
 pub fn should_touch(last_used_at: chrono::DateTime<chrono::Utc>) -> bool {
     (chrono::Utc::now() - last_used_at).num_seconds() >= TOUCH_THROTTLE_SECONDS
 }
 
-/// Best-effort device label from a User-Agent, for the session list. Truncated because the header
-/// is attacker-controlled and there is no reason to store a kilobyte of it.
+/// Truncated because the header is attacker-controlled and there is no reason to store a kilobyte
+/// of it.
 pub fn device_label_from_user_agent(user_agent: Option<&str>) -> Option<String> {
     let ua = user_agent?.trim();
     if ua.is_empty() {
@@ -87,15 +80,10 @@ pub fn device_label_from_user_agent(user_agent: Option<&str>) -> Option<String> 
     Some(ua.chars().take(120).collect())
 }
 
-/// How often the cleanup loop runs. Nothing depends on promptness here — expired rows are
-/// already rejected by the `lookup` query — so this is housekeeping, not enforcement.
+/// Nothing depends on promptness here — expired rows are already rejected by the `lookup` query
+/// — so this is housekeeping, not enforcement.
 const CLEANUP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
 
-/// Periodically delete sessions and one-time tokens that can never authenticate again.
-///
-/// Spawned from `main` rather than from `tasks::spawn_background_tasks` because A2a owns this
-/// file and `main.rs`, and adding a line to `tasks/mod.rs` would mean editing a file this card
-/// does not own for no behavioural gain.
 pub async fn cleanup_loop(pool: sqlx::PgPool) {
     loop {
         match crate::db::sessions::delete_stale(&pool).await {
@@ -112,8 +100,6 @@ pub async fn cleanup_loop(pool: sqlx::PgPool) {
     }
 }
 
-/// A per-deployment pepper, generated at startup.
-///
 /// Used to derive decoy values that must look real but must not be computable by anyone reading
 /// this source (see `auth::decoy_salt`). It lives in memory only: it protects nothing that
 /// survives a restart, so there is nothing to persist.

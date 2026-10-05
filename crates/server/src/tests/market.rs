@@ -1,22 +1,11 @@
-//! M1.5 / M2.5 — the marketplace foundation and the negotiation on top of it.
-//!
-//! Everything here is a unit test over the pure halves of M1 and M2: the `[market]` validator, the
-//! `?scope=` union rule, the slug/label rules the admin editor enforces, the audit payload, every
-//! market filter on `/api/posts`, and — for M2 — the offer body contract, the currency precedence
-//! rule, the deal-transition matrix and the append-only guarantee. That split is deliberate: a
-//! test that needs a live Postgres does not run under `cargo test --workspace`, so the behaviour
-//! that needs a database (the actual 403, the actual `audit_events` row, the actual `posts.sold_at`
-//! after a completed deal) belongs to the card's runtime curl gate, and what belongs here is the
-//! logic those responses are computed from.
+//! Pure-unit tests over the marketplace and negotiation logic; anything needing live Postgres
+//! belongs to the runtime gate.
 
-/// M1.1 — `[market] default_currency`.
 #[cfg(test)]
 mod market_config_tests {
     use crate::config::{is_currency_code, Config};
 
-    /// SPEC B7: unset by default. There is no currency that is right for a server that has not
-    /// chosen one, and inventing a plausible-looking `USD` would price every listing on a node in
-    /// a unit nobody picked — while looking, from the outside, exactly like a deliberate choice.
+    /// A guessed default is indistinguishable from a configured one, so the default is unset.
     #[test]
     fn default_currency_is_unset_by_default() {
         let config: Config = toml::from_str("").expect("parse empty config");
@@ -40,8 +29,7 @@ mod market_config_tests {
         }
     }
 
-    /// The card's four rejects plus two more of the same shape. The message has to name the key
-    /// and echo the value, because the operator's next move is to find that line in a TOML file.
+    /// The 400 must name the key and echo the value so the operator can find the TOML line.
     #[test]
     fn a_malformed_default_currency_refuses_to_start_and_names_the_key_and_the_value() {
         for bad in ["usd", "US", "USDD", "", "U5D", "us d"] {
@@ -65,7 +53,6 @@ mod market_config_tests {
         }
     }
 
-    /// SPEC B7, the precedence that the whole key exists to express.
     #[test]
     fn a_listings_own_currency_always_wins_over_the_server_default() {
         let configured: Config =
@@ -93,22 +80,18 @@ mod market_config_tests {
         );
     }
 
-    /// The Rust rule and `chk_posts_currency` (`currency ~ '^[A-Z]{3}$'`) have to agree, or the
-    /// server accepts values the database then rejects as a 500 on somebody's listing.
+    /// Must agree with `chk_posts_currency`, or accepted values fail as a 500 on insert.
     #[test]
     fn the_currency_rule_is_the_one_the_database_enforces() {
         for good in ["USD", "EUR", "XOF", "AAA"] {
             assert!(is_currency_code(good), "{good:?} must be accepted");
         }
-        // Lowercase, too short, too long, empty, a digit, punctuation, and a multi-byte
-        // character that happens to be three chars but not three bytes.
         for bad in ["usd", "US", "USDD", "", "U5D", "US$", "\u{20ac}UR"] {
             assert!(!is_currency_code(bad), "{bad:?} must be rejected");
         }
     }
 }
 
-/// M1.2 / M1.3 — the categories API: scope semantics, the slug contract, the audit payload.
 #[cfg(test)]
 mod categories_tests {
     use uuid::Uuid;
@@ -123,9 +106,7 @@ mod categories_tests {
 
     const SCHEMA: &str = include_str!("../../../../migrations/001_schema.sql");
 
-    /// `(slug, scope)` for every seeded category, read out of the migration rather than copied
-    /// into this file. Re-scoping a category is a one-line `UPDATE` to the seed (SPEC 1.6), and
-    /// this test should follow it rather than have to be edited alongside it.
+    /// Read out of the migration, so a re-scoped seed is followed rather than duplicated here.
     fn seeded_scopes() -> Vec<(String, CategoryScope)> {
         let start = SCHEMA
             .find("INSERT INTO categories")
@@ -137,8 +118,7 @@ mod categories_tests {
             .lines()
             .filter(|line| line.trim_start().starts_with('('))
             .map(|line| {
-                // Each row is `('slug', 'Label', 'scope', N),` and no seeded label contains an
-                // apostrophe, so the odd-indexed pieces of a split on `'` are the three values.
+                // No seeded label contains an apostrophe, so splitting on `'` yields the fields.
                 let fields: Vec<&str> = line.split('\'').skip(1).step_by(2).collect();
                 assert_eq!(fields.len(), 3, "unexpected seed row: {line}");
                 let scope = CategoryScope::parse(fields[2])
@@ -148,8 +128,7 @@ mod categories_tests {
             .collect()
     }
 
-    /// The union rule `?scope=` implements, mirroring the SQL predicate in
-    /// `db::categories::list`: `scope = $1 OR scope = 'both'`. Keep the two identical.
+    /// Must mirror the SQL predicate `scope = $1 OR scope = 'both'` in `db::categories::list`.
     fn scope_includes(requested: CategoryScope, row: CategoryScope) -> bool {
         row == requested || row == CategoryScope::Both
     }
@@ -190,8 +169,7 @@ mod categories_tests {
         }
     }
 
-    /// The whole point of the `scope` column: `market` is not an equality test. A `both` category
-    /// like `services` has to reach the market form, or half the taxonomy is unreachable from it.
+    /// `market` is a union with `both`, not an equality: a `both` category must reach it.
     #[test]
     fn scope_market_is_a_union_with_both_not_an_equality() {
         assert_eq!(seeded_scopes().len(), 23, "SPEC 1.6 seeds 23 categories");
@@ -238,7 +216,6 @@ mod categories_tests {
         );
     }
 
-    /// `scope=both` narrows to the shared rows, which falls straight out of the same rule.
     #[test]
     fn scope_both_narrows_to_the_shared_rows() {
         let both = slugs_for(CategoryScope::Both);
@@ -262,8 +239,7 @@ mod categories_tests {
         }
     }
 
-    /// `?scope=nope` answering `200 []` would be indistinguishable from a server with no
-    /// categories, and would leave the caller with no way to find the typo.
+    /// A `200 []` would be indistinguishable from an empty taxonomy and hide the typo.
     #[test]
     fn an_unknown_scope_is_rejected_and_the_message_lists_what_is_accepted() {
         let err = parse_scope(Some("nope")).expect_err("an unknown scope must not be accepted");
@@ -280,8 +256,7 @@ mod categories_tests {
         assert_eq!(accepted_scopes(), "aid, market, both");
     }
 
-    /// The message assertions above cannot see a status code; this pins the mapping every one of
-    /// those messages goes through on its way out of a handler.
+    /// Pins the 400 mapping every message above goes through on its way out of a handler.
     #[test]
     fn a_rejected_parameter_leaves_as_a_400() {
         use axum::response::IntoResponse;
@@ -290,9 +265,7 @@ mod categories_tests {
         assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
     }
 
-    /// M1.3 is admin **or** superadmin, which is exactly why the category routes carry their own
-    /// `require_admin` layer instead of being mounted on `api::admin`'s superadmin-only router.
-    /// This pins the predicate that middleware branches on; the 403 itself is the curl gate's.
+    /// The routes allow admin or superadmin, hence their own `require_admin` layer.
     #[test]
     fn only_admins_and_superadmins_may_edit_the_taxonomy() {
         for (role, allowed) in [
@@ -316,9 +289,7 @@ mod categories_tests {
         }
     }
 
-    /// `audit_events.subject_id` is a `UUID` column and a category is keyed by a TEXT slug, so
-    /// the subject column is always NULL for these two actions and the slug has to travel in
-    /// `detail`. A row that did not carry it would record that *something* changed and not what.
+    /// A slug cannot fit the UUID `subject_id`, so it has to travel in `detail`.
     #[test]
     fn a_category_audit_row_carries_the_slug_the_subject_column_cannot_hold() {
         let created = category(
@@ -354,9 +325,7 @@ mod categories_tests {
         assert_eq!(detail["to"]["label"], "Home Goods");
         assert_eq!(detail["from"]["active"], true);
         assert_eq!(detail["to"]["active"], false);
-        // SPEC 1.6: the FTS trigger indexes the label, so a rename has to re-run it for the
-        // category's posts. Recording the count is what makes a rename that skipped the reindex
-        // visible afterwards instead of showing up as posts nobody can find.
+        // The FTS trigger indexes the label, so the reindex count exposes a skipped rename.
         assert_eq!(detail["posts_reindexed"], 7);
     }
 
@@ -391,8 +360,7 @@ mod categories_tests {
         }
     }
 
-    /// The rule the admin editor applies to a new slug has to be one every existing slug already
-    /// satisfies, or the seeded taxonomy is something the editor could not have produced.
+    /// Every seeded slug must satisfy the editor's rule, or the seed could not have come from it.
     #[test]
     fn every_seeded_slug_passes_the_rule_the_admin_editor_enforces() {
         for (slug, _) in seeded_scopes() {
@@ -411,17 +379,9 @@ mod categories_tests {
     }
 }
 
-/// P1 — the `scope` in an admin **body**, not in a query string.
-///
-/// The defect these pin was only ever visible through axum's `Json` extractor: with the field
-/// typed `CategoryScope`, a bad value was rejected before any code in `api::categories` ran, so no
-/// pure function could be asked about it. That is why this module goes through a real router and a
-/// real request rather than calling a validator.
-///
-/// The pool here is deliberately unreachable. The 400 is decided before the first query, so the
-/// rejection is exact; the accepted body's **201** needs rows and a live Postgres and therefore
-/// belongs to the card's runtime gate — what is proved here is that a valid body is no longer
-/// stopped by any of this endpoint's own validation and goes on to the database.
+/// The `scope` in an admin body, not a query string. A real router and request are needed
+/// because the defect only appears through axum's `Json` extractor. The pool is deliberately
+/// unreachable: the 400 is decided before the first query.
 #[cfg(test)]
 mod category_body_scope_tests {
     use std::sync::Arc;
@@ -444,14 +404,12 @@ mod category_body_scope_tests {
     use crate::auth::AuthUser;
     use crate::{config::Config, rate_limit, sessions, AppState};
 
-    /// `create_category` mounted alone: no `require_admin`, because the guard is M1.3's and would
-    /// need the database this test does not have. The admin is injected as the extension the
-    /// middleware would have inserted.
+    /// `create_category` mounted without `require_admin`; the admin is injected as the middleware
+    /// would have.
     fn app() -> Router {
         let pool = PgPoolOptions::new()
             .max_connections(1)
-            // Port 1 refuses instantly; without a short deadline the pool would retry for the
-            // 30-second default before the handler could report anything.
+            // Port 1 refuses instantly; a short deadline avoids the 30-second default retry.
             .acquire_timeout(Duration::from_millis(300))
             .connect_lazy("postgres://komun:komun@127.0.0.1:1/komun_unreachable")
             .expect("a lazy pool does not connect");
@@ -497,8 +455,7 @@ mod category_body_scope_tests {
         (status, String::from_utf8_lossy(&bytes).into_owned())
     }
 
-    /// The card's case, both halves. `"nope"` must be this endpoint's own 400 naming the accepted
-    /// values — not axum's 422 in serde's words — and `"market"` must still be accepted.
+    /// A bad scope must be this endpoint's 400, not serde's 422; a valid one must still pass.
     #[tokio::test]
     async fn an_unknown_body_scope_is_a_400_naming_the_accepted_values() {
         let (status, body) = create(r#"{"slug":"polish-probe","label":"P","scope":"nope"}"#).await;
@@ -523,9 +480,7 @@ mod category_body_scope_tests {
             "serde's wording must not reach the caller, got: {body}"
         );
 
-        // The same call with a real scope clears every check this endpoint makes and reaches the
-        // database, which is unreachable here by construction. A 400 or a 422 would mean the fix
-        // had started refusing valid bodies; the card's runtime gate is where this turns into 201.
+        // A valid scope must fail only at the absent database, never on validation.
         let (status, body) =
             create(r#"{"slug":"polish-probe","label":"P","scope":"market"}"#).await;
         assert_eq!(
@@ -538,16 +493,11 @@ mod category_body_scope_tests {
             "a valid scope must not be mentioned in the failure at all, got: {body}"
         );
 
-        // And the value that reaches `db::categories::create` is the one that was asked for.
         assert_eq!(parse_body_scope("market"), Ok(CategoryScope::Market));
     }
 
-    /// A body that is not JSON, and one that is not there at all, stay a 400 — never a panic and
-    /// never a 500 reported as an incident.
-    ///
-    /// A body that *is* JSON but is the wrong shape (`[]`, or an object missing `slug`) is still
-    /// the extractor's 422, exactly as it was before P1 and as it is for every other `Json<T>`
-    /// body in this crate. P1 changed one thing only: a `scope` that is present and wrong.
+    /// Missing or malformed JSON stays a 400; a well-formed body of the wrong shape stays serde's
+    /// 422.
     #[tokio::test]
     async fn a_missing_or_malformed_body_is_a_400() {
         for body in ["", "   ", "{", "not json at all", r#"{"slug":"x","#] {
@@ -573,8 +523,7 @@ mod category_body_scope_tests {
         }
     }
 
-    /// The two halves of the endpoint family must not merely both answer 400 — they must say the
-    /// same sentence, which is why `parse_scope` delegates to `parse_body_scope`.
+    /// Both paths must refuse a bad scope in the same words.
     #[test]
     fn the_body_and_the_query_refuse_a_bad_scope_in_the_same_words() {
         use crate::api::categories::parse_scope;
@@ -584,8 +533,7 @@ mod category_body_scope_tests {
         assert_eq!(from_query, from_body);
         assert_eq!(accepted_scopes(), "aid, market, both");
 
-        // A body that names `scope` is naming one, so blank is a mistake rather than "no filter" —
-        // the one place the two paths are allowed to differ.
+        // A blank body scope is a mistake, unlike a blank query scope.
         assert!(
             parse_body_scope("  ").is_err(),
             "a blank body scope is not a scope"
@@ -599,7 +547,6 @@ mod category_body_scope_tests {
     }
 }
 
-/// M1.4 — the market filters on `GET /api/posts`.
 #[cfg(test)]
 mod post_filter_tests {
     use komun_core::models::{ItemCondition, PostKind, PostStatus};
@@ -673,8 +620,7 @@ mod post_filter_tests {
         );
     }
 
-    /// Shape only. A well-formed slug nobody has created yet is a legitimately empty result;
-    /// `Bikes & Vehicles` is a label pasted into a slug field and can never match anything.
+    /// Shape only: a well-formed slug may match nothing, a pasted label never will.
     #[test]
     fn the_category_filter_takes_a_slug_and_rejects_what_could_not_be_one() {
         let raw = PostFilters {
@@ -711,7 +657,6 @@ mod post_filter_tests {
         assert_eq!(filter.min_price_cents, Some(100));
         assert_eq!(filter.max_price_cents, Some(25_000));
 
-        // A decimal, a word, and a negative bound: none of them is a number of cents.
         let cases = [
             ("min_price_cents", "12.50"),
             ("min_price_cents", "cheap"),
@@ -739,8 +684,7 @@ mod post_filter_tests {
         }
     }
 
-    /// An inverted range can only ever match nothing, so `200 []` would be a true and useless
-    /// answer to what is plainly a mistake.
+    /// An inverted range matches nothing, so `200 []` would hide an obvious mistake.
     #[test]
     fn an_inverted_price_range_is_rejected_rather_than_answered_with_nothing() {
         let raw = PostFilters {
@@ -816,8 +760,7 @@ mod post_filter_tests {
         );
     }
 
-    /// `status` predates M1, but it is the same trap: a value the `CHECK` has never heard of used
-    /// to filter to nothing and answer `200 []`.
+    /// The same trap: an unknown value must not filter to an empty marketplace.
     #[test]
     fn the_status_filter_is_validated_too_so_a_typo_is_not_an_empty_marketplace() {
         let raw = PostFilters {
@@ -840,8 +783,7 @@ mod post_filter_tests {
         );
     }
 
-    /// Rejected rather than clamped: a caller that asks for 5,000 and is quietly handed 200 has
-    /// no way to know its pagination is wrong.
+    /// Rejected rather than clamped, so a caller cannot silently get the wrong page.
     #[test]
     fn limit_and_offset_are_bounded_and_named_when_they_are_not() {
         let raw = PostFilters {
@@ -890,7 +832,6 @@ mod post_filter_tests {
         );
     }
 
-    /// The query the market grid actually sends, all filters at once.
     #[test]
     fn a_market_view_can_ask_for_everything_it_needs_in_one_request() {
         let raw = PostFilters {
@@ -919,7 +860,6 @@ mod post_filter_tests {
     }
 }
 
-/// M2.5 — the negotiation and the deal lifecycle.
 #[cfg(test)]
 mod offer_tests {
     use uuid::Uuid;
@@ -950,12 +890,7 @@ mod offer_tests {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // M2.1 — who may post an offer, and on what
-    // -----------------------------------------------------------------------
-
-    /// The M2 decision the aid half of the product depends on: an aid conversation keeps its plain
-    /// propose/accept flow, and nothing about it invites a price.
+    /// An aid conversation keeps its plain propose/accept flow and refuses offers.
     #[test]
     fn offers_are_for_listings_and_wanted_ads_and_an_aid_thread_says_so() {
         for kind in [PostKind::Listing, PostKind::Want] {
@@ -969,8 +904,7 @@ mod offer_tests {
         }
     }
 
-    /// `PostKind::is_market` is the single source of that split, so a sixth kind added later lands
-    /// on one side of it by construction rather than by someone remembering this rule exists.
+    /// `PostKind::is_market` is the single source of the split, so a sixth kind lands on one side.
     #[test]
     fn every_kind_the_schema_allows_is_on_one_side_of_that_line() {
         for kind in PostKind::ALL {
@@ -982,8 +916,7 @@ mod offer_tests {
         }
     }
 
-    /// A non-participant is refused by the thread, not by the offer body — which is why the check
-    /// is one predicate over the two ids on the row and not a query per route.
+    /// Refused by the thread, not the body: one predicate over the two ids on the row.
     #[test]
     fn only_the_two_people_on_a_thread_are_participants() {
         let author = Uuid::now_v7();
@@ -1011,10 +944,6 @@ mod offer_tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // M2.1 — the offer body
-    // -----------------------------------------------------------------------
-
     #[test]
     fn every_kind_the_check_allows_is_accepted_and_nothing_else_is() {
         for kind in [OfferKind::Offer, OfferKind::Counter] {
@@ -1035,8 +964,7 @@ mod offer_tests {
             OfferKind::Decline
         );
 
-        // `bid` is the value SPEC A1's negative-insert list proves the database rejects; the API
-        // has to reject it first, with a message that says what the four steps are.
+        // The API must reject `bid` before the database constraint does.
         let err = validate_offer(&priced("bid", 100)).expect_err("'bid' is not an offer kind");
         for kind in OfferKind::ALL {
             assert!(
@@ -1066,8 +994,7 @@ mod offer_tests {
         }
     }
 
-    /// `offer`, `counter` and `accept` are all statements about a number; without one there is
-    /// nothing on the table and nothing for the other side to agree to.
+    /// `offer`, `counter` and `accept` state a number; without one there is nothing to agree to.
     #[test]
     fn the_three_kinds_that_carry_a_number_require_one() {
         for kind in [OfferKind::Offer, OfferKind::Counter, OfferKind::Accept] {
@@ -1084,8 +1011,7 @@ mod offer_tests {
         }
     }
 
-    /// A decline refuses the number already on the thread. A second copy of one under `decline`
-    /// would read as a counter to anybody rendering the trail.
+    /// A decline refuses the number already on the thread, so it carries none.
     #[test]
     fn a_decline_carries_no_amount() {
         let err = validate_offer(&priced("decline", 2000))
@@ -1103,8 +1029,7 @@ mod offer_tests {
         assert_eq!(valid.amount_cents, None);
     }
 
-    /// Zero is a real offer — "take it, it's free" — and `chk_match_offers_amount` allows it.
-    /// Negative is not, in either place.
+    /// Zero is a real offer; negative is refused here and by `chk_match_offers_amount`.
     #[test]
     fn an_amount_may_be_zero_but_never_negative() {
         assert_eq!(
@@ -1124,8 +1049,7 @@ mod offer_tests {
         }
     }
 
-    /// The same rule `chk_match_offers_currency` enforces, applied first so a bad code is a 400
-    /// rather than a constraint violation surfacing as a 500.
+    /// Same rule as `chk_match_offers_currency`, applied first so a bad code is a 400, not a 500.
     #[test]
     fn an_offers_own_currency_is_iso_4217_or_a_400() {
         let valid = validate_offer(&OfferRequest {
@@ -1151,8 +1075,7 @@ mod offer_tests {
             );
         }
 
-        // An untouched form field is not a currency the caller chose; it falls through to the
-        // precedence rule rather than being rejected.
+        // An untouched form field falls through to the precedence rule, not a rejection.
         let valid = validate_offer(&OfferRequest {
             currency: Some("  ".to_string()),
             ..priced("offer", 2500)
@@ -1208,8 +1131,7 @@ mod offer_tests {
         );
     }
 
-    /// Characters, not bytes. 500 Cyrillic characters are 1,000 bytes; a byte limit would cut a
-    /// note in half for half the world while the message still promised 500.
+    /// Characters, not bytes: a byte limit would cut a multi-byte note short.
     #[test]
     fn the_note_limit_counts_characters_not_bytes() {
         let cyrillic = "\u{434}".repeat(MAX_NOTE_CHARS);
@@ -1224,11 +1146,6 @@ mod offer_tests {
         .expect("500 characters is 500 characters in any script");
     }
 
-    // -----------------------------------------------------------------------
-    // M2 — currency precedence
-    // -----------------------------------------------------------------------
-
-    /// The offer's own, else the post's, else `[market] default_currency`.
     #[test]
     fn the_currency_precedence_is_offer_then_post_then_server_default() {
         assert_eq!(
@@ -1248,8 +1165,7 @@ mod offer_tests {
         );
     }
 
-    /// The fourth step does not exist. Inventing one would denominate somebody's deal in a unit
-    /// neither party named, and look from the outside exactly like a deliberate choice.
+    /// There is no fourth step: a guessed currency looks exactly like a deliberate choice.
     #[test]
     fn with_no_currency_anywhere_the_offer_is_refused_rather_than_priced_in_a_guess() {
         let err = resolve_offer_currency(None, None, None)
@@ -1264,12 +1180,7 @@ mod offer_tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // M2.3 / M2.4 — the deal lifecycle
-    // -----------------------------------------------------------------------
-
-    /// The happy walk the card describes, as a sequence of transitions rather than three
-    /// independent assertions: `proposed -> accepted -> completed`.
+    /// The happy walk as a sequence: `proposed -> accepted -> completed`.
     #[test]
     fn the_offer_counter_accept_complete_walk_is_legal_at_every_step() {
         check_accept_allowed(MatchStatus::Proposed).expect("a proposed thread may be accepted");
@@ -1277,8 +1188,7 @@ mod offer_tests {
         check_transition(MatchStatus::Accepted, MatchStatus::Completed).expect("complete");
     }
 
-    /// The whole matrix, so a transition nobody thought about is decided here rather than by
-    /// whichever `UPDATE` happens to run.
+    /// The whole matrix, so an unconsidered transition is decided here.
     #[test]
     fn the_transition_matrix_allows_exactly_five_moves() {
         use MatchStatus::*;
@@ -1305,8 +1215,7 @@ mod offer_tests {
         }
     }
 
-    /// Whatever the refusal says, it has to say what the thread is *now*: that is the one fact the
-    /// caller does not have, and without it a 409 tells them only that they were wrong.
+    /// A refusal must name the current status, the one fact the caller lacks.
     #[test]
     fn every_refusal_names_the_status_the_conversation_is_actually_in() {
         for from in MatchStatus::ALL {
@@ -1321,7 +1230,6 @@ mod offer_tests {
         }
     }
 
-    /// The two the card calls out by name.
     #[test]
     fn the_two_illegal_moves_the_card_names_are_409s_that_name_the_current_status() {
         let err = check_transition(MatchStatus::Proposed, MatchStatus::Completed)
@@ -1333,16 +1241,14 @@ mod offer_tests {
         assert!(err.contains("completed"), "got: {err}");
     }
 
-    /// Going back to `proposed` would leave `agreed_price_cents` and `currency` set on a thread
-    /// that no longer has an agreement — a price nobody agreed to, on a live negotiation.
+    /// Going back to `proposed` would leave an agreed price on a live negotiation.
     #[test]
     fn an_accepted_thread_cannot_be_walked_back_to_proposed() {
         check_transition(MatchStatus::Accepted, MatchStatus::Proposed)
             .expect_err("un-accepting must not be a status change");
     }
 
-    /// Withdraw stays open to either participant from either live state, and closes from neither
-    /// terminal one.
+    /// Withdraw is legal from either live state, never from a terminal one.
     #[test]
     fn withdraw_is_legal_while_a_deal_is_live_and_not_after_it_is_over() {
         check_transition(MatchStatus::Proposed, MatchStatus::Withdrawn).expect("from proposed");
@@ -1353,8 +1259,7 @@ mod offer_tests {
             .expect_err("withdrawing twice is a conflict, not a no-op");
     }
 
-    /// M2.3: accepting is a `proposed -> accepted` move, so a thread that is already accepted,
-    /// already completed, or withdrawn refuses it — and says which.
+    /// Accepting is only legal from `proposed`; anything else refuses and names itself.
     #[test]
     fn an_accept_is_refused_on_any_thread_that_is_no_longer_proposed() {
         check_accept_allowed(MatchStatus::Proposed).expect("the only state an accept is legal in");
@@ -1373,8 +1278,7 @@ mod offer_tests {
         }
     }
 
-    /// M2.3: the counterparty accepts. Accepting your own number is not an agreement, it is one
-    /// person writing both halves of the deal.
+    /// The counterparty accepts; accepting your own offer is one person writing both halves.
     #[test]
     fn you_cannot_accept_your_own_offer() {
         let me = Uuid::now_v7();
@@ -1390,18 +1294,13 @@ mod offer_tests {
         );
     }
 
-    /// An accept with nothing to accept is not an agreement either — and would otherwise write an
-    /// `agreed_price_cents` that one party picked unilaterally.
+    /// An accept with nothing to accept would write a price one party picked alone.
     #[test]
     fn an_accept_before_any_offer_is_refused() {
         let err = check_accept_actor(None, Uuid::now_v7())
             .expect_err("there is nothing to accept on an empty thread");
         assert_eq!(err, NOTHING_TO_ACCEPT);
     }
-
-    // -----------------------------------------------------------------------
-    // M2 — the status parameter, and the append-only guarantee
-    // -----------------------------------------------------------------------
 
     #[test]
     fn the_status_patch_takes_the_four_values_the_check_allows() {
@@ -1425,12 +1324,8 @@ mod offer_tests {
         }
     }
 
-    /// M2.1: "Rows are append-only: never update or delete one."
-    ///
-    /// The runtime gate proves the trail comes back in order with every step in it; what it cannot
-    /// prove is that no code path anywhere rewrites a row, because a path nobody exercised is a
-    /// path no curl reaches. This reads the only module that may touch the table and asserts the
-    /// two statements that would break the guarantee are not in it.
+    /// Rows are append-only: this reads the only module that may touch the table and asserts no
+    /// `UPDATE` or `DELETE` reaches it, which the runtime gate cannot prove.
     #[test]
     fn no_code_updates_or_deletes_an_offer_row() {
         const DB_CONVERSATIONS: &str = include_str!("../db/conversations.rs");
@@ -1456,8 +1351,7 @@ mod offer_tests {
         );
     }
 
-    /// The trail is read oldest-first with a deterministic tie-break, or "every step in order" is
-    /// only true of the runs where two rows did not land in the same microsecond.
+    /// Oldest-first with a deterministic tie-break, or ordering fails whenever rows tie.
     #[test]
     fn the_offer_list_is_ordered_oldest_first_and_breaks_ties_deterministically() {
         const DB_CONVERSATIONS: &str = include_str!("../db/conversations.rs");
@@ -1468,13 +1362,8 @@ mod offer_tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // M2 addendum — three P2s found while verifying M2 at runtime
-    // -----------------------------------------------------------------------
-
-    /// Addendum 2: a `decline` withdraws the thread, and a withdrawn thread still accepted a new
-    /// offer row. An offer appended after the end renders as a live number waiting for an answer
-    /// that can never come.
+    /// A withdrawn thread must not take a new offer: it would render as a live number with no
+    /// answer coming.
     #[test]
     fn a_thread_that_is_over_does_not_take_a_new_offer() {
         check_offer_allowed(MatchStatus::Proposed).expect("a live negotiation takes offers");
@@ -1495,8 +1384,7 @@ mod offer_tests {
         }
     }
 
-    /// The two rules are deliberately different and must stay that way: `accepted` is a legal
-    /// place to counter from, and not a legal place to accept from.
+    /// `accepted` is a legal place to counter from and not to accept from.
     #[test]
     fn appending_an_offer_and_accepting_one_are_allowed_in_different_states() {
         check_offer_allowed(MatchStatus::Accepted).expect("countering an accepted deal is legal");
@@ -1504,13 +1392,8 @@ mod offer_tests {
             .expect_err("accepting twice is not, or the agreed price is rewritten");
     }
 
-    /// Addendum 1: an outsider reading a thread got a **500** carrying "conversation not found",
-    /// because the query folded "no such thread" and "not your thread" into one error, while
-    /// `.../offers` answered the same person a correct 403.
-    ///
-    /// The guard is one shared function (`participant_thread`) and it needs a database to run, so
-    /// what is pinned here is that the read goes through it at all — the status codes themselves
-    /// are the card's runtime gate.
+    /// The read must go through `participant_thread`, the same guard the offer routes use, or an
+    /// outsider gets a 500 instead of a 403.
     #[test]
     fn the_thread_read_refuses_an_outsider_through_the_same_guard_the_offer_routes_use() {
         const API_CONVERSATIONS: &str = include_str!("../api/conversations.rs");
@@ -1530,10 +1413,7 @@ mod offer_tests {
         );
     }
 
-    /// Addendum 3: two matches on one listing could each be accepted and each be completed, and
-    /// the second completion rewrote `posts.sold_at` and `posts.buyer_id` — so the listing
-    /// recorded the wrong buyer and the first buyer's completed deal pointed at a sale that was
-    /// no longer theirs.
+    /// Only the first completion may sell a listing, or the recorded buyer is overwritten.
     #[test]
     fn only_the_first_completion_sells_a_listing() {
         const DB_CONVERSATIONS: &str = include_str!("../db/conversations.rs");
@@ -1550,12 +1430,8 @@ mod offer_tests {
     }
 }
 
-/// M3.5 — trust: star ratings and written reviews.
-///
-/// The same split as M1 and M2 above. What is pinned here is every rule a review passes through
-/// that does not need a database — the rating range, the body bounds, the completed-deal
-/// requirement, who the reviewee is, the pagination convention — and the card's runtime curl gate
-/// proves the status codes and the aggregate arithmetic those rules produce against real rows.
+/// Pure-unit tests over review rules; the status codes and aggregate arithmetic belong to the
+/// runtime gate.
 #[cfg(test)]
 mod review_tests {
     use uuid::Uuid;
@@ -1583,11 +1459,6 @@ mod review_tests {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // M3.1 — the review body
-    // -----------------------------------------------------------------------
-
-    /// The happy path: every star the `CHECK` allows is accepted, with or without a written note.
     #[test]
     fn every_rating_the_check_allows_is_accepted() {
         for stars in MIN_RATING..=MAX_RATING {
@@ -1606,8 +1477,7 @@ mod review_tests {
         assert_eq!(valid.body.as_deref(), Some("Smooth pickup"));
     }
 
-    /// The card's two: `0` and `6`. Both are 400s here rather than constraint violations arriving
-    /// as 500s from `chk_deal_reviews_rating`.
+    /// `0` and `6` are 400s here, not constraint violations arriving as 500s.
     #[test]
     fn a_rating_outside_the_star_range_is_a_400_that_states_the_range() {
         for stars in [0, 6, -1, 100, i64::MIN, i64::MAX] {
@@ -1628,9 +1498,8 @@ mod review_tests {
         }
     }
 
-    /// A rating is a whole number of stars. `4.5` and `"5"` are both things a client sends, and
-    /// both have to be a 400 naming the field — which is why the field arrives as a
-    /// `serde_json::Value` rather than as an `i16` that serde would reject with a 422.
+    /// A rating is a whole star count, so it arrives as `serde_json::Value` to yield a 400
+    /// rather than serde's 422.
     #[test]
     fn a_rating_that_is_not_a_whole_number_is_a_400_rather_than_a_422() {
         for not_a_rating in [
@@ -1718,7 +1587,7 @@ mod review_tests {
         );
     }
 
-    /// Characters, not bytes — the same rule an offer note counts by.
+    /// Characters, not bytes.
     #[test]
     fn the_body_limit_counts_characters_not_bytes() {
         let cyrillic = "\u{434}".repeat(MAX_BODY_CHARS);
@@ -1733,8 +1602,7 @@ mod review_tests {
         .expect("2,000 characters is 2,000 characters in any script");
     }
 
-    /// The message assertions above cannot see a status code; this pins the mapping every one of
-    /// them goes through on the way out of the handler.
+    /// Pins the 400 mapping every message above goes through.
     #[test]
     fn a_rejected_review_body_leaves_as_a_400() {
         use axum::response::IntoResponse;
@@ -1744,13 +1612,7 @@ mod review_tests {
         assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
     }
 
-    // -----------------------------------------------------------------------
-    // M3.1 — who may review, whom, and when
-    // -----------------------------------------------------------------------
-
-    /// SPEC B4: "writable only against a completed deal". The card's example message is pinned
-    /// verbatim, because naming the status is the whole difference between a 409 a client can act
-    /// on and one that only says they were wrong.
+    /// Only a completed deal is reviewable; the 409 names the current status.
     #[test]
     fn a_review_is_only_writable_against_a_completed_deal() {
         check_reviewable(MatchStatus::Completed).expect("a completed deal is reviewable");
@@ -1779,8 +1641,7 @@ mod review_tests {
         }
     }
 
-    /// Every status the `CHECK` allows is on one side of that line, so a fifth one added later is
-    /// decided here rather than by whichever branch happens to run.
+    /// Every status falls on one side, so a fifth is decided here.
     #[test]
     fn exactly_one_status_is_reviewable() {
         for status in MatchStatus::ALL {
@@ -1792,10 +1653,7 @@ mod review_tests {
         }
     }
 
-    /// M3.1: the reviewee is the OTHER participant, never a field the client supplies — a
-    /// completed deal would otherwise be a licence to attach a one-star review to a stranger.
-    /// `None` is the 403, so the non-participant check and the reviewee lookup are one step and
-    /// cannot disagree.
+    /// The reviewee is the other participant, never client-supplied; `None` is the 403.
     #[test]
     fn the_reviewee_is_the_other_participant_and_a_stranger_has_none() {
         let author = Uuid::now_v7();
@@ -1826,14 +1684,8 @@ mod review_tests {
         );
     }
 
-    /// M3.2 — an unverified account cannot review.
-    ///
-    /// The rule is not re-implemented in this module: `require_auth` already refuses every
-    /// mutating method from an unverified account (SPEC Part 1.5), which is what makes reviewing
-    /// obey the same rule as posting, responding and messaging instead of a fourth copy of it
-    /// that can drift. What is pinned here is that the write route is behind that middleware and
-    /// not behind `require_session`, which authenticates without demanding verification; the 403
-    /// itself is the card's runtime gate.
+    /// An unverified account cannot review: the write route goes through `require_auth`, not
+    /// `require_session`, which authenticates without demanding verification.
     #[test]
     fn writing_a_review_goes_through_the_middleware_that_refuses_unverified_accounts() {
         assert!(
@@ -1851,9 +1703,7 @@ mod review_tests {
         );
     }
 
-    /// M3.1: one review per (match, reviewer), and the constraint that enforces it has to arrive
-    /// as a 409. An unmapped `23505` leaves as an anyhow error and is reported to the reviewer as
-    /// "internal error" — which reads as a server fault rather than as "you already did this".
+    /// One review per (match, reviewer); the `23505` must map to a 409, not an "internal error".
     #[test]
     fn a_duplicate_review_is_mapped_from_the_constraint_to_a_conflict() {
         assert_eq!(ALREADY_REVIEWED, "you have already reviewed this deal");
@@ -1872,9 +1722,7 @@ mod review_tests {
         );
     }
 
-    /// Reviews are a record, not a draft: there is no path that rewrites or removes one, for the
-    /// same reason `match_offers` is append-only. A rating somebody can edit after the fact is not
-    /// a rating anyone else can rely on.
+    /// Reviews are a record: no path may rewrite or remove one.
     #[test]
     fn no_code_updates_or_deletes_a_review_row() {
         let statements: Vec<&str> = DB_REVIEWS
@@ -1898,12 +1746,7 @@ mod review_tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // M3.3 — the public list
-    // -----------------------------------------------------------------------
-
-    /// The same limit/offset convention `GET /api/posts` uses, over the same two constants: a
-    /// client that has learned one list endpoint has learned this one.
+    /// The same limit/offset convention and constants as `GET /api/posts`.
     #[test]
     fn the_review_list_paginates_the_way_every_other_list_endpoint_does() {
         assert_eq!(
@@ -1942,8 +1785,7 @@ mod review_tests {
         );
     }
 
-    /// Rejected rather than clamped, for the reason `GET /api/posts` gives: a caller handed 200
-    /// when it asked for 5,000 has no way to know its pagination is wrong.
+    /// Rejected rather than clamped, so a caller cannot silently get the wrong page.
     #[test]
     fn a_bad_page_names_the_parameter_it_refuses() {
         for bad in [
@@ -1974,8 +1816,7 @@ mod review_tests {
         );
     }
 
-    /// M3.3: newest first, attributed, with a deterministic tie-break — without which a row can
-    /// appear on two pages or on none when two reviews land in the same microsecond.
+    /// Newest first with a deterministic tie-break, or a row can land on two pages or none.
     #[test]
     fn reviews_come_back_newest_first_and_carry_who_wrote_them() {
         assert!(
@@ -1992,16 +1833,8 @@ mod review_tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // M3.4 — the aggregate on the profile
-    // -----------------------------------------------------------------------
-
-    /// The aggregate is computed from the rows on every read. A counter column would be a second
-    /// answer to the same question whose only distinguishing ability is to disagree with the
-    /// first — and the schema is frozen, so there is nowhere to put one anyway.
-    ///
-    /// The arithmetic itself (5 and 4 → 4.5 over 2 reviews; `null`/0 for a user with none) is the
-    /// card's runtime gate, against real rows in a real database.
+    /// The aggregate is computed from the review rows on every read; `users` carries no counter
+    /// column.
     #[test]
     fn the_profile_aggregate_is_computed_from_the_reviews_not_from_a_counter() {
         assert!(
@@ -2017,7 +1850,6 @@ mod review_tests {
             "the count must come from the same rows as the mean"
         );
 
-        // No denormalised counter, and no schema change: `users` carries neither column.
         let users_table = SCHEMA
             .split("CREATE TABLE users")
             .nth(1)
@@ -2031,9 +1863,7 @@ mod review_tests {
         }
     }
 
-    /// `null` and `0.0` are different facts: one is "no deals reviewed yet", the other is a
-    /// rating no star range can produce. A new trader must not be indistinguishable from a
-    /// rated-zero one, which is what an `AVG` coalesced to zero would make them.
+    /// `null` and `0.0` differ: an unreviewed user must not read as rated zero.
     #[test]
     fn an_unreviewed_user_has_no_average_rather_than_an_average_of_zero() {
         assert!(
@@ -2045,7 +1875,6 @@ mod review_tests {
             "a count, unlike a mean, does have a right answer when there are no rows: 0"
         );
 
-        // The field is an Option, so `None` serialises as JSON `null` rather than as 0.
         assert!(
             DB_USERS.contains("pub rating_avg: Option<f64>"),
             "rating_avg must be nullable all the way out to the JSON"
@@ -2056,8 +1885,7 @@ mod review_tests {
         );
     }
 
-    /// A tiny helper so every negative case above reads the same way and none of them can pass by
-    /// accidentally succeeding.
+    /// Helper so every negative case fails loudly rather than passing by accident.
     trait UnwrapErrOrPanic {
         fn unwrap_err_or_panic(self, what: &str) -> String;
     }

@@ -117,15 +117,15 @@ What does the writing role hold, and what may it never run or delete?
 
 Which MCP server operations may the implementer call?
 
-- Grant `mcp__coursetools__file_read`, `mcp__coursetools__file_write` and `mcp__coursetools__codebase_search` (`.claude/agents/implementer.md:10-12` `- mcp__coursetools__file_write`).
-- Grant `mcp__storage__read_entry`, `mcp__storage__list_entries`, `mcp__storage__write_entry` and `mcp__storage__update_entry` (`.claude/agents/implementer.md:13-16` `- mcp__storage__update_entry`).
+- Grant `mcp__coursetools__file_read`, `mcp__coursetools__file_write` and `mcp__coursetools__codebase_search` (`.claude/agents/implementer.md:11-12` `- mcp__coursetools__file_write`).
+- Grant `mcp__storage__read_entry`, `mcp__storage__list_entries`, `mcp__storage__write_entry` and `mcp__storage__update_entry` (`.claude/agents/implementer.md:16-16` `- mcp__storage__update_entry`).
 - Grant `mcp__retrieval__retrieve` at the `internal` ceiling (`.claude/agents/implementer.md:17` `- mcp__retrieval__retrieve`).
 - Grant `mcp__gate__run_fix` on this role alone (`.claude/agents/implementer.md:18` `- mcp__gate__run_fix`) — it runs a write-mode command by name, and the vocabulary holds one such name, `fmt-fix`.
 - Scope `mcp__storage__update_entry` to the entries this role wrote (`docs/routing-and-tool-grant-map.md:72` `the only role that revises a record it wrote`).
-- Deny `mcp__coursetools__shell` (`.claude/agents/implementer.md:83` `no build or migration runs from the writing role`) — the writing role executes nothing.
-- Deny `mcp__coursetools__test_runner` (`.claude/agents/implementer.md:84` `a self-run gate is not independent evidence`) — this denial answers `NM-1`, where a gate that never ran held no evidence.
-- Deny `mcp__coursetools__task_tracker` (`.claude/agents/implementer.md:85` `ticket state belongs to the project manager`).
-- Deny `mcp__storage__delete_entry` (`.claude/agents/implementer.md:86` `records are never removed`) — a superseded decision stays readable.
+- Deny `mcp__coursetools__shell` (`.claude/agents/implementer.md:89` `no build or migration runs from the writing role`) — the writing role executes nothing.
+- Deny `mcp__coursetools__test_runner` (`.claude/agents/implementer.md:90` `a self-run gate is not independent evidence`) — this denial answers `NM-1`, where a gate that never ran held no evidence.
+- Deny `mcp__coursetools__task_tracker` (`.claude/agents/implementer.md:91` `ticket state belongs to the project manager`).
+- Deny `mcp__storage__delete_entry` (`.claude/agents/implementer.md:92` `records are never removed`) — a superseded decision stays readable.
 - Deny `mcp__coursetools__web_search` (`docs/routing-and-tool-grant-map.md:69` `Hold mcp__coursetools__web_search on the Researcher alone`) — the writing role holds no network tool.
 - Deny `mcp__gate__run_gate` (`.claude/agents/implementer.md:24` `- mcp__gate__run_gate`) — the check surface stays the tester's, so the role that writes a fix never runs the gate that judges it.
 
@@ -141,20 +141,20 @@ Which skill may the implementer activate, and when?
 
 What classification may the implementer read and write?
 
-- Cap retrieval at `internal` (`.claude/agents/implementer.md:82` `the pinned internal ceiling`).
-- Write entries at `public` or `internal` (`.claude/agents/implementer.md:63` `The storage server accepts public and internal writes only`).
-- Deny `confidential` and `secret` content to the role (`.claude/agents/implementer.md:80` `the server rejects confidential and secret`) — this denial answers `NM-5`.
+- Cap retrieval at `internal` (`.claude/agents/implementer.md:87` `the pinned internal ceiling`).
+- Write entries at `public` or `internal` (`.claude/agents/implementer.md:68` `The storage server accepts public and internal writes only`).
+- Deny `confidential` and `secret` content to the role (`.claude/agents/implementer.md:85` `the server rejects confidential and secret`) — this denial answers `NM-5`.
 - Deny any credential or message plaintext in a written file (`docs/memory-architecture.md:151` `Must never appear in any memory file.`).
 
 ### Autonomy level
 
 How far does the implementer act before a human decides?
 
-- Hold `medium` autonomy (`.claude/agents/implementer.md:23` `autonomy: medium`).
-- Act on the approved plan without a further human checkpoint (`.claude/agents/implementer.md:33` `acts on an approved plan without a further human checkpoint`).
-- Return each change for independent test instead of clearing it (`.claude/agents/implementer.md:69` `state plainly that the implementer ran none of them`).
+- Hold `medium` autonomy (`.claude/agents/implementer.md:25` `autonomy: medium`).
+- Act on the approved plan without a further human checkpoint (`.claude/agents/implementer.md:35` `acts on an approved plan without a further human checkpoint`).
+- Return each change for independent test instead of clearing it (`.claude/agents/implementer.md:74` `state plainly that the implementer ran none of them`).
 
-**Container permissions** — the launcher mounts this repository read-write at `/workspace` for this role (`scripts/run-agent.sh:163` `MOUNTS+=(-v "$REPO:/workspace")`), and mounts `/workspace/.memory` read-write for its entry writes (`scripts/run-agent.sh:168` `MOUNTS+=(-v "$REPO/.memory:/workspace/.memory")`). This role writes the files the plan names under `/workspace`, and it writes and revises its own entries in `/workspace/.memory` (`.claude/agents/implementer.md:86` `records are never removed`). The read-only `.memory/knowledge` and `.memory/reference` layers refuse this role's writes (`docs/memory-architecture.md:160` `denies any write to the read-only layers`).
+**Container permissions** — the launcher mounts this repository read-write at `/workspace` for this role (`scripts/run-agent.sh:163` `MOUNTS+=(-v "$REPO:/workspace")`), and mounts `/workspace/.memory` read-write for its entry writes (`scripts/run-agent.sh:168` `MOUNTS+=(-v "$REPO/.memory:/workspace/.memory")`). This role writes the files the plan names under `/workspace`, and it writes and revises its own entries in `/workspace/.memory` (`.claude/agents/implementer.md:92` `records are never removed`). The read-only `.memory/knowledge` and `.memory/reference` layers refuse this role's writes (`docs/memory-architecture.md:160` `denies any write to the read-only layers`).
 
 ## Role 4 — `tester`
 
@@ -168,7 +168,7 @@ Which MCP server operations may the tester call?
 - Grant `mcp__gate__run_gate`, `mcp__gate__list_gates` and `mcp__gate__read_audit_log` (`.claude/agents/tester.md:12-14` `- mcp__gate__run_gate`) — this grant answers `NM-1`, where an inert tool blocked every gate.
 - Grant `mcp__storage__read_entry`, `mcp__storage__list_entries` and `mcp__storage__write_entry` (`.claude/agents/tester.md:15-17` `- mcp__storage__write_entry`).
 - Resolve the tester-runner conflict by fixing the map: `docs/routing-and-tool-grant-map.md:18` now grants `mcp__gate__run_gate` and denies `mcp__coursetools__test_runner`. The stub is `the course's deliberately inert stub` (`docs/iteration-log.md:383-384`), and this grant answers `NM-1`.
-- Deny every command string and extra argument through the gate server (`mcp/gate/server.py:123` `it accepts no command string, no extra arguments`) — a refused call runs nothing. The vocabulary holds eight commands: the seven check-mode names `test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck` and `webtest`, and one write-mode name, `fmt-fix`.
+- Deny every command string and extra argument through the gate server (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments`) — a refused call runs nothing. The vocabulary holds eight commands: the seven check-mode names `test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck` and `webtest`, and one write-mode name, `fmt-fix`.
 - Deny `mcp__coursetools__file_write` (`docs/routing-and-tool-grant-map.md:18` `a verifying role repairs nothing it finds`).
 - Deny `mcp__coursetools__shell` and `mcp__coursetools__task_tracker` (`docs/routing-and-tool-grant-map.md:18` `a result is a new record`).
 - Deny `mcp__retrieval__retrieve` (`docs/routing-and-tool-grant-map.md:60` `it works from the supplied acceptance criteria`).
@@ -212,14 +212,14 @@ What does the reviewing role hold, and what may it never fix?
 
 Which MCP server operations may the reviewer call?
 
-- Grant `mcp__coursetools__file_read` and `mcp__coursetools__codebase_search` (`.claude/agents/reviewer.md:10-11` `- mcp__coursetools__codebase_search`).
-- Grant `mcp__storage__read_entry`, `mcp__storage__list_entries` and `mcp__storage__write_entry` (`.claude/agents/reviewer.md:12-14` `- mcp__storage__write_entry`).
+- Grant `mcp__coursetools__file_read` and `mcp__coursetools__codebase_search` (`.claude/agents/reviewer.md:11-11` `- mcp__coursetools__codebase_search`).
+- Grant `mcp__storage__read_entry`, `mcp__storage__list_entries` and `mcp__storage__write_entry` (`.claude/agents/reviewer.md:14-14` `- mcp__storage__write_entry`).
 - Grant `mcp__retrieval__retrieve` at the `internal` ceiling (`.claude/agents/reviewer.md:15` `- mcp__retrieval__retrieve`) — the verdict half keeps this read, and the converted conformance step holds no MCP grant (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`).
-- Deny `mcp__coursetools__file_write` (`.claude/agents/reviewer.md:92` `the reviewer edits nothing it reviews`) — this denial answers `NM-4`, where an approval shared the author of the verdict it approved.
+- Deny `mcp__coursetools__file_write` (`.claude/agents/reviewer.md:94` `the reviewer edits nothing it reviews`) — this denial answers `NM-4`, where an approval shared the author of the verdict it approved.
 - Deny `mcp__coursetools__shell` and `mcp__coursetools__test_runner` (`.claude/agents/reviewer.md:93-94` `a re-run by the reviewer would overwrite the recorded evidence`) — this denial answers `NM-7`, where an unrun gate was closed unevidenced.
 - Resolve the reviewer gate-tool conflict by fixing the definition: `.claude/agents/reviewer.md:16-17` now grants `mcp__gate__list_gates` and `mcp__gate__read_audit_log`, which `docs/routing-and-tool-grant-map.json:46` `"mcp__gate__list_gates"` already granted, and `.claude/agents/reviewer.md:25` keeps `mcp__gate__run_gate` denied.
-- Deny `mcp__coursetools__task_tracker` (`.claude/agents/reviewer.md:95` `ticket state belongs to the project manager`).
-- Deny `mcp__storage__update_entry` and `mcp__storage__delete_entry` (`.claude/agents/reviewer.md:96-97` `a review is a new record`).
+- Deny `mcp__coursetools__task_tracker` (`.claude/agents/reviewer.md:97` `ticket state belongs to the project manager`).
+- Deny `mcp__storage__update_entry` and `mcp__storage__delete_entry` (`.claude/agents/reviewer.md:98-97` `a review is a new record`).
 - Deny `mcp__coursetools__web_search` (`docs/routing-and-tool-grant-map.md:69` `Hold mcp__coursetools__web_search on the Researcher alone`) — the review rests on this repository's own standards.
 
 ### Skill activation scope
@@ -229,14 +229,14 @@ Which skill may the reviewer activate, and when?
 - Permit `summarize-session` at the review boundary (`.claude/skills/summarize-session/SKILL.md:6-7` `when the context window is filling`).
 - Deny every other skill, because the repository ships two skill files (`find .claude/skills -name SKILL.md` -> `2`).
 - Hand no part of the review to another agent (`.claude/agents/reviewer.md:40` `hands no part of the review to another agent`).
-- Apply the documentation standard from this role rather than delegating it (`.claude/agents/reviewer.md:47` `v2 is the current rule set`); its prose and citation half is converted and runs as `scripts/validate_doc_conformance_deterministic.py` (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`).
+- Apply the documentation standard from this role rather than delegating it (`.claude/agents/reviewer.md:48` `v2 is the current rule set`); its prose and citation half is converted and runs as `scripts/validate_doc_conformance_deterministic.py` (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`).
 
 ### Data classification ceiling
 
 What classification may the reviewer read?
 
 - Cap retrieval at `internal` (`.claude/agents/reviewer.md:88` `the pinned internal ceiling`).
-- Write the review entry at `classification: "internal"` (`.claude/agents/reviewer.md:72` `classification: "internal"`).
+- Write the review entry at `classification: "internal"` (`.claude/agents/reviewer.md:74` `classification: "internal"`).
 - Deny `confidential` and `secret` content to the role (`docs/routing-and-tool-grant-map.md:89` `the ceiling stays at internal`) — this denial answers `NM-5`.
 - Flag a claim the review cannot settle instead of asserting it (`.claude/agents/reviewer.md:55-56` `Do not delete the claim, and do not invent authority for it.`).
 
@@ -248,7 +248,7 @@ How far does the reviewer act before a human decides?
 - Report findings, and act on none of them (`.claude/agents/reviewer.md:36-37` `it never merges, fixes or re-runs anything itself`).
 - Leave the release decision at the human checkpoint (`.claude/agents/reviewer.md:76-77` `name the human release-approval checkpoint as the decision's owner`).
 
-**Container permissions** — the launcher mounts this repository read-only at `/workspace` for this role (`scripts/run-agent.sh:165` `MOUNTS+=(-v "$REPO:/workspace:ro")`), and mounts `/workspace/.memory` read-write so the granted entry write lands (`scripts/run-agent.sh:168` `MOUNTS+=(-v "$REPO/.memory:/workspace/.memory")`). This role reads `/workspace`, writes no file there, and writes one review entry into `/workspace/.memory` (`.claude/agents/reviewer.md:92` `the reviewer edits nothing it reviews`). The read-only `.memory/knowledge` and `.memory/reference` layers refuse this role's writes (`docs/memory-architecture.md:160` `denies any write to the read-only layers`).
+**Container permissions** — the launcher mounts this repository read-only at `/workspace` for this role (`scripts/run-agent.sh:165` `MOUNTS+=(-v "$REPO:/workspace:ro")`), and mounts `/workspace/.memory` read-write so the granted entry write lands (`scripts/run-agent.sh:168` `MOUNTS+=(-v "$REPO/.memory:/workspace/.memory")`). This role reads `/workspace`, writes no file there, and writes one review entry into `/workspace/.memory` (`.claude/agents/reviewer.md:94` `the reviewer edits nothing it reviews`). The read-only `.memory/knowledge` and `.memory/reference` layers refuse this role's writes (`docs/memory-architecture.md:160` `denies any write to the read-only layers`).
 
 ## Role 6 — `project-manager`
 

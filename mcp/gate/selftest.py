@@ -4,7 +4,7 @@
 Calls the running server over streamable HTTP and asserts the behaviours the server claims: the tool
 surface, the eight-command allowlist and the mode published for each, refusal of a free-form command,
 a passthrough and a shell-injection string on three of the seven check-mode names, refusal in both
-directions across the mode boundary, the clippy cache-hit guard, real exit codes from the three Rust
+directions across the mode boundary, the clippy cache-hit guard (the test guard is not asserted here), real exit codes from the three Rust
 gates, and one audit-journal line per executed invocation. Every check prints PASS or FAIL with its
 evidence; any FAIL makes the process exit non-zero, and the output is the record of a real run.
 
@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -30,6 +31,13 @@ from typing import Any
 
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+
+# This self-test acts as the Tester, and the gate server binds the caller's role to the container's
+# own ``AGENT_ROLE`` (``scripts/run-agent.sh:259`` sets it). A container whose environment names a
+# different role would make the ``calling_role`` below disagree with the server and be refused, so
+# this process declares the role it is acting as: for an in-process server, or one co-launched from
+# this environment, the two then agree.
+os.environ["AGENT_ROLE"] = "tester"
 
 DEFAULT_URL = "http://localhost:8003/mcp"
 DEFAULT_AUDIT_PATH = "/workspace/.memory/gate-audit.log"

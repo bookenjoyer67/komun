@@ -67,7 +67,7 @@ The retrieval server exposes one operation, `mcp__retrieval__retrieve`. A grant 
 Which grants repeat across roles, and does any repeat breach least privilege?
 
 - Hold `mcp__coursetools__web_search` on the Researcher alone, which is the whole reason the stretch role exists.
-- Hold `mcp__gate__run_gate` on the Tester alone, deny `mcp__coursetools__test_runner` to every role, and keep the gate server the one path that executes a command. Read that grant as reaching all seven check-mode names, `webcheck` and `webtest` included (`agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],`). Authorisation is held per tool, not per gate name. The server's only call-time test is a membership check (`mcp/gate/server.py:120` `if gate not in GATES:`). It validates no role, so adding a name to the config extends the surface of every holder of that tool.
+- Hold `mcp__gate__run_gate` on the Tester alone, deny `mcp__coursetools__test_runner` to every role, and keep the gate server the one path that executes a command. Read that grant as reaching all seven check-mode names, `webcheck` and `webtest` included (`agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],`). Authorisation is held per tool, not per gate name. The server binds each caller to the container's `AGENT_ROLE` and checks the map's grant before the membership check (`mcp/gate/server.py:122` `if gate not in GATES:`). It validates the role per tool, so a name added to the config extends the surface only of the roles the map grants that tool.
 - Hold `mcp__coursetools__task_tracker` on the Project Manager alone, because ticket state has one owner.
 - Hold `mcp__storage__update_entry` on the Implementer alone, which is the only role that revises a record it wrote.
 - Grant `mcp__storage__delete_entry` to no role, and keep record removal outside the gate.
@@ -98,4 +98,16 @@ Which recorded step no longer holds an MCP grant, and what runs it now?
 - Read the decision of record in `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`, which fixes the contract the script holds.
 - Keep the marker machine-readable, so a check can read it: `docs/routing-and-tool-grant-map.json:72` `"mcp_access": []`.
 - Run that step inside the workflow through the `conformance` gate, which the server runs by name (`agentic.config.json:61` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
+
+## Operator tools
+
+Which tools does the operator hold outside the agent roles, and what can each one change?
+
+- Hold `scripts/chain_anchor.py` on the operator and grant it to no agent role. Record each chain's head outside the container that writes it (`scripts/chain_anchor.py:14` `No agent role is granted this command; the operator runs it on the host.`).
+- Print the sequence number, head and anchor for the four chained artifacts with `python3 scripts/chain_anchor.py head` (`scripts/chain_anchor.py:83` `commands.add_parser("head", help="print seq, head and anchor for every artifact")`).
+- Check one artifact against a recorded anchor with `python3 scripts/chain_anchor.py verify --artifact NAME --expected SEQ:HEAD` (`scripts/chain_anchor.py:84` `commands.add_parser("verify", help="verify one artifact against an anchor")`).
+- Keep the anchor string outside the container, so no agent can move the head that a later check measures it against (`scripts/chain_anchor.py:8` `Keep that string outside the container.`).
+- Read every artifact without altering it, because each journal is read as bytes and the store opens with SQLite read-only (`scripts/chain_anchor.py:12` `There is no write mode. Journals are read as bytes, and the store is opened with SQLite`).
+- Treat a non-zero `verify` exit as a hard failure and never as a warning, reading the three constants as intact, fail and error (`scripts/chain_anchor.py:38` `EXIT_INTACT, EXIT_FAIL, EXIT_ERROR = 0, 1, 2`).
+- Take the first anchor only once the three servers restart on the chained code and each makes one chained write (`python3 scripts/chain_anchor.py head` -> all four artifacts read `"seq": 0` today). An artifact predating the chain has no head to anchor.
 

@@ -17,11 +17,7 @@
 		price_negotiable?: boolean;
 	}
 
-	/**
-	 * A6.1: the permalink for a post. The old form nested the post under a community segment
-	 * and had to resolve that community first; A3 made posts a flat, server-wide collection,
-	 * so the id alone addresses one.
-	 */
+	/** Posts are flat and server-wide, so the id alone addresses one. */
 	let post = $state<PostDetail | null>(null);
 	let error = $state('');
 	let loading = $state(true);

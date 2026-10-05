@@ -42,6 +42,10 @@ import aiosqlite
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
+_MCP_DIR = str(Path(__file__).resolve().parents[1])
+if _MCP_DIR not in sys.path:
+    sys.path.insert(0, _MCP_DIR)
+import hashchain  # noqa: E402
 
 # --- Runtime paths: container defaults, every one overridable for a local run ---------------
 MEMORY_DIR = os.getenv("MEMORY_DIR", "/workspace/.memory")
@@ -76,7 +80,7 @@ SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_entries_project_type "
     "ON entries(project_id, entry_type, deleted)",
-)
+) + hashchain.STORE_SCHEMA_STATEMENTS
 
 mcp = FastMCP("storage")
 
@@ -130,11 +134,7 @@ def validate_classification(classification: str) -> None:
 def append_audit_record(record: dict[str, Any]) -> None:
     """Append exactly one JSON object plus newline. The file is opened append-only."""
     ensure_parent(AUDIT_PATH)
-    line = json.dumps(record, sort_keys=True) + "\n"
-    with open(AUDIT_PATH, "a", encoding="utf-8") as handle:
-        handle.write(line)
-        handle.flush()
-        os.fsync(handle.fileno())
+    hashchain.append_journal_record(AUDIT_PATH, record)
 
 
 def audit_event(
@@ -217,13 +217,49 @@ def authorized_roles(operation: str) -> list[str]:
     return sorted(role for role, operations in ALLOW_LIST.items() if operation in operations)
 
 
+# --- Role binding: AGENT_ROLE is the identity, the calling_role argument only corroborates --------
+def environment_role() -> str:
+    """Return the role this process is bound to, from ``AGENT_ROLE``, or an empty string.
+
+    The harness sets ``AGENT_ROLE`` in the container it launches (``scripts/run-agent.sh:259``
+    ``-e AGENT_ROLE="$ROLE"``). A blank or whitespace-only value counts as unset. There is
+    deliberately no flag, no config key and no "trusted client" escape hatch: this environment
+    variable is the only switch, and the harness is what sets it.
+    """
+    value = os.environ.get("AGENT_ROLE")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def bind_role(calling_role: str | None) -> tuple[str, str | None]:
+    """Bind the caller's role to this process's ``AGENT_ROLE`` and return ``(role, mismatch)``.
+
+    With ``AGENT_ROLE`` unset the argument is used exactly as before, so a local run, pytest or a
+    self-test is unchanged. With it set, the environment is the effective role: an omitted, blank
+    or ``unknown`` argument yields it, and an argument naming a *different* role yields a mismatch
+    description instead of a role -- a caller cannot escalate by typing another role's name, and
+    the environment is never silently overridden by the argument.
+    """
+    argument = calling_role.strip() if isinstance(calling_role, str) else ""
+    bound = environment_role()
+    if not bound:
+        return argument, None
+    if argument and argument != "unknown" and argument != bound:
+        return bound, (
+            f"calling_role {argument!r} disagrees with the bound AGENT_ROLE {bound!r}: the role is "
+            "bound to this container by its environment, so a disagreeing argument is refused, "
+            "never overridden"
+        )
+    return bound, None
+
+
 def _authorize(calling_role: str | None, operation: str, project_id: str | None = None) -> str:
     """Refuse an ungranted (role, operation) pair, journal the refusal, and return the role.
 
     This is the first statement of every operation, so nothing else in the operation runs for a
-    refused call: no validation, no database connection, no state change. The refusal names the
-    role, the operation and the roles that ARE allowed, and it is journalled to the same audit log
-    the successful calls use.
+    refused call: no validation, no database connection, no state change. The role is bound to the
+    container's ``AGENT_ROLE`` first -- a ``calling_role`` that disagrees with it is refused outright
+    -- and the refusal names the role, the operation and the roles that ARE allowed, and it is
+    journalled to the same audit log the successful calls use.
     """
     if operation not in OPERATIONS:
         raise ValueError(
@@ -231,7 +267,21 @@ def _authorize(calling_role: str | None, operation: str, project_id: str | None 
         )
 
     allowed = authorized_roles(operation)
-    role = calling_role.strip() if isinstance(calling_role, str) else ""
+    role, mismatch = bind_role(calling_role)
+    if mismatch is not None:
+        reason = (
+            f"authorization_denied: {mismatch}. "
+            f"operation={operation!r} role={role or 'unknown'!r} allowed_roles={allowed}"
+        )
+        audit_event(
+            operation,
+            allowed=False,
+            project_id=project_id,
+            calling_role=role or "unknown",
+            reason=reason,
+        )
+        raise AuthorizationDenied(reason)
+
     if role and role in ALLOW_LIST and operation in ALLOW_LIST[role]:
         return role
 
@@ -295,6 +345,8 @@ async def fetch_live_entry(
 
 
 # --- Operations -----------------------------------------------------------------------------
+# Each write runs between BEGIN IMMEDIATE and its commit together with its chain record. A
+# connection closed without that commit discards both, so no row change lands without its record.
 @mcp.tool
 async def write_entry(
     project_id: str,
@@ -305,7 +357,7 @@ async def write_entry(
     calling_role: str = "unknown",
 ) -> dict:
     """Write a new entry, then journal it. Classifications at or above confidential are refused."""
-    _authorize(calling_role, "write_entry", project_id=project_id)
+    authorized_role = _authorize(calling_role, "write_entry", project_id=project_id)
     validate_project_id(project_id)
     validate_nonempty(entry_type, "entry_type")
     validate_nonempty(title, "title")
@@ -316,11 +368,13 @@ async def write_entry(
     now = utc_now()
     conn = await open_db()
     try:
+        await conn.execute("BEGIN IMMEDIATE")
         await conn.execute(
             "INSERT INTO entries (entry_id, project_id, entry_type, title, content, "
             "classification, deleted, last_updated) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
             (entry_id, project_id, entry_type, title, content, classification, now),
         )
+        seeded = await hashchain.append_store_record(conn, "write_entry", entry_id)
         await conn.commit()
     finally:
         await conn.close()
@@ -331,15 +385,17 @@ async def write_entry(
         project_id=project_id,
         entry_id=entry_id,
         classification=classification,
-        calling_role=calling_role,
+        calling_role=authorized_role,
     )
+    if seeded is not None:
+        return {"entry_id": entry_id, "chain_seeded": seeded}
     return {"entry_id": entry_id}
 
 
 @mcp.tool
 async def read_entry(project_id: str, entry_id: str, calling_role: str = "unknown") -> dict:
     """Read one live entry by identifier. A denied read is journalled, an allowed read is not."""
-    _authorize(calling_role, "read_entry", project_id=project_id)
+    authorized_role = _authorize(calling_role, "read_entry", project_id=project_id)
     validate_project_id(project_id)
     validate_nonempty(entry_id, "entry_id")
 
@@ -355,7 +411,7 @@ async def read_entry(project_id: str, entry_id: str, calling_role: str = "unknow
             allowed=False,
             project_id=project_id,
             entry_id=entry_id,
-            calling_role=calling_role,
+            calling_role=authorized_role,
             reason="no live entry for that project_id and entry_id",
         )
         raise ValueError("no entry found for that project_id and entry_id")
@@ -403,7 +459,7 @@ async def update_entry(
     calling_role: str = "unknown",
 ) -> dict:
     """Replace the content of a live entry, leaving its classification untouched."""
-    _authorize(calling_role, "update_entry", project_id=project_id)
+    authorized_role = _authorize(calling_role, "update_entry", project_id=project_id)
     validate_project_id(project_id)
     validate_nonempty(entry_id, "entry_id")
     validate_nonempty(content, "content")
@@ -420,10 +476,11 @@ async def update_entry(
                 allowed=False,
                 project_id=project_id,
                 entry_id=entry_id,
-                calling_role=calling_role,
+                calling_role=authorized_role,
                 reason="no live entry for that project_id and entry_id",
             )
             raise ValueError("no entry found to update")
+        await conn.execute("BEGIN IMMEDIATE")
         if title is None:
             await conn.execute(
                 "UPDATE entries SET content = ?, last_updated = ? "
@@ -436,6 +493,7 @@ async def update_entry(
                 "WHERE project_id = ? AND entry_id = ? AND deleted = 0",
                 (content, title, now, project_id, entry_id),
             )
+        seeded = await hashchain.append_store_record(conn, "update_entry", entry_id)
         await conn.commit()
         classification = row["classification"]
     finally:
@@ -447,15 +505,17 @@ async def update_entry(
         project_id=project_id,
         entry_id=entry_id,
         classification=classification,
-        calling_role=calling_role,
+        calling_role=authorized_role,
     )
+    if seeded is not None:
+        return {"success": True, "chain_seeded": seeded}
     return {"success": True}
 
 
 @mcp.tool
 async def delete_entry(project_id: str, entry_id: str, calling_role: str = "unknown") -> dict:
     """Soft-delete a live entry by setting its deleted flag. The row is never removed."""
-    _authorize(calling_role, "delete_entry", project_id=project_id)
+    authorized_role = _authorize(calling_role, "delete_entry", project_id=project_id)
     validate_project_id(project_id)
     validate_nonempty(entry_id, "entry_id")
 
@@ -468,15 +528,17 @@ async def delete_entry(project_id: str, entry_id: str, calling_role: str = "unkn
                 allowed=False,
                 project_id=project_id,
                 entry_id=entry_id,
-                calling_role=calling_role,
+                calling_role=authorized_role,
                 reason="no live entry for that project_id and entry_id",
             )
             raise ValueError("no entry found to delete")
+        await conn.execute("BEGIN IMMEDIATE")
         await conn.execute(
             "UPDATE entries SET deleted = 1, last_updated = ? "
             "WHERE project_id = ? AND entry_id = ? AND deleted = 0",
             (utc_now(), project_id, entry_id),
         )
+        seeded = await hashchain.append_store_record(conn, "delete_entry", entry_id)
         await conn.commit()
         classification = row["classification"]
     finally:
@@ -488,8 +550,10 @@ async def delete_entry(project_id: str, entry_id: str, calling_role: str = "unkn
         project_id=project_id,
         entry_id=entry_id,
         classification=classification,
-        calling_role=calling_role,
+        calling_role=authorized_role,
     )
+    if seeded is not None:
+        return {"success": True, "chain_seeded": seeded}
     return {"success": True}
 
 

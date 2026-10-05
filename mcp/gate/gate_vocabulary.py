@@ -2,7 +2,7 @@
 """The command vocabulary this repository's gate server exposes, read from ``agentic.config.json``.
 
 ``mcp/gate/server.py`` is the execution surface; everything a fork must change about it -- the
-command names, the argv tuple of each, the mode each runs in, the clippy cache-hit guard, the
+command names, the argv tuple of each, the mode each runs in, each command's cache-hit guard, the
 container paths the commands run in -- is read here, from the config's ``toolchain.commands`` and
 ``containers`` blocks, instead of being written into the server. The command names under
 ``toolchain.commands`` ARE the vocabulary: a fork adds a command by adding one entry there and
@@ -142,7 +142,7 @@ def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any
     pattern a fork breaks is found at startup rather than inside a gate run.
 
     The returned rule is JSON-safe: it carries the pattern as the string the config wrote, and the
-    compiled objects live in ``SUMMARY_PATTERNS`` below, beside ``GUARD_MARKER_PATTERN``.
+    compiled objects live in ``SUMMARY_PATTERNS`` below, beside ``GUARD_MARKER_PATTERNS``.
     """
     declared = command.get("summary")
     if not isinstance(declared, dict):
@@ -255,17 +255,105 @@ FIX_COMMANDS: dict[str, dict[str, Any]] = {
 GATE_NAMES: tuple[str, ...] = tuple(GATES)
 FIX_COMMAND_NAMES: tuple[str, ...] = tuple(FIX_COMMANDS)
 
-# The clippy cache-hit guard's marker pattern. cargo honours CARGO_TERM_COLOR=always in the sandbox
-# image even when stderr is a pipe, so the server matches this pattern against output with the SGR
-# escapes stripped; a fork that renames the crate names its own crate here.
-try:
-    GUARD_MARKER_PATTERN = re.compile(
-        str(agentic_config.get("toolchain.commands.clippy.guard.marker_regex"))
+
+# The cache-hit guards' marker patterns, one per command that declares a guard, each read from that
+# command's own `toolchain.commands.<name>.guard.marker_regex`. cargo honours CARGO_TERM_COLOR=always
+# in the sandbox image even when stderr is a pipe, so the server matches these against output with
+# the escapes stripped; a fork that renames its crates names them here. Nothing below raises at
+# import because of a guard pattern: an unusable pattern falls back to the built-in default, and
+# when no usable default exists only that command's guard fails, with a detail naming the key.
+def _usable_marker_regex(value: Any) -> tuple[re.Pattern[str] | None, str]:
+    """Compile one guard marker pattern, or say why it is unusable. Never raises.
+
+    A value is usable only when all four hold: (v1) it is a string; (v2) it is not empty or blank;
+    (v3) it compiles; (v4) it does not match the empty string. Rule v4 exists because a pattern
+    such as ``.*`` matches any output, a cached no-op included, so it would satisfy every guard.
+    """
+    if not isinstance(value, str):
+        return None, "is missing" if value is None else f"is not a string ({type(value).__name__})"
+    if not value.strip():
+        return None, "is empty"
+    try:
+        compiled = re.compile(value)
+    except re.error as error:
+        return None, f"does not compile ({error})"
+    if compiled.search("") is not None:
+        return None, "matches the empty string"
+    return compiled, ""
+
+
+def _default_marker_regex(name: str) -> Any:
+    """The built-in default ``marker_regex`` of one command, or None when the defaults have none."""
+    commands = agentic_config.DEFAULT.get("toolchain", {}).get("commands", {})
+    command = commands.get(name) if isinstance(commands, dict) else None
+    guard = command.get("guard") if isinstance(command, dict) else None
+    return guard.get("marker_regex") if isinstance(guard, dict) else None
+
+
+def _guard_pattern(name: str) -> tuple[re.Pattern[str] | None, str | None, str | None]:
+    """One guarded command's marker pattern, as ``(pattern, fallback_note, error)``. Never raises.
+
+    The configured value and the built-in default pass the same four checks (v1-v4 above), so a
+    fallback can never be weaker than the value it replaces. Exactly one of ``pattern`` and
+    ``error`` is None. The loader already hands back the default for a key the config leaves out
+    or sets to null, which is why C2 needs no branch of its own.
+
+    | Case | Configured marker_regex | Built-in default | Branch | That gate's guard |
+    | --- | --- | --- | --- | --- |
+    | C1 | usable | not consulted | use | matched normally |
+    | C2 | missing or null, command in the defaults | the loader's value | use, same checks | matched normally |
+    | C3 | missing or null, fork-added command | absent | fail | satisfied=False, detail names the key |
+    | C4 | empty or blank (fails v2) | usable | fallback | matched normally, note recorded |
+    | C5 | not a string (fails v1) | usable | fallback | matched normally, note recorded |
+    | C6 | does not compile (fails v3) | usable | fallback | matched normally, note recorded |
+    | C7 | matches the empty string (fails v4) | usable | fallback | matched normally, note recorded |
+    | C8 | any of C4-C7 | absent or itself unusable | fail | satisfied=False, detail names the key |
+    """
+    key = f"toolchain.commands.{name}.guard.marker_regex"
+    configured, reason = _usable_marker_regex(agentic_config.get(key))
+    if configured is not None:
+        return configured, None, None
+    default, default_reason = _usable_marker_regex(_default_marker_regex(name))
+    if default is not None:
+        return default, f"{key} {reason}; the built-in default answers", None
+    return None, None, (
+        f"cache-hit guard not satisfied: {key} {reason}, and no usable built-in default exists "
+        f"(the default {default_reason}); fix that key in agentic.config.json"
     )
-except re.error:  # a fork's pattern that will not compile: the embedded default answers
-    GUARD_MARKER_PATTERN = re.compile(
-        str(agentic_config.DEFAULT["toolchain"]["commands"]["clippy"]["guard"]["marker_regex"])
-    )
+
+
+_GUARD_RESOLUTIONS = {
+    name: _guard_pattern(name) for name, definition in COMMANDS.items() if definition["guard"]
+}
+# Usable patterns only, so no .search call ever meets None or an empty pattern.
+GUARD_MARKER_PATTERNS: dict[str, re.Pattern[str]] = {
+    name: pattern for name, (pattern, _, _) in _GUARD_RESOLUTIONS.items() if pattern is not None
+}
+# The commands whose configured pattern was unusable and whose built-in default answers instead.
+GUARD_PATTERN_FALLBACKS: dict[str, str] = {
+    name: note for name, (_, note, _) in _GUARD_RESOLUTIONS.items() if note
+}
+# The commands with no usable pattern at all; each one's guard fails with this message.
+GUARD_PATTERN_ERRORS: dict[str, str] = {
+    name: error for name, (_, _, error) in _GUARD_RESOLUTIONS.items() if error
+}
+
+
+def guard_marker_search(name: str, text: str) -> tuple[re.Match[str] | None, str | None]:
+    """Search one command's output for its guard marker, or say why the guard cannot be satisfied.
+
+    Returns ``(match, None)`` for a command with a usable pattern, and ``(None, message)`` for one
+    with none, so the server never indexes a missing key. The message names that command's
+    ``toolchain.commands.<name>.guard.marker_regex``.
+    """
+    pattern = GUARD_MARKER_PATTERNS.get(name)
+    if pattern is None:
+        return None, GUARD_PATTERN_ERRORS.get(name) or (
+            f"cache-hit guard not satisfied: toolchain.commands.{name}.guard.marker_regex has no "
+            "usable pattern; fix that key in agentic.config.json"
+        )
+    return pattern.search(text), None
+
 
 # The compiled output-summary patterns, one sub-table per command that declares a rule. `_summary`
 # already compiled each of these once to validate it, so nothing here can raise: a pattern that

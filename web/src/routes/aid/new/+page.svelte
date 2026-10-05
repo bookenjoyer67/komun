@@ -32,12 +32,7 @@
 		return new Date(Date.now() + days * 86400000).toISOString();
 	}
 
-	/*
-	 * Coordinates stay optional. B6 replaces the removed piggpin iframe with click-to-place on
-	 * the Leaflet component (B2): a click sets `locationLat`/`locationLon` and draws the pin,
-	 * and "Remove pin" clears them so a post without coordinates stays creatable. No iframe,
-	 * no relay, no map-community credentials.
-	 */
+	/* Coordinates stay optional, and the map stays Leaflet-only — no iframe, relay or map credentials. */
 	const mapCenter = { lat: 20, lon: 0, zoom: 2 };
 
 	function setPickedLocation(coords: { lat: number; lon: number }) {

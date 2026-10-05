@@ -12,13 +12,10 @@
 	} from '$lib/api/offers';
 
 	/**
-	 * The negotiation half of a market thread. It is deliberately presentational about the trail
-	 * itself: the page owns the `GET` and passes the ordered rows in, so a re-render never races a
-	 * second fetch, and a test can pin the rules below without a network stub.
+	 * The negotiation half of a market thread; the page owns the `GET` and passes the ordered rows in.
 	 *
-	 * `postKind` is what keeps offers off an aid thread — SPEC B1/B3, "offers are for listings and
-	 * wanted ads". The component renders nothing at all for anything else, and the server refuses
-	 * the same request with a 400.
+	 * `postKind` keeps offers off an aid thread — the component renders nothing for anything else,
+	 * and the server refuses the same request with a 400.
 	 */
 	interface Props {
 		matchId: string;
@@ -78,8 +75,7 @@
 			noteText = '';
 			onchange?.();
 		} catch (e) {
-			// A 409 is shown with the server's own sentence: it names the stale status, and is the
-			// only thing that tells the viewer whether to reload or to stop.
+			// A 409 carries the server's own sentence, which names the stale status and tells the viewer whether to reload or stop.
 			error = message(e);
 		}
 		busy = false;

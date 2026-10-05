@@ -75,7 +75,7 @@ DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_TIMEOUT = 120
 DEFAULT_MAX_BYTES = 60_000
 
-# Env names whose values must never reach a file. Requirement 2 of block [72]: masking is a
+# masking is a
 # backstop, so anything that looks like a secret is scrubbed from everything we write.
 SECRET_NAME_RE = re.compile(r"(API_?KEY|_KEY$|TOKEN|SECRET|PASSWORD|CREDENTIAL)", re.IGNORECASE)
 SECRET_NAME_ALLOW = {"OPENROUTER_BASE_URL", "GITHUB_TOKEN"}
@@ -164,7 +164,7 @@ def call_model(
         base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),
         headers={
-            "Authorization": "Bearer " + key,  # requirement 1: used here, written nowhere
+            "Authorization": "Bearer " + key,  # used here, written nowhere
             "Content-Type": "application/json",
         },
         method="POST",
@@ -236,7 +236,6 @@ def main(argv: list[str] | None = None) -> int:
     summary_path = out_dir / "review-summary.md"
     audit_path = out_dir / "audit-review.log"
 
-    # --- the file list ------------------------------------------------
     if args.files:
         paths = Path(args.files).read_text(encoding="utf-8").split()
     elif args.paths:
@@ -271,7 +270,6 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     if not key_present:
-        # Path 1: no credential. Report that the review did not run. Do not pretend.
         report["status"] = "not_run"
         report["severity"] = "not_run"
         report["summary"] = (
@@ -297,7 +295,6 @@ def main(argv: list[str] | None = None) -> int:
         else:
             ok, result = call_model(key, args.base_url, args.model, files, args.timeout)
             if not ok:
-                # Path 3: the model call failed. Record it; still exit 0.
                 report["status"] = "error"
                 report["error"] = _redact(result, secrets)
                 report["summary"] = "Review did not complete: {}".format(report["error"])
@@ -311,7 +308,6 @@ def main(argv: list[str] | None = None) -> int:
 
     report["finished_at"] = _now()
 
-    # --- writes. Every one of them goes through _write(), which redacts. ------------
     _write(report_path, json.dumps(report, indent=2) + "\n", secrets)
 
     lines = [
@@ -340,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
         lines.append("")
     _write(summary_path, "\n".join(lines), secrets)
 
-    # The review step's own audit log, the artifact the job uploads. This is the step's
+    # This is the step's
     # record of what it did -- never environment state, never the key, only the boolean.
     audit_record = {
         "timestamp": report["finished_at"],
@@ -360,7 +356,6 @@ def main(argv: list[str] | None = None) -> int:
         secrets,
     )
 
-    # Human-readable summary on stdout.
     print(summary_path.read_text(encoding="utf-8"))
     print("report : {}".format(report_path))
     print("audit  : {}".format(audit_path))

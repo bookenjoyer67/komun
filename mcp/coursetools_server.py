@@ -85,9 +85,8 @@ def safe_path(path: str) -> Path:
     return candidate
 
 
-# Komun's real gates (AGENTS.md:196-198, docs/DEVELOPMENT.md:173-189). Nothing here is run:
-# these strings are the last recorded baseline, returned verbatim so the exercise output is
-# deterministic.
+# Nothing here is run: these strings are the last recorded baseline, returned verbatim so the
+# exercise output is deterministic.
 KOMUN_GATES: list[str] = [
     "cargo test --workspace",
     "cargo clippy --release -- -D warnings",

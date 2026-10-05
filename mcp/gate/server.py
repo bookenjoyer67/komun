@@ -9,13 +9,15 @@ entry, ``shell`` is never used, and no caller-supplied string reaches a command 
 
 Each invocation returns the exit code, the captured stdout and stderr, the wall-clock duration and a
 verdict, and appends one journal line naming the ``tool`` that ran it and its ``writes`` mode. A
-refused call runs nothing and journals nothing, so the journal holds only executed commands.
+refused gate name or command runs nothing and journals nothing, so the journal holds only executed
+commands; the one exception is an authorisation refusal, which is raised only when ``AGENT_ROLE`` is
+set and which journals a denied row naming the caller and the mismatch.
 
-The ``clippy`` gate carries the project's cache-hit guard, whose marker line and touched file are
-read from ``toolchain.commands.clippy.guard``. cargo's second run over an unchanged tree prints
-nothing and exits 0, which is indistinguishable from a clean lint, so the gate touches a file
-under test before invoking cargo and then requires the configured marker line in the output.
-``passed`` for clippy is therefore exit code 0 *and* a satisfied guard. This image runs cargo with
+A gate that declares a ``guard`` carries the project's cache-hit guard, and its marker line and
+touched file are read from that gate's own ``toolchain.commands.<name>.guard`` block. cargo's
+second run over an unchanged tree prints nothing and exits 0, which is indistinguishable from a
+clean run, so the gate touches a file under test before invoking cargo and then requires that
+gate's own configured marker line. ``passed`` is exit code 0 *and* a satisfied guard. This image runs cargo with
 ``CARGO_TERM_COLOR=always``, so status lines arrive wrapped in SGR escapes and the guard matches the
 output with the escapes stripped; the returned stdout and stderr are stripped for the same reason.
 
@@ -39,8 +41,8 @@ from pathlib import Path
 from typing import Any
 
 # --- The portability seam: the gate vocabulary lives in agentic.config.json -------------------
-# `gate_vocabulary.py` reads the command names and the argv tuples, the mode of each, the clippy
-# cache-hit guard and the container paths the commands run in from the config
+# `gate_vocabulary.py` reads the command names and the argv tuples, the mode of each, each
+# command's cache-hit guard and the container paths the commands run in from the config
 # (`toolchain.commands` and `containers`), and falls back to its own embedded defaults, which are
 # this repository's values. A run with no config file behaves as this server did before it existed.
 _SCRIPTS = next(
@@ -53,7 +55,7 @@ if str(_SCRIPTS) not in sys.path:
 _GATE_DIR = Path(__file__).resolve().parent
 if str(_GATE_DIR) not in sys.path:
     sys.path.insert(0, str(_GATE_DIR))
-from gate_vocabulary import (COMMANDS, FIX_COMMANDS, GATES, GUARD_MARKER_PATTERN,  # noqa: E402
+from gate_vocabulary import (COMMANDS, FIX_COMMANDS, GATES, guard_marker_search,  # noqa: E402
                              MEMORY_DIR, SUMMARY_PATTERNS, WORKSPACE, AUDIT_PATH, TOOLS_IMAGE, print_config_if_requested)
 
 # A supported entry point: it answers before the MCP and HTTP imports, so a host without fastmcp
@@ -74,8 +76,8 @@ from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 # cargo honours CARGO_TERM_COLOR=always in this image even when stderr is a pipe, so the status
 # lines arrive wrapped in SGR escapes (a ``Checking`` status line arrives as
 # "\x1b[1m\x1b[92m    Checking\x1b[0m <crate>"). The guard matches against output with the escapes
-# removed; a naive substring search over the raw bytes finds nothing and would report every clippy
-# run as a cache hit. The pattern is `gate_vocabulary.py`'s, from the config's marker_regex.
+# removed; a naive substring search over the raw bytes finds nothing and would report every guarded
+# run as a cache hit. Each pattern is `gate_vocabulary.py`'s, from that command's marker_regex.
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 DEFAULT_TIMEOUT_SECONDS = int(os.getenv("GATE_TIMEOUT_SECONDS", "900"))
@@ -172,11 +174,11 @@ def validate_timeout(timeout_seconds: int | None) -> int:
 def append_audit_record(record: dict[str, Any]) -> None:
     """Append exactly one JSON object plus newline. The file is opened append-only."""
     ensure_parent(AUDIT_PATH)
-    line = json.dumps(record, sort_keys=True) + "\n"
-    with open(AUDIT_PATH, "a", encoding="utf-8") as handle:
-        handle.write(line)
-        handle.flush()
-        os.fsync(handle.fileno())
+    mcp_dir = str(Path(__file__).resolve().parents[1])
+    if mcp_dir not in sys.path:
+        sys.path.insert(0, mcp_dir)
+    import hashchain  # noqa: PLC0415 - a top-level import would move lines other documents cite
+    hashchain.append_journal_record(AUDIT_PATH, record)
 
 
 def audit_invocation(
@@ -241,7 +243,201 @@ def read_audit_records(limit: int) -> list[dict[str, Any]]:
     return records[-limit:]
 
 
-# --- The clippy cache-hit guard -------------------------------------------------------------
+# --- The grant authority: per-tool gate grants, read from the routing map ---------------------
+# The two sibling servers carry their own derived `allow-list.json`; the gate's grants are read
+# straight from `docs/routing-and-tool-grant-map.json`, the per-tool source of record for the gate
+# (`gate_commands.authorisation` is `per_tool`) and a file the launcher already mounts read-only.
+# Every `mcp__gate__<operation>` string under `grants.<role>` becomes a grant, and nothing else
+# does, so a role holds `run_gate` or `run_fix` exactly where the map grants it.
+GATE_OPERATIONS = ("run_gate", "run_fix")
+GATE_TOOLS = ("run_gate", "run_fix", "list_gates", "read_audit_log")
+ROUTING_MAP_PATH = Path(
+    os.getenv(
+        "GATE_ROUTING_MAP_PATH",
+        str(Path(__file__).resolve().parents[2] / "docs" / "routing-and-tool-grant-map.json"),
+    )
+)
+
+
+class AllowListError(RuntimeError):
+    """A missing or malformed routing map. Fatal when the guard first needs the grants."""
+
+
+class AuthorizationDenied(PermissionError):
+    """A role called a gate operation the routing map does not grant it. Journalled, then raised."""
+
+
+def load_gate_grants(path: Path) -> dict[str, list[str]]:
+    """Read ``role -> permitted gate operations`` from the routing map, or fail loudly.
+
+    Every gate tool the map grants a role is kept, so the two read-only tools the map also grants
+    (``list_gates``, ``read_audit_log``) are recorded rather than mistaken for unknown names; the
+    guard below authorises only the two that run a command (``GATE_OPERATIONS``). There is
+    deliberately no in-code copy of the grants and no permissive fallback: a server that cannot read
+    its grant authority must not authorise. The sibling servers derive their allow-lists from this
+    same file.
+    """
+    if not path.is_file():
+        raise AllowListError(
+            f"routing map not found at {path}; refusing to authorise, because without it no role's "
+            "gate grants can be known"
+        )
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise AllowListError(f"routing map {path} is not valid JSON: {error}") from error
+
+    grants = data.get("grants")
+    if not isinstance(grants, dict) or not grants:
+        raise AllowListError(f"routing map {path} carries no 'grants' object")
+    roles: dict[str, list[str]] = {}
+    for role, tool_ids in grants.items():
+        if not isinstance(tool_ids, list):
+            raise AllowListError(
+                f"routing map {path}: grants.{role} must be a list of tool identifiers"
+            )
+        operations = sorted(
+            name[len("mcp__gate__") :]
+            for name in tool_ids
+            if isinstance(name, str) and name.startswith("mcp__gate__")
+        )
+        unknown = sorted(set(operations) - set(GATE_TOOLS))
+        if unknown:
+            raise AllowListError(
+                f"routing map {path}: role {role!r} grants unknown gate tools {unknown}; this "
+                f"server exposes {list(GATE_TOOLS)}"
+            )
+        roles[role] = operations
+    return roles
+
+
+_GRANTS: dict[str, list[str]] | None = None
+
+
+def gate_grants() -> dict[str, list[str]]:
+    """Return the parsed grants, loading the routing map once on first use."""
+    global _GRANTS
+    if _GRANTS is None:
+        _GRANTS = load_gate_grants(ROUTING_MAP_PATH)
+    return _GRANTS
+
+
+def authorized_roles(operation: str) -> list[str]:
+    """Return, sorted, every role the routing map grants ``operation``."""
+    return sorted(role for role, operations in gate_grants().items() if operation in operations)
+
+
+# --- Role binding: AGENT_ROLE is the identity, the calling_role argument only corroborates --------
+def environment_role() -> str:
+    """Return the role this process is bound to, from ``AGENT_ROLE``, or an empty string.
+
+    The harness sets ``AGENT_ROLE`` in the container it launches (``scripts/run-agent.sh:259``
+    ``-e AGENT_ROLE="$ROLE"``). A blank or whitespace-only value counts as unset. There is
+    deliberately no flag, no config key and no "trusted client" escape hatch: this environment
+    variable is the only switch, and the harness is what sets it.
+    """
+    value = os.environ.get("AGENT_ROLE")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def bind_role(calling_role: str | None) -> tuple[str, str | None]:
+    """Bind the caller's role to this process's ``AGENT_ROLE`` and return ``(role, mismatch)``.
+
+    With ``AGENT_ROLE`` unset the argument is used exactly as before, so a local run, pytest or a
+    self-test is unchanged. With it set, the environment is the effective role: an omitted, blank
+    or ``unknown`` argument yields it, and an argument naming a *different* role yields a mismatch
+    description instead of a role -- a caller cannot escalate by typing another role's name, and
+    the environment is never silently overridden by the argument.
+    """
+    argument = calling_role.strip() if isinstance(calling_role, str) else ""
+    bound = environment_role()
+    if not bound:
+        return argument, None
+    if argument and argument != "unknown" and argument != bound:
+        return bound, (
+            f"calling_role {argument!r} disagrees with the bound AGENT_ROLE {bound!r}: the role is "
+            "bound to this container by its environment, so a disagreeing argument is refused, "
+            "never overridden"
+        )
+    return bound, None
+
+
+def audit_denial(*, tool: str, gate: str | None, calling_role: str, reason: str) -> None:
+    """Journal one refused call, so a refused call is legible from the journal row alone.
+
+    Shaped like the storage and retrieval denial records -- ``allowed`` false plus a ``reason`` --
+    with the gate's own ``tool`` and ``gate`` fields, and the execution fields present but null so
+    every key a reader relies on exists on a denial row too. ``writes`` stays null because no
+    command ran, so a refused call can never read as a check or a mutation.
+    """
+    append_audit_record(
+        {
+            "timestamp": utc_now(),
+            "tool": tool,
+            "gate": gate,
+            "argv": None,
+            "exit_code": None,
+            "duration_seconds": None,
+            "passed": False,
+            "timed_out": False,
+            "guard_applied": False,
+            "guard_satisfied": None,
+            "summary": None,
+            "writes": None,
+            "calling_role": calling_role or "unknown",
+            "allowed": False,
+            "reason": reason,
+        }
+    )
+
+
+def _authorize(calling_role: str | None, operation: str, *, gate: str | None = None) -> str:
+    """Bind the caller's role and refuse an ungranted pair, journalling the refusal.
+
+    This is the first statement of ``run_gate`` and ``run_fix``. With ``AGENT_ROLE`` unset -- local
+    dev, pytest, the self-tests and CI -- no authorisation runs at all and the server behaves
+    exactly as it did before this guard existed; the environment variable is the only switch. With
+    it set, the environment is the effective role: a ``calling_role`` that disagrees with it is
+    refused outright, an omitted or ``unknown`` argument yields the environment role, and an
+    ungranted (role, operation) pair is refused. Every refusal names the roles that ARE allowed.
+    """
+    if operation not in GATE_OPERATIONS:
+        raise ValueError(
+            f"'{operation}' is not one of this server's gate operations {list(GATE_OPERATIONS)}"
+        )
+
+    # The switch: with the environment unset the guard is inert, exactly as this server behaved
+    # before it existed. No flag and no config key turn it on; the harness sets AGENT_ROLE.
+    if not environment_role():
+        return calling_role.strip() if isinstance(calling_role, str) else "unknown"
+
+    role, mismatch = bind_role(calling_role)
+    grants = gate_grants()
+    allowed = authorized_roles(operation)
+
+    if mismatch is not None:
+        cause = mismatch
+    elif not role or role == "unknown":
+        cause = (
+            f"unknown role {calling_role!r}: a missing, blank or unrecognised role is refused and "
+            "is never defaulted to an allowed one"
+        )
+    elif role not in grants:
+        cause = f"unknown role {role!r}: it is not one of the roles {sorted(grants)}"
+    elif operation not in grants[role]:
+        cause = f"role {role!r} is not granted {operation!r}"
+    else:
+        return role
+
+    reason = (
+        f"authorization_denied: {cause}. "
+        f"operation={operation!r} role={role or 'unknown'!r} allowed_roles={allowed}"
+    )
+    audit_denial(tool=operation, gate=gate, calling_role=role or "unknown", reason=reason)
+    raise AuthorizationDenied(reason)
+
+
+# --- The per-command cache-hit guard ----------------------------------------------------------
 def apply_cache_hit_guard(command: str) -> dict[str, Any]:
     """Touch a file under test, so the command that follows cannot be a cached no-op.
 
@@ -279,17 +475,17 @@ def apply_cache_hit_guard(command: str) -> dict[str, Any]:
     }
 
 
-def guard_satisfied(guard: dict[str, Any], combined_output: str) -> dict[str, Any]:
-    """Require the gate's marker line in the output, and record why when it is absent."""
+def guard_satisfied(command: str, guard: dict[str, Any], combined_output: str) -> dict[str, Any]:
+    """Require the gate's own marker line in the output, and record why when it is absent."""
     if not guard["applied"]:
         return guard
-    match = GUARD_MARKER_PATTERN.search(strip_ansi(combined_output))
+    match, unusable = guard_marker_search(command, strip_ansi(combined_output))
     missing = (
         f"cache-hit guard not satisfied: no '{guard['marker']}' line in the output, so a clean "
         "run cannot be told apart from a cached no-op"
     )
     guard["satisfied"] = bool(match)
-    guard["detail"] = f"found '{guard['marker']}' in the cargo output" if match else missing
+    guard["detail"] = unusable or (f"found '{guard['marker']}' in the cargo output" if match else missing)
     return guard
 
 
@@ -415,7 +611,7 @@ def execute_gate(
         raw_stderr = _decode(expired.stderr)
     duration_seconds = round(time.monotonic() - started, 3)
 
-    guard = guard_satisfied(guard, raw_stdout + "\n" + raw_stderr)
+    guard = guard_satisfied(command, guard, raw_stdout + "\n" + raw_stderr)
     # Counted on the raw capture, above the clamp below, so the counts describe the whole run and
     # not the head of it. The summary never enters `passed` or `verdict`, which follow unchanged.
     summary = compute_output_summary(command, raw_stdout, raw_stderr)
@@ -494,9 +690,13 @@ def list_gates() -> list[dict]:
 def run_gate(gate: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:
     """Run one allowlisted check-mode gate by name and return its exit code, output and verdict.
 
-    The name is resolved against the check-mode table alone, so a write-mode command is refused
-    however it is spelled. No parameter carries an argv element, a path, a flag or a shell.
+    The caller's role is bound to the container's ``AGENT_ROLE`` and the grant checked first: this
+    server runs a gate only for a role the routing map grants ``run_gate``, and a ``calling_role``
+    that disagrees with the environment is refused. The name is then resolved against the
+    check-mode table alone, so a write-mode command is refused however it is spelled. No parameter
+    carries an argv element, a path, a flag or a shell.
     """
+    _authorize(calling_role, "run_gate", gate=gate)
     validate_gate(gate)
     effective_timeout = validate_timeout(timeout_seconds)
     result = execute_gate(gate, GATES, effective_timeout)
@@ -521,12 +721,15 @@ def run_gate(gate: str, calling_role: str = "unknown", timeout_seconds: int | No
 def run_fix(command: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:
     """Run one allowlisted write-mode command by name. It rewrites files in the workspace.
 
-    The write-mode counterpart of ``run_gate`` and its exact mirror: the name is resolved against
-    the write-mode table alone, so a check-mode gate is refused however it is spelled, and the argv
-    comes from that table and nowhere else. No parameter carries an argv element, a path, a flag, a
-    cwd or a shell, so this tool widens what the server can run by exactly one configured command
-    and by nothing else. The journal records it as a mutation.
+    The write-mode counterpart of ``run_gate`` and its exact mirror: the caller's role is bound to
+    the container's ``AGENT_ROLE`` and the grant checked first, so the command runs only for a role
+    the routing map grants ``run_fix`` and a disagreeing ``calling_role`` is refused; the name is
+    then resolved against the write-mode table alone, so a check-mode gate is refused however it is
+    spelled, and the argv comes from that table and nowhere else. No parameter carries an argv
+    element, a path, a flag, a cwd or a shell, so this tool widens what the server can run by
+    exactly one configured command and by nothing else. The journal records it as a mutation.
     """
+    _authorize(calling_role, "run_fix", gate=command)
     validate_fix(command)
     effective_timeout = validate_timeout(timeout_seconds)
     result = execute_gate(command, FIX_COMMANDS, effective_timeout)
