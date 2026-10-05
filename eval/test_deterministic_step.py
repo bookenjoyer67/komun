@@ -930,5 +930,69 @@ def test_role_binding_suite_still_passes(tmp_path: Path) -> None:
         assert chain.verify_journal(journal, head["seq"], head["head"])["status"] == "INTACT", name
 
 
+GATE = REPO / "scripts" / "run-conformance-gate.py"
+CONFORMANCE_ENV = "CONFORMANCE_BASE_REF"
+
+
+def run_conformance_gate(env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    """Run the conformance wrapper with the environment a base-revision case needs."""
+    import os  # noqa: PLC0415
+
+    env = {**os.environ}
+    env.pop(CONFORMANCE_ENV, None)
+    env.update(env_extra or {})
+    return subprocess.run(
+        [sys.executable, str(GATE)], capture_output=True, text=True, cwd=REPO, env=env, check=False,
+        timeout=600,
+    )
+
+
+def test_conformance_gate_defaults_to_head_and_passes_on_this_tree() -> None:
+    """With no base revision named, the wrapper compares against HEAD and this tree is clean."""
+    completed = run_conformance_gate()
+    assert completed.returncode == 0, completed.stdout[-4000:] + completed.stderr[-4000:]
+    report = json.loads(completed.stdout)
+    assert report["base_revision"] == "HEAD", report["base_revision"]
+    assert report["verdict"] == "pass", report["reason"]
+
+
+def test_conformance_gate_refuses_a_base_ref_that_is_not_a_hex_sha() -> None:
+    """A ref-shaped value never reaches git: the wrapper refuses it as a bad invocation."""
+    completed = run_conformance_gate({CONFORMANCE_ENV: "--upload-pack=evil"})
+    assert completed.returncode == 2, completed.stdout[-4000:] + completed.stderr[-4000:]
+    assert "must be a hex commit SHA" in completed.stderr, completed.stderr
+
+
+def test_conformance_gate_refuses_a_hex_base_ref_this_checkout_does_not_have() -> None:
+    """A hex SHA naming no commit fails closed, instead of reporting every file as incomparable.
+
+    Without this the gate prints `verdict pass` with `files_without_a_baseline` equal to the file
+    count: a typo in the CI wiring would turn the gate green, which is the failure it exists to catch.
+    """
+    completed = run_conformance_gate({CONFORMANCE_ENV: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"})
+    assert completed.returncode == 2, completed.stdout[-4000:] + completed.stderr[-4000:]
+    assert "names no commit this checkout has" in completed.stderr, completed.stderr
+
+
+def test_classify_change_refuses_an_empty_change_set() -> None:
+    """An empty diff is refused, because it classifies the same as "nothing agent-affecting"."""
+    completed = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "classify-change.py")],
+        capture_output=True, text=True, cwd=REPO, input="", check=False, timeout=120,
+    )
+    assert completed.returncode == 2, completed.stdout[-2000:] + completed.stderr[-2000:]
+    assert "refusing to classify an empty change set" in completed.stderr, completed.stderr
+
+
+def test_classify_change_still_answers_a_real_change_set() -> None:
+    """The refusal is about an empty list, not about a list with no agent-affecting file."""
+    completed = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "classify-change.py"), "--quiet"],
+        capture_output=True, text=True, cwd=REPO, input="web/src/lib/api/client.ts\n", check=False,
+        timeout=120,
+    )
+    assert completed.returncode == 0, completed.stdout[-2000:] + completed.stderr[-2000:]
+
+
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-v"]))
