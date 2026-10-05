@@ -137,7 +137,7 @@ def embed_texts(texts: list[str], prefix: str = "") -> np.ndarray:
 def parse_front_matter(text: str) -> tuple[dict[str, str], str]:
     """Read a leading ``---`` block of ``key: value`` lines and return it with the body."""
     metadata: dict[str, str] = {}
-    stripped = text.lstrip("\ufeff")
+    stripped = text.lstrip("\N{ZERO WIDTH NO-BREAK SPACE}")
     if stripped.startswith("---"):
         end = stripped.find("\n---", 3)
         if end == -1:
@@ -291,11 +291,11 @@ def ensure_parent(path: str) -> None:
 def append_audit_record(record: dict[str, Any]) -> None:
     """Append exactly one JSON object plus newline. The file is opened append-only."""
     ensure_parent(AUDIT_PATH)
-    line = json.dumps(record, sort_keys=True) + "\n"
-    with open(AUDIT_PATH, "a", encoding="utf-8") as handle:
-        handle.write(line)
-        handle.flush()
-        os.fsync(handle.fileno())
+    mcp_dir = str(Path(__file__).resolve().parents[1])
+    if mcp_dir not in sys.path:
+        sys.path.insert(0, mcp_dir)
+    import hashchain  # noqa: PLC0415 - a top-level import would move lines other documents cite
+    hashchain.append_journal_record(AUDIT_PATH, record)
 
 
 def preview_query(query: Any, limit: int = 80) -> str | None:

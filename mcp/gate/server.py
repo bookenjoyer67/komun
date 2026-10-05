@@ -174,11 +174,11 @@ def validate_timeout(timeout_seconds: int | None) -> int:
 def append_audit_record(record: dict[str, Any]) -> None:
     """Append exactly one JSON object plus newline. The file is opened append-only."""
     ensure_parent(AUDIT_PATH)
-    line = json.dumps(record, sort_keys=True) + "\n"
-    with open(AUDIT_PATH, "a", encoding="utf-8") as handle:
-        handle.write(line)
-        handle.flush()
-        os.fsync(handle.fileno())
+    mcp_dir = str(Path(__file__).resolve().parents[1])
+    if mcp_dir not in sys.path:
+        sys.path.insert(0, mcp_dir)
+    import hashchain  # noqa: PLC0415 - a top-level import would move lines other documents cite
+    hashchain.append_journal_record(AUDIT_PATH, record)
 
 
 def audit_invocation(

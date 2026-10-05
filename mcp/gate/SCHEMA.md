@@ -384,11 +384,14 @@ Both tools clamp through the same function, so `run_fix` cannot buy a longer or 
 
 How is each record written to the journal?
 
+Hand each record to the one hash-chain module that all three MCP journals share
+(`mcp/gate/server.py:181` `hashchain.append_journal_record(AUDIT_PATH, record)`).
+
 Write one JSON object per line, with keys in sorted order
-(`mcp/gate/server.py:177` `line = json.dumps(record, sort_keys=True) + "\n"`).
+(`mcp/hashchain.py:259` `line = json.dumps({**record, "chain": block}, sort_keys=True) + "\n"`).
 
 Flush and `fsync` each record so a following `tail -n 1` sees it immediately
-(`mcp/gate/server.py:181` `os.fsync(handle.fileno())`).
+(`mcp/hashchain.py:262` `os.fsync(handle.fileno())`).
 
 | Key | Meaning |
 | --- | --- |
@@ -404,6 +407,45 @@ Flush and `fsync` each record so a following `tail -n 1` sees it immediately
 | `summary` | The configured output summary, or an unapplied marker (`mcp/gate/server.py:222` `"summary": summary,`) |
 | `writes` | Whether the command rewrote files: `false` for a check, `true` for a fix (`mcp/gate/server.py:223` `"writes": writes,`) |
 | `calling_role` | The caller's role, defaulting to `unknown` (`mcp/gate/server.py:224` `"calling_role": calling_role or "unknown",`) |
+| `chain` | The line's hash-chain block: `seq`, `prev`, `head` and `seeded` (`mcp/hashchain.py:229` `return {"seq": seq, "prev": prev_head, "head": head, "seeded": seeded}, add_newline`) |
+
+How does a record join the hash chain?
+
+Each `head` is SHA-256 over the previous head and the record's canonical bytes
+(`mcp/hashchain.py:92` `return hashlib.sha256(bytes.fromhex(prev_head) + canonical(record)).hexdigest()`).
+The hashed form is the line with its `chain` block cut down to `seq` and `seeded`
+(`mcp/hashchain.py:143` `hashed["chain"] = {"seq": seq, "seeded": seeded}`).
+
+Does the float `duration_seconds` change?
+
+No. The line keeps the same JSON number (`mcp/gate/server.py:217` `"duration_seconds": duration_seconds,`).
+The canonical form hashes it as its shortest round-tripping decimal, with `-0.0` folded into `0.0`
+(`mcp/hashchain.py:61` `return 0.0 if value == 0.0 else float(value)`).
+NaN and the infinities are refused, never encoded
+(`mcp/hashchain.py:60` `raise ValueError(f"canonical form refuses a non-finite float ({value!r})")`).
+
+What happens to lines written before the chain existed?
+
+They stay exactly as written. The first chained line records how many lines came before it and the
+digest of their bytes (`mcp/hashchain.py:199` `return {"prior_lines": lines, "prior_sha256": digest.hexdigest()}`).
+No line is added, so the journal still grows by one line per executed invocation
+(`mcp/gate/selftest.py:529` `len(after) == len(before) + len(executed),`).
+
+What happens when the chain cannot extend?
+
+The record is still written in full, with `chain.error` in place of a head, and the failure goes to
+stderr (`mcp/hashchain.py:258` `block = _chain_failure(path, f"{type(error).__name__}: {error}")`).
+Every later verify fails at that line
+(`mcp/hashchain.py:320` `reason = f"the chain could not extend at this line: {block['error']}"`).
+No allow or deny outcome changes, and a test pins it
+(`eval/test_deterministic_step.py:823` `def test_hashchain_chain_failure_never_changes_an_authorisation_outcome(tmp_path: Path, monkeypatch,`).
+
+How does an operator check the journal against a kept head?
+
+Run the read-only operator command: it prints the heads and verifies one artifact against a kept anchor
+(`scripts/chain_anchor.py:84` `verify = commands.add_parser("verify", help="verify one artifact against an anchor")`).
+A FAIL exits `1` and names the first record that disagrees, so a changed or missing line is a hard
+failure (`scripts/chain_anchor.py:38` `EXIT_INTACT, EXIT_FAIL, EXIT_ERROR = 0, 1, 2`).
 
 Why does a journal row carry the summary as well as the response?
 
@@ -432,7 +474,7 @@ Why does a refused call add no line?
 Because the refusal is raised in validation, before `execute_gate` and before `audit_invocation`
 (`mcp/gate/server.py:700` `validate_gate(gate)` on a line above `mcp/gate/server.py:184` `audit_invocation(`),
 so the journal stays a record of executed commands only — the same reason the storage server never
-journals a refused write (`mcp/storage/server.py:121` `if classification not in WRITE_CLASSIFICATIONS:`).
+journals a refused write (`mcp/storage/server.py:125` `if classification not in WRITE_CLASSIFICATIONS:`).
 
 `run_fix` is ordered the same way, so a refused fix is as absent from the journal as a refused gate
 (`mcp/gate/server.py:733` `validate_fix(command)` on a line above `mcp/gate/server.py:184` `audit_invocation(`).
@@ -440,8 +482,8 @@ journals a refused write (`mcp/storage/server.py:121` `if classification not in 
 Measured: three refusals in one self-test run left the journal at 10 lines, unchanged
 (`refusals_journal_nothing :: journal lines before=10 after=10`).
 
-No tool edits or erases the journal; it is opened append-only
-(`mcp/gate/server.py:178` `with open(AUDIT_PATH, "a", encoding="utf-8") as handle:`), and the only
+No tool edits or erases the journal; it is opened in append mode
+(`mcp/hashchain.py:252` `with open(path, "a+b") as handle:`), and the only
 read is bounded (`mcp/gate/server.py:756` `if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 200:`
 with `mcp/gate/server.py:757` `raise ValueError("limit must be an integer between 1 and 200")`).
 
@@ -569,3 +611,5 @@ Why is there no `run_command`, no `--` passthrough, and no cwd argument?
   no code path (`agentic.config.json:58` `"summary": {`).
 - Count above the output clamp, so a role reading the response reaches numbers a clamped payload
   would hide (`mcp/gate/server.py:617` `summary = compute_output_summary(command, raw_stdout, raw_stderr)`).
+- Chain every journal line, so an edited, removed or truncated line fails verify against a kept anchor
+  (`mcp/hashchain.py:277` `def verify_journal(`).
