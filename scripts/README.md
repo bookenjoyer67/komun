@@ -15,9 +15,9 @@ How is the launcher invoked, and what does it refuse?
 - Read `<command>` from the four supported commands (`scripts/run-agent.sh:34` `VALID_CMDS="bash sh claude opencode"`).
 - Refuse an unknown role on stderr, naming every valid role, with exit status 2 (`scripts/run-agent.sh:122` `printf 'valid roles: %s\n\n' "$VALID_ROLES" >&2`).
 - Name the container `agent-rev-m4-<role>`, so two roles run side by side (`scripts/run-agent.sh:144` `NAME="${NAME:-agent-rev-m4-$ROLE}"`).
-- Print the role, image, workspace mode and memory mode on every start, read back from the container (`scripts/run-agent.sh:272` `printf 'workspace : %s -> %s (%s)\n' "$REPO" "$WORKSPACE" "$eff_ws"`).
+- Print the role, image, workspace mode and memory mode on every start, read back from the container (`scripts/run-agent.sh:286` `printf 'workspace : %s -> %s (%s)\n' "$REPO" "$WORKSPACE" "$eff_ws"`).
 - Print the matrix with `./scripts/run-agent.sh --matrix`, which needs no Docker daemon (`scripts/run-agent.sh:115` `--matrix)  print_matrix; exit 0 ;;`).
-- Reuse a running container whose mounts already match the role, instead of failing on a taken name (`scripts/run-agent.sh:230` `printf 'container %s is already running with the %s profile — reusing it\n' "$NAME" "$ROLE"`).
+- Reuse a running container whose mounts already match the role, instead of failing on a taken name (`scripts/run-agent.sh:244` `printf 'container %s is already running with the %s profile — reusing it\n' "$NAME" "$ROLE"`).
 
 ## Permission matrix
 
@@ -40,7 +40,7 @@ Each role's container gets the modes below; the reason cell quotes the policy li
 - Read the workspace mode off the deny in each policy entry (`scripts/run-agent.sh:95` `planner)         ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;`), so the five roles that write no repository file get `:ro`.
 - Mount the memory layer as a nested bind inside the read-only workspace (`scripts/run-agent.sh:168` `MOUNTS+=(-v "$REPO/.memory:/workspace/.memory")`), so a granted entry write has a path while the repository stays read-only.
 - Read the write-cache line as the third variation: `/workspace/target` is read-write for the tester alone (`scripts/run-agent.sh:97` `tester)          ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=rw ;;`).
-- Overlay the grant authority and the audit journals read-only over the workspace (`scripts/run-agent.sh:187` `declare -a OVERLAY_FILES=(`), so a writable memory layer cannot rewrite the files a grant is read from.
+- Overlay the grant authority and the audit journals read-only over the workspace (`scripts/run-agent.sh:193` `declare -a OVERLAY_FILES=(`), so a writable memory layer cannot rewrite the files a grant is read from.
 - Treat the mount as the enforcement, not a file mode, because the container runs as root and root ignores a read-only bit (`docs/memory-architecture.md:196` `did not stop a root write`).
 - Keep both Module 3 networks for every role (`sandbox/run-agent-m3.sh:31` `docker network inspect agent-internal >/dev/null 2>&1 || { docker network create --internal agent-internal; }`).
 - Keep the credential broker pattern, so no container holds a key (`sandbox/run-agent.sh:91` `-e ANTHROPIC_AUTH_TOKEN=sandbox-dummy-token \`).
@@ -257,4 +257,4 @@ Which claims in this file does no run here settle?
 - Verify the git worktree case, which this launcher omits (`sandbox/run-agent.sh:76` `GIT_MOUNT=()`).
 - Verify the in-container egress and broker probe for these containers, because the run that would have measured it was denied.
 - Verify that a real `mcp__storage__write_entry` call lands, because the probes here write a file into `/workspace/.memory` and call no MCP tool.
-- Verify that the storage server can still append to `.memory/storage-audit.log`, which the launcher overlays read-only (`scripts/run-agent.sh:192` `.memory/storage-audit.log`).
+- Verify that the storage server can still append to `.memory/storage-audit.log`, which the launcher overlays read-only (`scripts/run-agent.sh:198` `.memory/storage-audit.log`).

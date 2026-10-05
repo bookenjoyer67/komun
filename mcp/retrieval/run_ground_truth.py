@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -36,6 +37,10 @@ DEFAULT_CEILING = "internal"
 # still admits every ceiling the ground-truth queries ask for (internal, public), so the measured
 # retrieval behaviour is unchanged by the guard.
 HARNESS_ROLE = "implementer"
+# The retrieval server binds every caller to the container's own ``AGENT_ROLE`` (``scripts/run-agent.sh:259``
+# sets it), so this harness -- which calls as HARNESS_ROLE -- declares that role for its own process,
+# so the two agree whether the server is in-process or co-launched from this environment.
+os.environ["AGENT_ROLE"] = HARNESS_ROLE
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_GROUND_TRUTH = REPO_ROOT / "docs" / "retrieval-ground-truth.md"
 

@@ -169,6 +169,11 @@ case "$ROLE_MEM" in
   ro)   MOUNTS+=(-v "$REPO/.memory:/workspace/.memory:ro") ;;
   none) : ;;
 esac
+# The cargo cache mounts at $WORKSPACE/target, inside the workspace bind. Docker must create that
+# mountpoint in the container's own root filesystem, and it cannot once the parent is a read-only
+# bind: a repository with no target/ directory fails to start with a bare EROFS. Creating it here is
+# what keeps a fresh clone launchable.
+mkdir -p "$REPO/target"
 if [ "$ROLE_TARGET" = rw ]; then
   MOUNTS+=(-v "$TARGET_VOL:$WORKSPACE/target")
   MOUNTS+=(-v "$REGISTRY_VOL:/usr/local/cargo/registry")
@@ -180,10 +185,11 @@ if [ -f "$OPENCODE_JSON" ]; then
   MOUNTS+=(-v "$OPENCODE_JSON:/root/.config/opencode/opencode.json:ro")
 fi
 
-# The read-only overlays: the grant authority and the audit journals. A read-write workspace, or a
-# read-write memory bind, would otherwise let a role rewrite the files its own grants are read from, or
-# erase the journal line that recorded its refusal. Each path is a nested read-only bind over the parent
-# bind, so the read-only mount wins for that path alone.
+# The read-only overlays: the grant authority, the audit journals, and the two inputs a role's own
+# limits are enforced against. A read-write workspace, or a read-write memory bind, would otherwise let
+# a role rewrite the files its own grants are read from, erase the journal line that recorded its
+# refusal, or reclassify a reference document so its own retrieval ceiling admits it. Each path is a
+# nested read-only bind over the parent bind, so the read-only mount wins for that path alone.
 declare -a OVERLAY_FILES=(
   "mcp/storage/allow-list.json"
   "mcp/retrieval/allow-list.json"
@@ -192,10 +198,18 @@ declare -a OVERLAY_FILES=(
   ".memory/storage-audit.log"
   ".memory/retrieval-audit.log"
   ".memory/gate-audit.log"
+  # The retrieval ceiling is enforced against the `classification` in each reference document's own
+  # front matter (mcp/retrieval/server.py loads this directory at startup), and the gate vocabulary —
+  # names, argv, guards — comes from agentic.config.json. Both sat in writable binds, so a role could
+  # rewrite the input its own ceiling and its own gate list were checked against. Nothing in the
+  # harness writes either one.
+  ".memory/reference"
+  "agentic.config.json"
 )
 declare -a OVERLAY_MOUNTED=()
 for overlay in "${OVERLAY_FILES[@]}"; do
-  if [ -f "$REPO/$overlay" ]; then
+  # -e, not -f: the reference corpus is overlaid as a directory.
+  if [ -e "$REPO/$overlay" ]; then
     MOUNTS+=(-v "$REPO/$overlay:$WORKSPACE/$overlay:ro")
     OVERLAY_MOUNTED+=("$overlay")
   fi

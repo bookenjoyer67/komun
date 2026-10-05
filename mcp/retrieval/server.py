@@ -459,6 +459,42 @@ def resolve_effective_ceiling(role_ceiling: str, requested_ceiling: str) -> str:
     return CLASSIFICATION_ORDER[rank]
 
 
+# --- Role binding: AGENT_ROLE is the identity, the calling_role argument only corroborates --------
+def environment_role() -> str:
+    """Return the role this process is bound to, from ``AGENT_ROLE``, or an empty string.
+
+    The harness sets ``AGENT_ROLE`` in the container it launches (``scripts/run-agent.sh:259``
+    ``-e AGENT_ROLE="$ROLE"``). A blank or whitespace-only value counts as unset. There is
+    deliberately no flag, no config key and no "trusted client" escape hatch: this environment
+    variable is the only switch, and the harness is what sets it.
+    """
+    value = os.environ.get("AGENT_ROLE")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def bind_role(calling_role: str | None) -> tuple[str, str | None]:
+    """Bind the caller's role to this process's ``AGENT_ROLE`` and return ``(role, mismatch)``.
+
+    With ``AGENT_ROLE`` unset the argument is used exactly as before, so a local run, pytest or a
+    self-test is unchanged. With it set, the environment is the effective role: an omitted, blank
+    or ``unknown`` argument yields it, and an argument naming a *different* role yields a mismatch
+    description instead of a role -- a caller cannot escalate by typing another role's name, and
+    the environment is never silently overridden by the argument. The ceiling is then read for the
+    bound role, never for the argument, so a disagreeing caller reaches no ceiling of its naming.
+    """
+    argument = calling_role.strip() if isinstance(calling_role, str) else ""
+    bound = environment_role()
+    if not bound:
+        return argument, None
+    if argument and argument != "unknown" and argument != bound:
+        return bound, (
+            f"calling_role {argument!r} disagrees with the bound AGENT_ROLE {bound!r}: the role is "
+            "bound to this container by its environment, so a disagreeing argument is refused, "
+            "never overridden"
+        )
+    return bound, None
+
+
 def _authorize(
     calling_role: str | None,
     operation: str,
@@ -470,8 +506,10 @@ def _authorize(
     """Refuse an ungranted role, journal the refusal, and return the role.
 
     This is the first statement of ``retrieve``, so nothing else in the operation runs for a refused
-    call: no validation, no embedding, no index lookup. The refusal names the role, the operation
-    and the roles that ARE allowed.
+    call: no validation, no embedding, no index lookup. The role is bound to the container's
+    ``AGENT_ROLE`` first -- a ``calling_role`` that disagrees with it is refused outright, and the
+    ceiling is read for the bound role -- and the refusal names the role, the operation and the
+    roles that ARE allowed.
     """
     if operation not in OPERATIONS:
         raise ValueError(
@@ -479,10 +517,12 @@ def _authorize(
         )
 
     allowed = authorized_roles(operation)
-    role = calling_role.strip() if isinstance(calling_role, str) else ""
+    role, mismatch = bind_role(calling_role)
     ceiling = role_ceiling_name(role)
 
-    if not role or role == "unknown":
+    if mismatch is not None:
+        cause = mismatch
+    elif not role or role == "unknown":
         cause = (
             f"unknown role {calling_role!r}: a missing, blank or unrecognised role is refused and "
             "is never defaulted to an allowed one"
