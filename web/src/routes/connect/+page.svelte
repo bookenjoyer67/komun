@@ -76,7 +76,7 @@
 			<input
 				type="url"
 				bind:value={url}
-				placeholder="https://your-aid-server.org"
+				placeholder="https://your-listings-server.org"
 				disabled={loading}
 			/>
 			{#if error}

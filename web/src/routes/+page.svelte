@@ -96,7 +96,7 @@
 		</div>
 
 		{#if loading}
-			<p class="status">Searching for aid nearby...</p>
+			<p class="status">Searching for listings nearby...</p>
 		{:else if servers.length === 0}
 			<div class="empty">
 				<p>No servers found nearby. Be the first to add local listings.</p>
@@ -114,7 +114,7 @@
 				{/each}
 			</ul>
 			<p class="feed-footer">
-				Showing aid from {servers.length} nearby server{servers.length > 1 ? 's' : ''}
+				Showing listings from {servers.length} nearby server{servers.length > 1 ? 's' : ''}
 				&middot; <button class="link-btn" onclick={postFirst}>Post something</button>
 			</p>
 		{/if}
