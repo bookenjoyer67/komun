@@ -275,7 +275,10 @@ A capped call is journalled as a withholding (`mcp/retrieval/server.py:847`
 Every call appends exactly one JSON object per line to `/workspace/.memory/retrieval-audit.log`,
 denials and withholdings beside the successes (`mcp/retrieval/server.py:309` `def audit_call(`
 built on `mcp/retrieval/server.py:291`
-`def append_audit_record(record: dict[str, Any]) -> None:`, which flushes and `fsync`s each line).
+`def append_audit_record(record: dict[str, Any]) -> None:`). That sink hands each record to the
+hash-chain module all three MCP journals share
+(`mcp/retrieval/server.py:298` `hashchain.append_journal_record(AUDIT_PATH, record)`), which flushes
+and `fsync`s each line (`mcp/hashchain.py:262` `os.fsync(handle.fileno())`).
 
 | Key | Meaning |
 | --- | --- |
@@ -293,8 +296,19 @@ built on `mcp/retrieval/server.py:291`
 | `result_classifications` | The distinct classifications returned |
 | `query_preview` | The query cut to 80 characters, so the journal does not become a copy of the corpus (`mcp/retrieval/server.py:301` `def preview_query(query: Any, limit: int = 80)`) |
 | `reason` | `null` when allowed, the cause otherwise |
+| `chain` | The line's hash-chain block: `seq`, `prev`, `head` and `seeded` (`mcp/hashchain.py:229` `return {"seq": seq, "prev": prev_head, "head": head, "seeded": seeded}, add_newline`) |
 
-One call writes one record. A denial, from a live call as `tester`:
+How does a record join the hash chain?
+
+Each `head` is SHA-256 over the previous head and the record's canonical bytes
+(`mcp/hashchain.py:92` `return hashlib.sha256(bytes.fromhex(prev_head) + canonical(record)).hexdigest()`).
+A chain that cannot extend still writes the record, with `chain.error` in place of a head, so a
+denial stays a denial (`mcp/hashchain.py:258` `block = _chain_failure(path, f"{type(error).__name__}: {error}")`).
+The operator checks the journal against a kept head with a read-only command whose FAIL exits `1`
+(`scripts/chain_anchor.py:38` `EXIT_INTACT, EXIT_FAIL, EXIT_ERROR = 0, 1, 2`).
+
+One call writes one record. A denial, from a live call as `tester`, captured before the `chain` key
+existed:
 
 ```json
 {"calling_role": "tester", "ceiling": null, "decision": "denied", "effective_ceiling": null, "operation": "retrieve", "project_id": "proj-komun", "query_preview": "What does hosting Komun cost per month, and what does the vendor contract commit...", "reason": "authorization_denied: role 'tester' is not granted 'retrieve'. operation='retrieve' role='tester' allowed_roles=['implementer', 'planner', 'reviewer']", "requested_ceiling": "internal", "result_classifications": null, "result_count": null, "role_ceiling": "none", "timestamp": "2026-09-28T18:46:21.650885+00:00", "withheld": false}
@@ -488,7 +502,7 @@ Which four fields does each ground-truth entry carry?
 
 The lesson fixes the field names, so the parser accepts them in their written form
 (`mcp/retrieval/run_ground_truth.py:61`
-`("criterion", r"^(?:the\s+)?pass(?:es|\s+criteria|\s+criterion)?$"),`).
+`("criterion", r"^(?:the\\s+)?pass(?:es|\\s+criteria|\\s+criterion)?$"),`).
 
 - Give the query text as `The query text:` or `- Query:` (`mcp/retrieval/run_ground_truth.py:62` `("query",`).
 - Give the expected top result as `The expected top result:` (`mcp/retrieval/run_ground_truth.py:63` `("expected",`).

@@ -42,6 +42,10 @@ import aiosqlite
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
+_MCP_DIR = str(Path(__file__).resolve().parents[1])
+if _MCP_DIR not in sys.path:
+    sys.path.insert(0, _MCP_DIR)
+import hashchain  # noqa: E402
 
 # --- Runtime paths: container defaults, every one overridable for a local run ---------------
 MEMORY_DIR = os.getenv("MEMORY_DIR", "/workspace/.memory")
@@ -76,7 +80,7 @@ SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_entries_project_type "
     "ON entries(project_id, entry_type, deleted)",
-)
+) + hashchain.STORE_SCHEMA_STATEMENTS
 
 mcp = FastMCP("storage")
 
@@ -130,11 +134,7 @@ def validate_classification(classification: str) -> None:
 def append_audit_record(record: dict[str, Any]) -> None:
     """Append exactly one JSON object plus newline. The file is opened append-only."""
     ensure_parent(AUDIT_PATH)
-    line = json.dumps(record, sort_keys=True) + "\n"
-    with open(AUDIT_PATH, "a", encoding="utf-8") as handle:
-        handle.write(line)
-        handle.flush()
-        os.fsync(handle.fileno())
+    hashchain.append_journal_record(AUDIT_PATH, record)
 
 
 def audit_event(
@@ -345,6 +345,8 @@ async def fetch_live_entry(
 
 
 # --- Operations -----------------------------------------------------------------------------
+# Each write runs between BEGIN IMMEDIATE and its commit together with its chain record. A
+# connection closed without that commit discards both, so no row change lands without its record.
 @mcp.tool
 async def write_entry(
     project_id: str,
@@ -366,11 +368,13 @@ async def write_entry(
     now = utc_now()
     conn = await open_db()
     try:
+        await conn.execute("BEGIN IMMEDIATE")
         await conn.execute(
             "INSERT INTO entries (entry_id, project_id, entry_type, title, content, "
             "classification, deleted, last_updated) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
             (entry_id, project_id, entry_type, title, content, classification, now),
         )
+        seeded = await hashchain.append_store_record(conn, "write_entry", entry_id)
         await conn.commit()
     finally:
         await conn.close()
@@ -383,6 +387,8 @@ async def write_entry(
         classification=classification,
         calling_role=authorized_role,
     )
+    if seeded is not None:
+        return {"entry_id": entry_id, "chain_seeded": seeded}
     return {"entry_id": entry_id}
 
 
@@ -474,6 +480,7 @@ async def update_entry(
                 reason="no live entry for that project_id and entry_id",
             )
             raise ValueError("no entry found to update")
+        await conn.execute("BEGIN IMMEDIATE")
         if title is None:
             await conn.execute(
                 "UPDATE entries SET content = ?, last_updated = ? "
@@ -486,6 +493,7 @@ async def update_entry(
                 "WHERE project_id = ? AND entry_id = ? AND deleted = 0",
                 (content, title, now, project_id, entry_id),
             )
+        seeded = await hashchain.append_store_record(conn, "update_entry", entry_id)
         await conn.commit()
         classification = row["classification"]
     finally:
@@ -499,6 +507,8 @@ async def update_entry(
         classification=classification,
         calling_role=authorized_role,
     )
+    if seeded is not None:
+        return {"success": True, "chain_seeded": seeded}
     return {"success": True}
 
 
@@ -522,11 +532,13 @@ async def delete_entry(project_id: str, entry_id: str, calling_role: str = "unkn
                 reason="no live entry for that project_id and entry_id",
             )
             raise ValueError("no entry found to delete")
+        await conn.execute("BEGIN IMMEDIATE")
         await conn.execute(
             "UPDATE entries SET deleted = 1, last_updated = ? "
             "WHERE project_id = ? AND entry_id = ? AND deleted = 0",
             (utc_now(), project_id, entry_id),
         )
+        seeded = await hashchain.append_store_record(conn, "delete_entry", entry_id)
         await conn.commit()
         classification = row["classification"]
     finally:
@@ -540,6 +552,8 @@ async def delete_entry(project_id: str, entry_id: str, calling_role: str = "unkn
         classification=classification,
         calling_role=authorized_role,
     )
+    if seeded is not None:
+        return {"success": True, "chain_seeded": seeded}
     return {"success": True}
 
 
