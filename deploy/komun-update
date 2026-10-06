@@ -1,0 +1,154 @@
+#!/bin/sh
+# Pull the newest production release and swap it into place. Idempotent: run it from cron, or by hand,
+# and it does nothing when the deployed revision is already current.
+#
+# usage: komun-update
+#
+# What it touches, and nothing else:
+#   /opt/komun/komun-server (+ .prev)      the server binary
+#   /opt/komun/frontend      (+ .prev)     the built SPA
+#   /opt/komun/csp.conf      (+ .prev)     the per-build Content-Security-Policy
+#   /opt/komun/.deployed-sha               the revision marker this script compares against
+#   the service via rc-service, and nginx via `nginx -t && nginx -s reload`
+# What it never touches: config.toml, data/, the database, /etc/nginx, and the Forgejo checkout that
+# this deployment was originally made from. Those stay the operator's, deliberately.
+#
+# Trust model, stated honestly: the tarball and its checksum come from the same origin (a GitHub release
+# asset over TLS), so the checksum catches a truncated or corrupted download, not a compromise of the
+# release itself. What it does guarantee is that production only ever runs a revision the pipeline
+# published, because a release only exists after every gating job passed.
+set -eu
+
+OWNER="bookenjoyer67"
+REPO="komun"
+APP_DIR="${KOMUN_APP_DIR:-/opt/komun}"
+SERVICE="${KOMUN_SERVICE:-komun}"
+HEALTH_URL="${KOMUN_HEALTH_URL:-http://127.0.0.1:3001/api/health}"
+LOG="${KOMUN_UPDATE_LOG:-/var/log/komun-update.log}"
+LOCK="${KOMUN_UPDATE_LOCK:-/var/run/komun-update.lock}"
+BASE="${KOMUN_UPDATE_BASE:-https://github.com/${OWNER}/${REPO}/releases/latest/download}"
+HEALTH_ATTEMPTS=30
+
+# One run at a time: a slow restart must not overlap the next tick.
+if command -v flock >/dev/null 2>&1; then
+    if [ "${KOMUN_UPDATE_LOCKED:-0}" != "1" ]; then
+        KOMUN_UPDATE_LOCKED=1 exec flock -n "$LOCK" "$0" "$@"
+    fi
+fi
+
+log() {
+    printf '%s %s\n' "$(date -Iseconds)" "$*" >>"$LOG"
+}
+
+tmp="$(mktemp -d)"
+cleanup() { rm -rf "$tmp"; }
+trap cleanup EXIT INT TERM
+
+log "checking for a newer release"
+if ! curl -fsSL --max-time 120 "$BASE/komun-prod.tar.gz" -o "$tmp/komun-prod.tar.gz"; then
+    # A release without the production asset (or no release at all) is not an error for this host.
+    log "no production asset at $BASE/komun-prod.tar.gz; nothing to do"
+    exit 0
+fi
+curl -fsSL --max-time 60 "$BASE/SHA256SUMS" -o "$tmp/SHA256SUMS"
+# The download keeps the name SHA256SUMS lists, so `sha256sum -c` finds it. Measured before this was
+# fixed: saving it as anything else makes every run fail verification, which is fail-closed but never
+# deploys.
+if ! (cd "$tmp" && sha256sum -c SHA256SUMS >/dev/null); then
+    log "FAILED checksum verification; leaving the running build alone"
+    exit 1
+fi
+
+mkdir -p "$tmp/unpacked"
+tar -xzf "$tmp/komun-prod.tar.gz" -C "$tmp/unpacked"
+version="$(cat "$tmp/unpacked/VERSION" 2>/dev/null || true)"
+[ -n "$version" ] || { log "FAILED the release carries no VERSION"; exit 1; }
+
+current="$(cat "$APP_DIR/.deployed-sha" 2>/dev/null || true)"
+if [ "$version" = "$current" ]; then
+    log "already at $version; nothing to do"
+    exit 0
+fi
+
+[ -x "$tmp/unpacked/komun-server" ] || { log "FAILED the release carries no executable server"; exit 1; }
+[ -f "$tmp/unpacked/frontend/index.html" ] || { log "FAILED the release carries no frontend"; exit 1; }
+
+# The last line of defence against a bundle built without its production configuration. A frontend that
+# carries the source's development fallback is a deploy that looks green and breaks a feature silently,
+# because the served policy blocks the call it makes. The release job refuses to publish one; the host
+# refuses to install one, so the box survives a pipeline that has not learned the lesson yet.
+if grep -rl 'localhost:' "$tmp/unpacked/frontend" >/dev/null 2>&1; then
+    log "FAILED the release's frontend carries a development fallback; leaving the running build alone"
+    exit 1
+fi
+
+log "deploying $version (was ${current:-none})"
+
+# Stage everything next to its target first, so the swap itself is only renames.
+install -m 0755 "$tmp/unpacked/komun-server" "$APP_DIR/komun-server.new"
+rm -rf "$APP_DIR/frontend.new"
+cp -a "$tmp/unpacked/frontend" "$APP_DIR/frontend.new"
+have_csp=0
+if [ -f "$tmp/unpacked/csp.conf" ]; then
+    install -m 0644 "$tmp/unpacked/csp.conf" "$APP_DIR/csp.conf.new"
+    have_csp=1
+fi
+chown -R komun:komun "$APP_DIR/komun-server.new" "$APP_DIR/frontend.new" 2>/dev/null || true
+
+restore_csp() {
+    [ "$have_csp" = "1" ] || return 0
+    if [ -f "$APP_DIR/csp.conf.prev" ]; then
+        mv "$APP_DIR/csp.conf.prev" "$APP_DIR/csp.conf"
+        nginx -t >/dev/null 2>&1 && nginx -s reload
+    fi
+}
+
+rollback() {
+    log "FAILED the new build did not answer $HEALTH_URL; rolling back"
+    [ -f "$APP_DIR/komun-server.prev" ] && mv "$APP_DIR/komun-server.prev" "$APP_DIR/komun-server"
+    if [ -d "$APP_DIR/frontend.prev" ]; then
+        rm -rf "$APP_DIR/frontend.failed"
+        mv "$APP_DIR/frontend" "$APP_DIR/frontend.failed"
+        mv "$APP_DIR/frontend.prev" "$APP_DIR/frontend"
+    fi
+    restore_csp
+    rc-service "$SERVICE" restart >/dev/null 2>&1 || true
+    log "rolled back to ${current:-the previous build}"
+    exit 1
+}
+
+# The swap: keep exactly one previous generation of each file.
+[ -f "$APP_DIR/komun-server" ] && mv "$APP_DIR/komun-server" "$APP_DIR/komun-server.prev"
+mv "$APP_DIR/komun-server.new" "$APP_DIR/komun-server"
+if [ -d "$APP_DIR/frontend" ]; then
+    rm -rf "$APP_DIR/frontend.prev"
+    mv "$APP_DIR/frontend" "$APP_DIR/frontend.prev"
+fi
+mv "$APP_DIR/frontend.new" "$APP_DIR/frontend"
+
+# The policy must match the build it serves, and nginx must accept it before it is reloaded.
+if [ "$have_csp" = "1" ]; then
+    [ -f "$APP_DIR/csp.conf" ] && mv "$APP_DIR/csp.conf" "$APP_DIR/csp.conf.prev"
+    mv "$APP_DIR/csp.conf.new" "$APP_DIR/csp.conf"
+    if nginx -t >/dev/null 2>&1; then
+        nginx -s reload
+    else
+        log "FAILED nginx refused the new policy; keeping the previous one"
+        restore_csp
+    fi
+fi
+
+rc-service "$SERVICE" restart >/dev/null 2>&1 || true
+
+attempt=1
+while [ "$attempt" -le "$HEALTH_ATTEMPTS" ]; do
+    if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+        printf '%s\n' "$version" >"$APP_DIR/.deployed-sha"
+        log "deployed $version after ${attempt}s"
+        exit 0
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+rollback

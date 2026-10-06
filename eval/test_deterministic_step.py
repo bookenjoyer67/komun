@@ -173,7 +173,7 @@ def test_edge_case_off_by_one_citation_is_reported(tmp_path: Path) -> None:
 
         Which pointer lands one line away?
 
-        - Cite the role list (`scripts/run-agent.sh:34` `VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher"`).
+        - Cite the role list (`scripts/run-agent.sh:34` `VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher beta-tester"`).
         """)
     _, report, _ = run_checker(tmp_path, [fixture])
     drift = [f for f in report["inputs"][0]["violations"] if f["code"] == "CIT-LINE-DRIFT"]
@@ -262,7 +262,7 @@ def test_clean_input_passes_and_corrupt_input_fails(tmp_path: Path) -> None:
 
         What does this probe document prove?
 
-        - Cite the launcher's role list (`scripts/run-agent.sh:33` `VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher"`).
+        - Cite the launcher's role list (`scripts/run-agent.sh:33` `VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher beta-tester"`).
         - Cite the role table (`scripts/README.md:31` `Policy grants workspace writes and no memory write`).
         """)
     status, report, _ = run_checker(tmp_path, [clean], output=tmp_path / "clean.json")
@@ -277,7 +277,7 @@ def test_clean_input_passes_and_corrupt_input_fails(tmp_path: Path) -> None:
 
         - Cite a bare location with no literal (docs/DOC-STYLE.md:40).
         - Should keep the memory layer plain files, because that is the decision of record.
-        - Cite a drifted line (`scripts/run-agent.sh:34` `VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher"`).
+        - Cite a drifted line (`scripts/run-agent.sh:34` `VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher beta-tester"`).
         - Cite a literal that is absent (`docs/DOC-STYLE.md:21` `this literal appears in no file at all`).
         - Cite a missing file (`docs/NO-SUCH-FILE.md:1` `absent`).
         """)
@@ -466,7 +466,7 @@ def test_guard_with_no_usable_default_fails_only_its_own_gate(tmp_path: Path) ->
 CHAIN_OPERATOR = "chain-test-operator"
 CHAIN_PROJECT = "proj-chain"
 CHAIN_ANCHOR = REPO / "scripts" / "chain_anchor.py"
-CHAIN_ARTIFACTS = {"store", "storage-journal", "retrieval-journal", "gate-journal"}
+CHAIN_ARTIFACTS = {"store", "storage-journal", "retrieval-journal", "gate-journal", "browser-journal"}
 STORAGE_JOURNAL_KEYS = {
     "timestamp", "operation", "project_id", "entry_id", "classification", "calling_role",
     "allowed", "reason",

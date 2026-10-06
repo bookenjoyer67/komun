@@ -65,16 +65,16 @@
 
 <svelte:head>
 	<title>Komun</title>
-	<meta name="description" content="Federated mutual aid" />
+	<meta name="description" content="Local Listings" />
 	<meta property="og:title" content="Komun" />
-	<meta property="og:description" content="Federated mutual aid" />
+	<meta property="og:description" content="Local Listings" />
 	<meta property="og:type" content="website" />
 	<meta property="og:image" content="/favicon.svg" />
 	<meta property="og:image:width" content="512" />
 	<meta property="og:image:height" content="512" />
 	<meta name="twitter:card" content="summary" />
 	<meta name="twitter:title" content="Komun" />
-	<meta name="twitter:description" content="Federated mutual aid" />
+	<meta name="twitter:description" content="Local Listings" />
 	<meta name="twitter:image" content="/favicon.svg" />
 </svelte:head>
 
@@ -97,7 +97,7 @@
 
 		<div class="nav-links" class:show={menuOpen}>
 			{#if $serverState.active}
-				<a href="/aid" onclick={closeMenu}>Aid</a>
+				<a href="/aid" onclick={closeMenu}>Listings</a>
 				{#if $auth.servers?.[$serverState.active]}
 					<a href="/messages" onclick={closeMenu}>Messages</a>
 					<a href="/notifications" class="notif-link" onclick={closeMenu}>

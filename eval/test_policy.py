@@ -66,9 +66,11 @@ CONFIG_KEYS: tuple[str, ...] = (
     "artifacts.calibration_log",
     "artifacts.storage_allow_list",
     "artifacts.retrieval_allow_list",
+    "artifacts.browser_allow_list",
     "artifacts.storage_server",
     "artifacts.retrieval_server",
     "artifacts.gate_server",
+    "artifacts.browser_server",
     "artifacts.coursetools_server",
     "artifacts.launcher",
     "artifacts.definitions_dir",
@@ -102,9 +104,11 @@ ROUTING_JSON = _artifact("grant_map_json")
 CALIBRATION = _artifact("calibration_log")
 STORAGE_ALLOW = _artifact("storage_allow_list")
 RETRIEVAL_ALLOW = _artifact("retrieval_allow_list")
+BROWSER_ALLOW = _artifact("browser_allow_list")
 STORAGE_SERVER = _artifact("storage_server")
 RETRIEVAL_SERVER = _artifact("retrieval_server")
 GATE_SERVER = _artifact("gate_server")
+BROWSER_SERVER = _artifact("browser_server")
 # The course-tools server is the one server outside the governed three, and it is named in the
 # reports this suite emits. The config names it like the rest — `agentic.config.json:166`
 # `"coursetools_server": "mcp/coursetools_server.py"` — so it resolves through `_artifact` here
@@ -122,6 +126,7 @@ ROLES = (
     "reviewer",
     "project-manager",
     "researcher",
+    "beta-tester",
 )
 
 DIMENSIONS = (
@@ -414,6 +419,10 @@ def retrieval_allow() -> dict:
     return _load_json(RETRIEVAL_ALLOW)
 
 
+def browser_allow() -> dict:
+    return _load_json(BROWSER_ALLOW)
+
+
 def routing_map() -> dict:
     return _load_json(ROUTING_JSON)
 
@@ -698,6 +707,52 @@ def test_storage_allowlist_matches_policy(role: str) -> None:
         f"{_rel(ROUTING_MD)} storage-operation table",
         sorted(table_ops),
         _setnote(policy_storage, table_ops),
+    )
+
+
+@pytest.mark.parametrize("role", ROLES)
+def test_browser_allowlist_matches_policy(role: str) -> None:
+    """The browser grants in the policy, the routing map and the browser allow-list are identical."""
+    policy_ops, _ = policy_mcp(role)
+    policy_browser = {
+        tool.split("__")[2] for tool in policy_ops if tool.startswith("mcp__browser__")
+    }
+    allow_ops = set(browser_allow()["roles"].get(role, []))
+    map_ops = {tool.split("__")[2] for tool in map_grants(role) if tool.startswith("mcp__browser__")}
+    table_grants, table_denials = map_md_tool_table(role)
+    table_ops = {tool.split("__")[2] for tool in table_grants if tool.startswith("mcp__browser__")}
+    table_denied = {tool.split("__")[2] for tool in table_denials if tool.startswith("mcp__browser__")}
+
+    assert allow_ops == policy_browser, _mismatch(
+        role,
+        f"{_rel(POLICY)} (MCP server and operation access)",
+        sorted(policy_browser),
+        f"{_rel(BROWSER_ALLOW)} roles.{role}",
+        sorted(allow_ops),
+        _setnote(policy_browser, allow_ops),
+    )
+    assert map_ops == policy_browser, _mismatch(
+        role,
+        f"{_rel(POLICY)} (MCP server and operation access)",
+        sorted(policy_browser),
+        f"{_rel(ROUTING_JSON)} grants.{role}",
+        sorted(map_ops),
+        _setnote(policy_browser, map_ops),
+    )
+    assert table_ops == policy_browser, _mismatch(
+        role,
+        f"{_rel(POLICY)} (MCP server and operation access)",
+        sorted(policy_browser),
+        f"{_rel(ROUTING_MD)} role table (Tools granted)",
+        sorted(table_ops),
+        _setnote(policy_browser, table_ops),
+    )
+    assert not table_denied, _mismatch(
+        role,
+        f"{_rel(POLICY)} (MCP server and operation access)",
+        f"grants browser tools {sorted(policy_browser)}",
+        f"{_rel(ROUTING_MD)} role table (Tools denied)",
+        sorted(table_denied),
     )
 
 
@@ -1156,6 +1211,7 @@ def test_policy_artifacts_present() -> None:
         CALIBRATION,
         STORAGE_ALLOW,
         RETRIEVAL_ALLOW,
+        BROWSER_ALLOW,
         LAUNCHER,
     ):
         _read(path)

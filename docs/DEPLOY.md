@@ -154,3 +154,60 @@ Without a contact, geocode requests carry the generic agent
 (`crates/server/src/api/geocode/mod.rs:46` `" (nominatim proxy; local-listings app)"`). The server
 warns at startup when no contact is set
 (`crates/server/src/main.rs:131` `if api::geocode::contact_is_missing() {`).
+
+## 8. Automatic updates from a release
+
+How does a host update itself without a deploy pipeline reaching into it?
+
+The pipeline publishes, the host pulls. `release` in `.github/workflows/ci.yml` runs only for a push to
+the default branch and only when the gating jobs passed, so the host can only ever run a revision the
+pipeline verified. It builds the server inside an Alpine image (production's libc; every TLS dependency
+here is rustls, so the build needs no OpenSSL), builds the frontend, regenerates the
+Content-Security-Policy for that frontend, and attaches `komun-prod.tar.gz` plus `SHA256SUMS` to a
+release marked latest. The host asks for `releases/latest/download/komun-prod.tar.gz` on a timer.
+Nothing connects to the host, no port is opened for it, and no GitHub runner executes on it — which
+matters, because this repository is public and a self-hosted runner would run workflow code from fork
+pull requests on the host itself.
+
+What is in the tarball:
+
+| Path | Where it lands | Why it travels with the release |
+|:--|:--|:--|
+| `komun-server` | `/opt/komun/komun-server` | the Alpine build |
+| `frontend/` | `/opt/komun/frontend` | the SPA the proxy serves |
+| `csp.conf` | `/opt/komun/csp.conf` | the policy pins the *build's* inline bootstrap hash |
+| `VERSION` | compare only | the commit the host records as deployed |
+| `BUILD` | read by a human | the run that produced it |
+
+`csp.conf` is not optional. A SvelteKit build carries one inline bootstrap script and the served policy
+allows scripts only from `'self'` plus that script's `sha256`; a new frontend under an old policy is a
+blank page for every visitor, with nothing in the server log to say why. `scripts/csp-hash.sh` prints
+the policy for the file it is given, and the release job runs it over the build it just made.
+
+Install the updater once, as root:
+
+```sh
+install -m 0755 deploy/komun-update /usr/local/sbin/komun-update
+: >/var/log/komun-update.log
+echo '*/10 * * * * /usr/local/sbin/komun-update' >>/etc/crontabs/root
+```
+
+cron re-reads a changed crontab, so nothing needs restarting on Alpine's cronie. If a host's daemon
+does not, restart the one it runs under (`rc-service crond restart` on OpenRC, `sv restart cron` under
+runit). Make sure the appended line ends with a newline: a crontab whose last line has none loses it.
+
+Then run it by hand once (`/usr/local/sbin/komun-update`) and watch `/var/log/komun-update.log` for the
+cutover; the first run replaces whatever the host is running with the newest release. On a host whose
+proxy reads a different port or path, set `KOMUN_HEALTH_URL`, `KOMUN_APP_DIR` or `KOMUN_SERVICE` in the
+cron line rather than editing the script. `KOMUN_UPDATE_BASE` points the updater at another source
+(file:// or a local mirror), which is how a host is tested without publishing a release.
+
+It is idempotent — a tick whose `VERSION` matches `/opt/komun/.deployed-sha` does nothing — and it keeps
+one previous generation of each file (`.prev`), so a build that fails its health probe rolls back and
+restarts the old one on the spot. It never touches `config.toml`, `data/`, the database or
+`/etc/nginx`: it only reloads nginx, and only after `nginx -t` accepts the new policy.
+
+Two limits worth knowing. The checksum in `SHA256SUMS` comes from the same origin as the tarball, so it
+catches a corrupted download, not a compromised release — what it does guarantee is that the host only
+ever runs a revision this pipeline published. And the updater asks for *latest*: if you ever publish
+releases for something other than the server, give the updater a tag filter first.

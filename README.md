@@ -2,7 +2,7 @@
 
 # 🫱🏾‍🫲🏼 Komun
 
-**A marketplace and mutual aid hub — needs meet resources, conversations stay encrypted.**
+**A marketplace and local listings hub — needs meet resources, conversations stay encrypted.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://rust-lang.org)
@@ -12,7 +12,7 @@
 
 ---
 
-Komun is a single-server marketplace and mutual aid hub. People post what they need, what they can give,
+Komun is a single-server marketplace and local listings hub. People post what they need, what they can give,
 and what they have to offer, then match and negotiate over end-to-end encrypted conversations.
 The server is the community — there is no multi-tenant layer and no federation.
 

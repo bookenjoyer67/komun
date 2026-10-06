@@ -23,7 +23,8 @@
     "tester": "refused update_entry and delete_entry: it records a result and alters no earlier record",
     "reviewer": "refused update_entry and delete_entry: it stays read-only toward work it did not write and records only its own review",
     "project-manager": "refused write_entry, update_entry and delete_entry: it owns ticket state rather than persistent project memory",
-    "researcher": "refused read_entry and list_entries: it records findings and reads nothing back out of project memory"
+    "researcher": "refused read_entry and list_entries: it records findings and reads nothing back out of project memory",
+    "beta-tester": "refused update_entry and delete_entry: it records one result and alters no earlier record"
   },
   "denial_note_by_operation": {
     "delete_entry": "refused to every role, so record removal stays outside the gate and audit evidence survives; no role holds a destructive capability here"
@@ -56,6 +57,11 @@
       "list_entries"
     ],
     "researcher": [
+      "write_entry"
+    ],
+    "beta-tester": [
+      "read_entry",
+      "list_entries",
       "write_entry"
     ]
   }

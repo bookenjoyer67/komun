@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only operator command for the hash chains over the store and the three MCP journals.
+"""Read-only operator command for the hash chains over the store and the four MCP journals.
 
     python3 scripts/chain_anchor.py head [--memory-dir DIR]
     python3 scripts/chain_anchor.py verify --artifact NAME --expected SEQ:HEAD [--memory-dir DIR]
@@ -34,6 +34,7 @@ ARTIFACTS: dict[str, tuple[str, str]] = {
     "storage-journal": ("storage-audit.log", "journal"),
     "retrieval-journal": ("retrieval-audit.log", "journal"),
     "gate-journal": ("gate-audit.log", "journal"),
+    "browser-journal": ("browser-audit.log", "journal"),
 }
 EXIT_INTACT, EXIT_FAIL, EXIT_ERROR = 0, 1, 2
 

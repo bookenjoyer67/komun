@@ -27,6 +27,16 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # A push to the default branch is the other way code lands, and until this trigger existed the
+  # last commits on main had never been seen by a workflow. Everything the push path cannot take
+  # from the event -- the comparison base, the pull request number, the comment target -- is either
+  # resolved below or guarded to the pull_request event.
+  push:
+    branches: [main]
+  # A manual run builds the same production artifact and uploads it as a workflow artifact instead of
+  # publishing a release, so the build can be exercised -- and the tarball tried on a host -- before the
+  # first release exists.
+  workflow_dispatch:
 
 # Least privilege at the workflow level. A job asks for more only where a step uses it.
 permissions:
@@ -51,6 +61,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       changed-files: ${{ steps.classify.outputs.changed-files }}
+      comparison-base: ${{ steps.base.outputs.comparison-base }}
       change-type: ${{ steps.classify.outputs.change-type }}
       requires-governed-check: ${{ steps.classify.outputs.requires-governed-check }}
       touches-policy: ${{ steps.classify.outputs.touches-policy }}
@@ -61,12 +72,40 @@ jobs:
           # can compare the two revisions directly.
           fetch-depth: 0
 
+      # One place resolves the revision this run compares against: the pull request's base on a
+      # pull_request event, the previous tip on a push. A push of a new branch, a force push or a
+      # shallow clone can leave that commit absent, so the step falls back to the pushed commit's
+      # parent and prints which revision it used. The value feeds the classifier's diff and the
+      # conformance gate's comparison, so neither can silently compare a tree against itself.
+      - name: Resolve the comparison base
+        id: base
+        env:
+          EVENT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          base="$EVENT_BASE"
+          reason=""
+          case "$base" in
+            ""|0000000000000000000000000000000000000000) base=""; reason="the event carried no base revision" ;;
+          esac
+          if [ -n "$base" ] && ! git -C "$GITHUB_WORKSPACE" cat-file -e "${base}^{commit}" 2>/dev/null; then
+            reason="the event's base revision is not in this checkout"
+            base=""
+          fi
+          if [ -z "$base" ]; then
+            base="$(git -C "$GITHUB_WORKSPACE" rev-parse "HEAD^" 2>/dev/null || git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+            echo "comparison base falls back to $base ($reason)"
+          else
+            echo "comparison base is $base"
+          fi
+          echo "comparison-base=$base" >> "$GITHUB_OUTPUT"
+          git -C "$GITHUB_WORKSPACE" cat-file -e "${base}^{commit}" || { echo "$base is not a commit in this checkout"; exit 1; }
+
       - name: Classify the pull request's changed files
         id: classify
         env:
           # The two revisions are trusted values from the event payload and are read from the
           # environment, not interpolated into the script (no shell re-parsing of event data).
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.base.outputs.comparison-base }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           mkdir -p ci-artifacts
@@ -287,6 +326,50 @@ jobs:
         working-directory: console
 
   # ---------------------------------------------------------------------------------------------
+  # The database-backed suites the workspace gate reports as ignored. They cannot run in the sandbox
+  # image: they need a live Postgres, and the image's route to one is exactly what an earlier probe
+  # failed to find (the local test database publishes to 127.0.0.1 only). This job runs them where the
+  # operator runs them -- on the host, against a disposable database -- with the command the suites'
+  # own documentation gives (`crates/server/src/tests/key_coherence.rs` `KOMUN_TEST_DATABASE_URL=
+  # postgres://... cargo test -p komun-server key_coherence -- --ignored`). Gating: deterministic.
+  # ---------------------------------------------------------------------------------------------
+  database-gate:
+    name: Database Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: change-type-check
+    services:
+      # Disposable and reachable only on the runner's loopback. The password is a literal on purpose:
+      # it protects nothing, it is destroyed with the container, and reading it from a secret would
+      # imply it is worth keeping. It is never echoed: the URL is built into the env of one step.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: komun
+          POSTGRES_PASSWORD: komun_test_only
+          POSTGRES_DB: komun_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d  # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2
+
+      # --test-threads=1 because every test in the crate shares this one database and each builds its
+      # own harness and user; the suites' documentation says the same. --ignored selects exactly the
+      # set the workspace gate reports as ignored, and nothing else.
+      - name: Run the database suites
+        env:
+          KOMUN_TEST_DATABASE_URL: postgres://komun:komun_test_only@127.0.0.1:5432/komun_test
+        run: cargo test -p komun-server -- --ignored --test-threads=1
+
+  # ---------------------------------------------------------------------------------------------
   # Row 3: "Evaluation Harness | Whether agent behavior remains acceptable | Can run both
   # deterministic and agentic tests | Agent-affecting changes | Yes | Evaluation reports".
   # Gating, and it runs only when the classifier says the change can affect agent behaviour.
@@ -339,7 +422,7 @@ jobs:
       # so a missing base object would leave it comparing the tree against itself and passing.
       - name: Verify the pull request's base revision is present
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ needs.change-type-check.outputs.comparison-base }}
         run: |
           git -C "$GITHUB_WORKSPACE" cat-file -e "${BASE_SHA}^{commit}" \
             || { echo "the base commit ${BASE_SHA} is not in this checkout"; exit 1; }
@@ -357,7 +440,7 @@ jobs:
             -e CARGO_TARGET_DIR=/ci-target \
             -e GATE_WORKSPACE=${{ env.AGENT_WORKSPACE }} \
             -e GATE_AUDIT_PATH=/reports/gate-audit.log \
-            -e CONFORMANCE_BASE_REF=${{ github.event.pull_request.base.sha }} \
+            -e CONFORMANCE_BASE_REF=${{ needs.change-type-check.outputs.comparison-base }} \
             -w ${{ env.AGENT_WORKSPACE }} \
             ${{ env.AGENT_IMAGE_TOOLS }} python3 - <<'PY'
           """Run the gate server's four allowlisted gates and write one report.
@@ -421,7 +504,7 @@ jobs:
       - name: Check out the base revision for comparison
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.change-type-check.outputs.comparison-base }}
           path: base
           fetch-depth: 0
 
@@ -668,8 +751,8 @@ jobs:
       - name: Post the review summary as a pull request comment
         # The one consumer of `pull-requests: write`. Advisory: a comment that cannot be posted
         # (for example on a fork pull request, where GITHUB_TOKEN is read-only) is reported and
-        # ignored rather than failing anything.
-        if: always()
+        # ignored rather than failing anything. A push has no pull request to comment on.
+        if: always() && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
@@ -707,7 +790,7 @@ jobs:
     # Every gating job, so the trail is assembled from a finished run. Its three recorded result
     # keys are the lesson table's, not an inventory of the jobs: web-gate and console-gate upload no
     # artifact, and their verdicts are read from the run itself.
-    needs: [change-type-check, policy-gate, web-gate, console-gate, eval-gate, advisory-review]
+    needs: [change-type-check, policy-gate, web-gate, console-gate, database-gate, eval-gate, advisory-review]
     if: always()
     continue-on-error: true
     steps:
@@ -733,7 +816,7 @@ jobs:
           python3 scripts/build-audit-trail.py \
             --artifacts-dir ci-artifacts \
             --sha "$SHA" \
-            --head-sha "${{ github.event.pull_request.head.sha }}" \
+            --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "$EVENT" \
             --pull-request "$PULL_REQUEST_NUMBER" \
             --policy-gate "$POLICY_GATE_RESULT" \
@@ -748,3 +831,135 @@ jobs:
           path: ci-artifacts/audit-trail.json
           retention-days: 90
           if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------------------------
+  # The production artifact. It runs only for a push to the default branch, and only when every gating
+  # job has passed, so the host that pulls it can only ever run a revision this pipeline verified. The
+  # host pulls on a timer and has no inbound port for this; nothing here reaches the host.
+  #
+  # The binary is built inside an Alpine image rather than cross-compiled, because production is Alpine:
+  # the same libc, and no OpenSSL in the toolchain (every TLS dependency here is rustls). The SPA carries
+  # one inline bootstrap script whose sha256 the served policy pins, so the policy is generated for this
+  # build by scripts/csp-hash.sh and shipped in the same tarball.
+  # ---------------------------------------------------------------------------------------------
+  release:
+    name: Production Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [change-type-check, policy-gate, web-gate, console-gate, database-gate, eval-gate]
+    # always(), because a skipped eval gate is a legitimate shape (a change that touches nothing
+    # governed) and must not silence the release. Each gating job's result is checked explicitly.
+    if: |
+      always()
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && (github.event_name != 'push' || github.ref == 'refs/heads/main')
+      && needs.change-type-check.result == 'success'
+      && needs.policy-gate.result == 'success'
+      && needs.web-gate.result == 'success'
+      && needs.console-gate.result == 'success'
+      && needs.database-gate.result == 'success'
+      && (needs.eval-gate.result == 'success' || needs.eval-gate.result == 'skipped')
+    permissions:
+      contents: write   # one step creates the release; every other step only reads
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d  # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcaf7e3dddab59af2b6  # v2
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install wasm-pack
+        env:
+          # Mirrors `Dockerfile` ARG WASM_PACK_VERSION, so the artifact is built by the tool the image
+          # carries rather than whatever the installer script downloads today.
+          WASM_PACK_VERSION: 0.15.0
+        run: |
+          curl -fsSL "https://github.com/rustwasm/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz"             -o /tmp/wasm-pack.tar.gz
+          tar -xzf /tmp/wasm-pack.tar.gz -C /tmp
+          install -m 0755 "/tmp/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack" /usr/local/bin/wasm-pack
+          wasm-pack --version
+
+      - name: Build the wasm package and the frontend
+        env:
+          # The SPA's only build-time variable. Unset, the source's development fallback is baked
+          # into the bundle (`web/src/lib/stores/directories.ts:4` `import.meta.env
+          # .VITE_DEFAULT_DIRECTORY || 'http://localhost:3001'`), so every visitor's
+          # server-discovery call goes to their own machine -- and the served policy
+          # (`connect-src 'self'`) blocks it, so the failure is silent in the console. Measured: a
+          # build with no environment carries `localhost:` in its directories chunk.
+          # Same origin on purpose: a cross-origin value would also have to be added to connect-src.
+          VITE_DEFAULT_DIRECTORY: https://komun.buzz
+        run: |
+          wasm-pack build crates/wasm --target web
+          npm ci --prefix web --no-audit --no-fund
+          npm run build --prefix web
+          grep -rho 'https://komun.buzz' web/build | head -1
+
+      # A bundle with a development fallback is a broken deploy that looks like a green one.
+      - name: Refuse to ship a development fallback
+        run: |
+          if grep -rl 'localhost:' web/build >/dev/null; then
+            echo 'the built bundle carries a development fallback:'
+            grep -rl 'localhost:' web/build | head -5
+            exit 1
+          fi
+          echo 'no development fallback in the bundle'
+
+      - name: Build the server for an Alpine host
+        run: |
+          mkdir -p "$RUNNER_TEMP/musl-target"
+          docker run --rm             -v "$GITHUB_WORKSPACE":/src             -v "$RUNNER_TEMP/musl-target":/target             -e CARGO_TARGET_DIR=/target             -e SQLX_OFFLINE=true             -w /src             rust:1.95-alpine             sh -c 'apk add --no-cache musl-dev >/dev/null && cargo build --release --bin komun-server'
+          file "$RUNNER_TEMP/musl-target/release/komun-server"
+
+      - name: Generate the policy for this build
+        run: scripts/csp-hash.sh web/build/index.html > deploy/csp.conf
+        # The hash pins this build's inline bootstrap script; an old policy under a new frontend is a
+        # blank page for every visitor, with nothing in the server log to say why.
+
+      - name: Assemble the tarball
+        run: |
+          rm -rf staging
+          mkdir -p staging
+          install -m 0755 "$RUNNER_TEMP/musl-target/release/komun-server" staging/komun-server
+          cp -a web/build staging/frontend
+          install -m 0644 deploy/csp.conf staging/csp.conf
+          printf '%s\n' "$GITHUB_SHA" > staging/VERSION
+          printf '%s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > staging/BUILD
+          tar -czf "$RUNNER_TEMP/komun-prod.tar.gz" -C staging .
+          ( cd "$RUNNER_TEMP" && sha256sum komun-prod.tar.gz > SHA256SUMS )
+          ls -l "$RUNNER_TEMP/komun-prod.tar.gz" && cat staging/VERSION
+
+      - name: Upload the artifact for a manual run
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: komun-prod
+          path: |
+            ${{ runner.temp }}/komun-prod.tar.gz
+            ${{ runner.temp }}/SHA256SUMS
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish the release the host pulls
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          short="$(printf '%s' "$SHA" | cut -c1-7)"
+          tag="prod-${short}-r${GITHUB_RUN_NUMBER}"
+          gh release create "$tag"             --title "production ${short}"             --latest             --notes "Built and published by the pipeline from ${SHA}, after every gating job passed. The production host pulls the newest release on a timer; see docs/DEPLOY.md.
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"             "$RUNNER_TEMP/komun-prod.tar.gz#komun-prod.tar.gz"             "$RUNNER_TEMP/SHA256SUMS#SHA256SUMS"
+          gh release view "$tag" --json tagName,isLatest,assets \
+            -q '{tag: .tagName, latest: .isLatest, assets: [.assets[].name]}'

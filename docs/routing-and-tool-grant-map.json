@@ -5,7 +5,8 @@
     "coursetools",
     "storage",
     "retrieval",
-    "gate"
+    "gate",
+    "browser"
   ],
   "grants": {
     "orchestrator": [],
@@ -55,6 +56,20 @@
     "researcher": [
       "mcp__coursetools__web_search",
       "mcp__storage__write_entry"
+    ],
+    "beta-tester": [
+      "mcp__browser__browser_open",
+      "mcp__browser__browser_snapshot",
+      "mcp__browser__browser_click",
+      "mcp__browser__browser_type",
+      "mcp__browser__browser_press",
+      "mcp__browser__browser_diagnostics",
+      "mcp__browser__browser_screenshot",
+      "mcp__browser__browser_close",
+      "mcp__coursetools__file_read",
+      "mcp__storage__read_entry",
+      "mcp__storage__list_entries",
+      "mcp__storage__write_entry"
     ]
   },
   "retrieval_ceiling": {
@@ -64,7 +79,8 @@
     "tester": "none",
     "reviewer": "internal",
     "project-manager": "none",
-    "researcher": "none"
+    "researcher": "none",
+    "beta-tester": "none"
   },
   "converted_steps": {
     "prose-and-citation-conformance": {

@@ -48,6 +48,7 @@ STORAGE_AUDIT = Path(os.getenv("STORAGE_AUDIT_PATH", str(MEMORY_DIR / "storage-a
 RETRIEVAL_AUDIT = Path(os.getenv("RETRIEVAL_AUDIT_PATH", str(MEMORY_DIR / "retrieval-audit.log")))
 STORAGE_ALLOW_LIST = WORKSPACE / "mcp" / "storage" / "allow-list.json"
 RETRIEVAL_ALLOW_LIST = WORKSPACE / "mcp" / "retrieval" / "allow-list.json"
+BROWSER_ALLOW_LIST = WORKSPACE / "mcp" / "browser" / "allow-list.json"
 ROUTING_MAP = WORKSPACE / "docs" / "routing-and-tool-grant-map.json"
 STORAGE_SERVER = WORKSPACE / "mcp" / "storage" / "server.py"
 RETRIEVAL_SERVER = WORKSPACE / "mcp" / "retrieval" / "server.py"
@@ -159,14 +160,16 @@ def check_allow_lists_match_routing_map() -> None:
         routing = load_json(ROUTING_MAP)
         storage = load_json(STORAGE_ALLOW_LIST)
         retrieval = load_json(RETRIEVAL_ALLOW_LIST)
+        browser = load_json(BROWSER_ALLOW_LIST)
     except (OSError, json.JSONDecodeError) as error:
         check("g. allow-list files are valid JSON beside the routing map", False, str(error))
         return
 
     check(
-        "g1. both allow-list files parse as JSON and name all seven roles",
+        "g1. every allow-list file parses as JSON and names all eight roles",
         sorted(storage.get("roles", {})) == sorted(routing.get("grants", {}))
-        and sorted(retrieval.get("roles", {})) == sorted(routing.get("grants", {})),
+        and sorted(retrieval.get("roles", {})) == sorted(routing.get("grants", {}))
+        and sorted(browser.get("roles", {})) == sorted(routing.get("grants", {})),
         f"roles={sorted(storage.get('roles', {}))}",
     )
 
@@ -182,8 +185,10 @@ def check_allow_lists_match_routing_map() -> None:
 
     expected_storage = projected("storage")
     expected_retrieval = projected("retrieval")
+    expected_browser = projected("browser")
     actual_storage = {role: sorted(ops) for role, ops in sorted(storage["roles"].items())}
     actual_retrieval = {role: sorted(ops) for role, ops in sorted(retrieval["roles"].items())}
+    actual_browser = {role: sorted(ops) for role, ops in sorted(browser["roles"].items())}
 
     check(
         "g2. storage grants equal grants[role] filtered to mcp__storage__*",
@@ -199,6 +204,11 @@ def check_allow_lists_match_routing_map() -> None:
         "g4. delete_entry is granted to no role",
         all("delete_entry" not in ops for ops in actual_storage.values()),
         f"delete_entry holders={[r for r, ops in actual_storage.items() if 'delete_entry' in ops]}",
+    )
+    check(
+        "g5. browser grants equal grants[role] filtered to mcp__browser__*",
+        actual_browser == expected_browser,
+        f"file={actual_browser}",
     )
 
 
