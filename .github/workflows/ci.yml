@@ -211,7 +211,7 @@ jobs:
 
       # 22.23.2 is the version the sandbox image installs (`Dockerfile:15` ARG NODE_VERSION), so a
       # pass here and a pass in the sandbox mean the same thing.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: '22.23.2'
           cache: npm
