@@ -59,6 +59,10 @@ authority the routing map holds over the agent definitions.
 ## Activation Scope
 
 Permitted for `implementer` and `reviewer`, because those are the roles that write and judge
-interface code. Permitted for `planner` when the change's file list includes `web/`, so the plan can
-account for the states and tokens the work will need. Denied for `orchestrator`, `tester`,
-`project-manager` and `researcher`, none of which edit or judge a surface.
+interface code.
+
+Permitted for `planner` when the change's file list includes `web/`, so the plan can account for the
+states and tokens the work will need.
+
+Denied for `orchestrator`, `tester`, `project-manager` and `researcher`, none of which edit or judge
+a surface.

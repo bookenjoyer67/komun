@@ -80,7 +80,7 @@ What does this decision change, and what does it leave open?
 - The controls are enumerated one per near-miss, so each denial has a written owner (`docs/calibration-log.md:87` `Give every checkpoint record one author`).
 - The narrower permission set is separated from the wider evidence set by a second flag (`scripts/classify-change.py:52` `eval/ is agent-affecting but grants nothing`).
 - The pipeline governs itself, because the workflow and the classifier are themselves governed globs (`agentic.config.json:210` `"governed_globs": [`).
-- Autonomy is not uniform across the roles, so the level is a per-role fact rather than a default (`docs/governance-policy.md:200` `Hold low autonomy`).
+- Autonomy is not uniform across the roles, so the level is a per-role fact rather than a default (`docs/governance-policy.md:202` `Hold low autonomy`).
 - Every role's container line names its launcher mount, and the policy carries seven such lines (`docs/policy-reconciliation.md:27` `Show the per-role mount statement in every policy entry`).
 - The two failed red-team prompts were fixed at the container layer, not at the prompt layer (`eval/red-team-results.md:249` `The fix adds seven nested read-only binds`).
 - The fix is seven nested read-only binds over the grant files and the journals (`scripts/run-agent.sh:193` `declare -a OVERLAY_FILES=(`), each mounted read-only over its parent bind (`scripts/run-agent.sh:213` `MOUNTS+=(-v "$REPO/$overlay:$WORKSPACE/$overlay:ro")`).

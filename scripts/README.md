@@ -29,12 +29,12 @@ Each role's container gets the modes below; the reason cell quotes the policy li
 | Role | Workspace mount | Memory mount | Network | Reason |
 |---|---|---|---|---|
 | `orchestrator` | `/workspace` read-write | `/workspace/.memory` read-only | agent-internal + agent-net (broker only) | Policy grants workspace writes and no memory write (`docs/governance-policy.md:67` `holds no memory write grant`). |
-| `planner` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one plan entry and denies a workspace write (`docs/governance-policy.md:110` `writes one plan entry into`). |
-| `implementer` | `/workspace` read-write | `/workspace/.memory` read-write | agent-internal + agent-net (broker only) | Policy grants workspace writes and memory entry writes (`docs/governance-policy.md:155` `writes and revises its own entries in`). |
-| `tester` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one result entry and denies a workspace write (`docs/governance-policy.md:202` `writes one test-result entry into`). |
-| `reviewer` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one review entry and denies a workspace write (`docs/governance-policy.md:248` `writes one review entry into`). |
-| `project-manager` | `/workspace` read-only | not mounted (visible read-only through the workspace bind) | agent-internal + agent-net (broker only) | Policy grants memory reads and no write (`docs/governance-policy.md:292` `reads stored entries from`). |
-| `researcher` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one research entry and denies a repository read (`docs/governance-policy.md:337` `writes one `public` research entry into`). |
+| `planner` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one plan entry and denies a workspace write (`docs/governance-policy.md:111` `writes one plan entry into`). |
+| `implementer` | `/workspace` read-write | `/workspace/.memory` read-write | agent-internal + agent-net (broker only) | Policy grants workspace writes and memory entry writes (`docs/governance-policy.md:157` `writes and revises its own entries in`). |
+| `tester` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one result entry and denies a workspace write (`docs/governance-policy.md:204` `writes one test-result entry into`). |
+| `reviewer` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one review entry and denies a workspace write (`docs/governance-policy.md:251` `writes one review entry into`). |
+| `project-manager` | `/workspace` read-only | not mounted (visible read-only through the workspace bind) | agent-internal + agent-net (broker only) | Policy grants memory reads and no write (`docs/governance-policy.md:295` `reads stored entries from`). |
+| `researcher` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one research entry and denies a repository read (`docs/governance-policy.md:340` `writes one `public` research entry into`). |
 
 - Derive the memory mode from the grant map rather than from the workspace mode (`docs/routing-and-tool-grant-map.json:17` `"mcp__storage__write_entry"`): planner, implementer, tester, reviewer and researcher hold that grant, the orchestrator and the project-manager hold none.
 - Read the workspace mode off the deny in each policy entry (`scripts/run-agent.sh:95` `planner)         ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;`), so the five roles that write no repository file get `:ro`.
@@ -237,8 +237,8 @@ Where does the container layer disagree with the policy document?
 The one conflict this launcher carried is closed, and `docs/policy-reconciliation.md` records it as `C5`
 with the side fixed for each of its two halves.
 
-- Replace the shared opening sentence with a per-role mount statement, so each entry names its own workspace mode (`docs/governance-policy.md:248` ``the launcher mounts this repository read-only at `/workspace` for this role``).
-- Cite the launcher's own mount argument as that statement's authority (`docs/governance-policy.md:110` `MOUNTS+=(-v "$REPO:/workspace:ro")`), so the policy and the artifact read from one source.
+- Replace the shared opening sentence with a per-role mount statement, so each entry names its own workspace mode (`docs/governance-policy.md:251` ``the launcher mounts this repository read-only at `/workspace` for this role``).
+- Cite the launcher's own mount argument as that statement's authority (`docs/governance-policy.md:111` `MOUNTS+=(-v "$REPO:/workspace:ro")`), so the policy and the artifact read from one source.
 - Mount the memory layer read-write for the four roles whose granted entry write had no path (`scripts/run-agent.sh:168` `MOUNTS+=(-v "$REPO/.memory:/workspace/.memory")`), and keep the rest of their workspace read-only.
 - Keep the granted write in the policy, because the grant map grants it (`docs/routing-and-tool-grant-map.json:17` `"mcp__storage__write_entry"`) and the map is the decision of record.
 - Record the fifth conflict with its fixed side (`docs/policy-reconciliation.md` `C5`), because the Module 4.1 checklist resolves a mismatch by moving one side and naming it.

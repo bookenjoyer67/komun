@@ -12,11 +12,11 @@ What is this decision's current status?
 
 What gap does the pre-merge gate leave, and what does the harness hold today?
 
-The gate verifies a change by reading the repository and running named checks. The planner reads the repository and orders the work (`.claude/agents/planner.md:23` `autonomy: medium`). The tester runs the fixed gates by name and reports (`docs/governance-policy.md:201` `decides when a gate has passed against the baseline`). The reviewer weighs the change against the repository's standards (`.claude/agents/reviewer.md:48` `v2 is the current rule set`). No role drives the application the change ships.
+The gate verifies a change by reading the repository and running named checks. The planner reads the repository and orders the work (`.claude/agents/planner.md:23` `autonomy: medium`). The tester runs the fixed gates by name and reports (`docs/governance-policy.md:203` `decides when a gate has passed against the baseline`). The reviewer weighs the change against the repository's standards (`.claude/agents/reviewer.md:48` `v2 is the current rule set`). No role drives the application the change ships.
 
 The harness ran a fixed MCP server set, and none of them drove a browser (`docs/routing-and-tool-grant-map.json:4` `"servers": [`). Every role starts at no access (`docs/governance-policy.md:23` `Start every role at no access`), so a browser capability has to arrive as a new enumerated grant. Record every grant beside the artifact that states it, and give every denial a reason (`docs/governance-policy.md:24` `Record every grant beside the artifact that states it`).
 
-The network stays isolated to one role. The researcher holds the workflow's only network lookup (`docs/governance-policy.md:305` `The workflow's only network lookup`), so the new check cannot ride on an existing role's tool.
+The network stays isolated to one role. The researcher holds the workflow's only network lookup (`docs/governance-policy.md:308` `The workflow's only network lookup`), so the new check cannot ride on an existing role's tool.
 
 ## Decision
 
@@ -43,7 +43,7 @@ The room question offered three placements, and the human chose the second. Only
 - **A Hermes-side, dogfood-only tester.** Rejected by the answer `2`. It would drive a browser from the agent host and hold no governed role, so its run leaves no role-bound journal row and no recorded result.
 - **Both placements.** Rejected by the answer `2`. It doubles the browser surface, and the ungoverned half adds no evidence the governed role does not already produce.
 - **A Komun harness role.** Chosen, and quoted verbatim in the Authority section below.
-- **Put the browser tools on the existing `tester` role.** Rejected. The tester verifies recorded gate evidence and reads no open-web text (`docs/governance-policy.md:176` `the tester reads no open-web text`), so a browser pass would widen the verifying role rather than add a separate one.
+- **Put the browser tools on the existing `tester` role.** Rejected. The tester verifies recorded gate evidence and reads no open-web text (`docs/governance-policy.md:178` `the tester reads no open-web text`), so a browser pass would widen the verifying role rather than add a separate one.
 - **Reuse the gate's name-only surface with a browser script.** Rejected. The gate binds each name to one argv and takes no caller argument (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments`), so a browsing step that needs a URL does not fit that surface.
 
 ## Consequences
