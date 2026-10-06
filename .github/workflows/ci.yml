@@ -90,7 +90,7 @@ jobs:
 
       - name: Upload the change classification
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: change-classification
           path: |
@@ -147,7 +147,7 @@ jobs:
 
       - name: Upload policy report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: policy-report
           path: ci-artifacts/policy-report.json
@@ -604,7 +604,7 @@ jobs:
 
       - name: Upload the deterministic gate reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: deterministic-report
           path: |
@@ -615,7 +615,7 @@ jobs:
 
       - name: Upload the retrieval harness report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: retrieval-report
           path: |
@@ -683,7 +683,7 @@ jobs:
 
       - name: Upload the review report and its audit log
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: advisory-review-report
           path: |
@@ -742,7 +742,7 @@ jobs:
 
       - name: Upload the audit trail
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: audit-trail
           path: ci-artifacts/audit-trail.json
