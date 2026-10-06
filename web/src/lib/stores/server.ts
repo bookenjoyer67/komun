@@ -24,7 +24,33 @@ interface ServerState {
 
 const STORAGE_KEY = 'komun_servers';
 
-function loadFromStorage(): ServerState {
+function servingOrigin(): string | null {
+	return typeof window === 'undefined' ? null : window.location.origin;
+}
+
+/**
+ * Unless the build names another server, or opts out with 'none', an empty choice falls back to
+ * the origin that served the app: the only one connect-src allows.
+ */
+function defaultServer(): string | null {
+	const configured = String(import.meta.env.VITE_DEFAULT_SERVER ?? '').trim();
+	if (configured === 'none') return null;
+	if (configured) return configured.replace(/\/+$/, '');
+	return servingOrigin();
+}
+
+/** True when url is on the origin that served this page, the only one connect-src allows (D13); a caller refuses any other before sending. */
+export function isServingOrigin(url: string): boolean {
+	const own = servingOrigin();
+	if (!own) return false;
+	try {
+		return new URL(url).origin === own;
+	} catch {
+		return false;
+	}
+}
+
+function readStoredState(): ServerState {
 	if (typeof localStorage === 'undefined') return { active: null, known: [] };
 	const raw = localStorage.getItem(STORAGE_KEY);
 	if (!raw) return { active: null, known: [] };
@@ -39,6 +65,15 @@ function loadFromStorage(): ServerState {
 	} catch {
 		return { active: null, known: [] };
 	}
+}
+
+/** A visitor with known servers and none active chose that state, so only a blank one is seeded. */
+function loadFromStorage(): ServerState {
+	const state = readStoredState();
+	if (!state.active && !state.known?.length) {
+		return { active: defaultServer(), known: state.known ?? [] };
+	}
+	return state;
 }
 
 function saveToStorage(state: ServerState) {
@@ -68,13 +103,48 @@ export function isConnected(): boolean {
 	return get(serverState).active !== null;
 }
 
+function notFullAddress(input: string): Error {
+	const example = input.includes('://') ? '' : `, for example https://${input}`;
+	return new Error(`Not connected: “${input}” is not a full server address. Include https://${example}.`);
+}
+
+function notKomun(origin: string): Error {
+	return new Error(`Not connected: ${origin} did not answer as a Komun server.`);
+}
+
 export async function connectToServer(url: string): Promise<NodeInfo> {
-	const normalized = url.replace(/\/+$/, '');
+	const input = url.trim();
+	let target: URL;
+	try {
+		target = new URL(input);
+	} catch {
+		throw notFullAddress(input);
+	}
+	if (target.protocol !== 'https:' && target.protocol !== 'http:') throw notFullAddress(input);
 
-	const res = await fetch(`${normalized}/api/node`);
-	if (!res.ok) throw new Error('Not a valid Komun server');
+	if (!isServingOrigin(target.href)) {
+		throw new Error(
+			`Not connected: this app only talks to the server it was loaded from (${servingOrigin()}). ` +
+				`To use ${target.origin}, open that address in your browser.`
+		);
+	}
 
-	const info: NodeInfo = await res.json();
+	const normalized = input.replace(/\/+$/, '');
+
+	let res: Response;
+	try {
+		res = await fetch(`${normalized}/api/node`);
+	} catch {
+		throw new Error(`Not connected: could not reach ${target.origin}.`);
+	}
+	if (!res.ok) throw notKomun(target.origin);
+
+	let info: NodeInfo;
+	try {
+		info = await res.json();
+	} catch {
+		throw notKomun(target.origin);
+	}
 
 	serverState.update((state) => {
 		const existing = state.known.findIndex((s) => s.url === normalized);

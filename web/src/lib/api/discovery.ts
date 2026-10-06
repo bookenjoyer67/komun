@@ -1,5 +1,7 @@
+import { get } from 'svelte/store';
 import { getDirectories } from '$lib/stores/directories';
 import { getLocation } from '$lib/stores/location';
+import { getActiveServer, isServingOrigin, serverState } from '$lib/stores/server';
 import { coarsenCoordinate } from '$lib/geo';
 import type { PostLike } from '$lib/api/types';
 
@@ -47,6 +49,17 @@ function toServer(entry: any): NearbyServer {
 	};
 }
 
+/**
+ * A directory lists only servers that registered with it, under their public URL, so the server
+ * this app talks to can be missing from its own list. Naming it costs no request.
+ */
+function activeSource(): NearbyServer | null {
+	const url = getActiveServer();
+	if (!url || !isServingOrigin(url)) return null;
+	const known = get(serverState).known.find((s) => s.url === url);
+	return { url, name: known?.name || new URL(url).host };
+}
+
 export async function discoverNearbyServers(): Promise<NearbyServer[]> {
 	const dirs = getDirectories();
 	const loc = getLocation();
@@ -82,7 +95,11 @@ export async function discoverNearbyServers(): Promise<NearbyServer[]> {
 	}
 
 	allServers.sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999));
-	return allServers.slice(0, 5);
+
+	const active = activeSource();
+	if (!active) return allServers.slice(0, 5);
+	const listed = allServers.find((s) => s.url === active.url) ?? active;
+	return [listed, ...allServers.filter((s) => s.url !== active.url)].slice(0, 5);
 }
 
 export async function discoverAllServers(): Promise<NearbyServer[]> {
