@@ -250,6 +250,11 @@
 			</div>
 		</header>
 
+		<p class="safety">
+			Agree the details here. Meet in a public place, bring someone if you can, and never send
+			money in advance.
+		</p>
+
 		<div class="messages">
 			{#each decryptedMessages as msg}
 				<div
@@ -373,6 +378,16 @@
 	.status-proposed { background: var(--warning-soft); color: var(--warning); }
 	.status-accepted { background: var(--success-soft); color: var(--success); }
 	.status-completed { background: var(--success-strong); color: var(--success); }
+
+	.safety {
+		font-size: var(--text-sm);
+		color: var(--text-muted);
+		background: var(--bg-surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: var(--space-3) var(--space-4);
+		margin-bottom: var(--space-4);
+	}
 
 	.messages {
 		display: flex;
