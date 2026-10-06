@@ -1,0 +1,8 @@
+version: 2
+# The workflow pins every `uses:` to a commit SHA with the tag in a trailing comment, so Dependabot can
+# still find the tag when it proposes a bump. Without this file the pins go stale silently.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

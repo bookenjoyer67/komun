@@ -20,6 +20,16 @@
 			lon: Math.min(180, Math.max(-180, lo))
 		};
 	}
+
+	/**
+	 * Leaflet assigns string popup content with innerHTML and appends an element as-is, so an
+	 * untrusted label must reach `bindPopup` as an element holding text, never as a string.
+	 */
+	export function popupContent(label: string): HTMLElement {
+		const node = document.createElement('span');
+		node.textContent = label;
+		return node;
+	}
 </script>
 
 <script lang="ts">
@@ -113,7 +123,7 @@
 		layer.clearLayers();
 		for (const marker of markers) {
 			L.marker([marker.lat, marker.lon], { icon: markerIcon })
-				.bindPopup(marker.label ?? '')
+				.bindPopup(popupContent(marker.label ?? ''))
 				.addTo(layer);
 		}
 		if (pickable && pickedLat != null && pickedLon != null) {

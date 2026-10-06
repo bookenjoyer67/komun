@@ -221,7 +221,11 @@ def build_metadata(args: argparse.Namespace, secrets: list[str]) -> dict:
             pull_request = match.group(1)
 
     return {
+        # `sha` is GITHUB_SHA. On a pull_request event that is GitHub's synthetic merge commit
+        # (measured: 97e1f252... = "Merge 22cee7d3... into 9db9679..."), which GitHub drops once the
+        # pull request closes. `head_sha` is the revision a reviewer can still go and read.
         "sha": sha,
+        "head_sha": args.head_sha or os.environ.get("GITHUB_HEAD_SHA", ""),
         "event": event,
         "pull_request": str(pull_request),  # verbatim template keeps this a string
         "timestamp": _now(),
@@ -259,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifacts-dir", default="ci-artifacts",
                         help="directory the workflow flattened the artifacts into")
     parser.add_argument("--out", help="trail path (default: <artifacts-dir>/audit-trail.json)")
-    parser.add_argument("--sha"), parser.add_argument("--event")
+    parser.add_argument("--sha"), parser.add_argument("--head-sha"), parser.add_argument("--event")
     parser.add_argument("--pull-request", dest="pull_request")
     parser.add_argument("--policy-gate"), parser.add_argument("--governed-file-gate")
     parser.add_argument("--advisory-review")
