@@ -190,8 +190,11 @@ Install the updater once, as root:
 install -m 0755 deploy/komun-update /usr/local/sbin/komun-update
 : >/var/log/komun-update.log
 echo '*/10 * * * * /usr/local/sbin/komun-update' >>/etc/crontabs/root
-rc-service crond restart
 ```
+
+cron re-reads a changed crontab, so nothing needs restarting on Alpine's cronie. If a host's daemon
+does not, restart the one it runs under (`rc-service crond restart` on OpenRC, `sv restart cron` under
+runit). Make sure the appended line ends with a newline: a crontab whose last line has none loses it.
 
 Then run it by hand once (`/usr/local/sbin/komun-update`) and watch `/var/log/komun-update.log` for the
 cutover; the first run replaces whatever the host is running with the newest release. On a host whose
