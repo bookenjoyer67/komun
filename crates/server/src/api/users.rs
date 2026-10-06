@@ -7,6 +7,7 @@ use axum::{
 use serde_json::json;
 
 use crate::auth;
+use crate::badges;
 use crate::db::users;
 use crate::AppState;
 
@@ -40,6 +41,17 @@ async fn profile(
             Json(json!({"error": "user not found"})),
         ))?;
 
+    let earned = badges::earned(
+        row.endorsement_count,
+        row.give_count,
+        row.first_give_at,
+        row.last_give_at,
+    );
+    let badge_list: Vec<serde_json::Value> = earned
+        .into_iter()
+        .map(|badge| json!({ "code": badge.code(), "label": badge.label() }))
+        .collect();
+
     Ok(Json(json!({
         "id": row.id,
         "display_name": row.display_name,
@@ -54,6 +66,9 @@ async fn profile(
         // `rating_count` stays public: a withheld mean still reads as reviewed, not yet rated.
         "rating_avg": publishable_rating(row.rating_avg, row.rating_count),
         "rating_count": row.rating_count,
+        // Earned badges only: an unearned badge is absent, never listed as false, and the give
+        // count and dates behind Regular giver are not published.
+        "badges": badge_list,
         "joined_at": row.created_at,
         "last_seen": row.last_seen,
         "profile_json": row.profile_json,
