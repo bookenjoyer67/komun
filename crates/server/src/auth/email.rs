@@ -381,4 +381,15 @@ mod tests {
             "unhelpful: {err}"
         );
     }
+
+    // The fragment never reaches a server, a proxy log or a referrer.
+    #[test]
+    fn reset_link_opens_the_reset_page_with_the_token_in_the_fragment() {
+        let link = password_reset_link("https://x", "t");
+        let (page, fragment) = link.split_once('#').unwrap_or((link.as_str(), ""));
+
+        assert_eq!(page, "https://x/account/reset", "{link}");
+        assert_eq!(fragment, "token=t", "{link}");
+        assert!(!link.contains("?token="), "{link}");
+    }
 }

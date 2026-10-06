@@ -451,3 +451,48 @@ fn join<'a>(values: impl Iterator<Item = &'a str>) -> String {
 fn trimmed(raw: Option<&str>) -> Option<&str> {
     raw.map(str::trim).filter(|value| !value.is_empty())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    fn sealed(ciphertext_bytes: usize, nonce_bytes: usize) -> SealedMessage {
+        let engine = base64::engine::general_purpose::STANDARD;
+        SealedMessage {
+            ciphertext: engine.encode(vec![0x42_u8; ciphertext_bytes]),
+            nonce: Some(engine.encode(vec![0x24_u8; nonce_bytes])),
+        }
+    }
+
+    fn refused_with_400(message: SealedMessage, context: &str) {
+        let Err(refused) = message.decode() else {
+            panic!("{context} must be refused");
+        };
+        assert_eq!(
+            refused.into_response().status(),
+            StatusCode::BAD_REQUEST,
+            "{context}"
+        );
+    }
+
+    #[test]
+    fn a_ciphertext_over_64_kib_is_refused() {
+        refused_with_400(sealed(65_537, 24), "a 65_537-byte ciphertext");
+    }
+
+    #[test]
+    fn a_ciphertext_of_64_kib_is_accepted() {
+        assert!(sealed(65_536, 24).decode().is_ok());
+    }
+
+    #[test]
+    fn a_nonce_over_64_bytes_is_refused() {
+        refused_with_400(sealed(48, 65), "a 65-byte nonce");
+    }
+
+    #[test]
+    fn a_24_byte_nonce_is_accepted() {
+        assert!(sealed(48, 24).decode().is_ok());
+    }
+}

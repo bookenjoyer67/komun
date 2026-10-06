@@ -1,5 +1,6 @@
 //! Passwords, timing, single-use tokens and session revocation.
 
+mod auth_hardening;
 mod deal_and_moderation;
 mod key_change;
 mod key_coherence;
@@ -8,6 +9,7 @@ mod location_privacy;
 #[cfg(test)]
 mod market;
 mod outbound_routes;
+mod resource_limits;
 
 /// The server-side half of the password path.
 #[cfg(test)]
