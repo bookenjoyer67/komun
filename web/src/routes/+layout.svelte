@@ -163,7 +163,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-family: 'Space Grotesk', sans-serif;
+		font-family: var(--font-display);
 		font-size: 1.3rem;
 		font-weight: 800;
 		color: var(--text);
@@ -199,7 +199,7 @@
 		width: 5px;
 		height: 5px;
 		background: var(--text);
-		border-radius: 1px;
+		border-radius: var(--radius-sm);
 		transition: all 0.2s;
 	}
 

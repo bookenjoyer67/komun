@@ -107,7 +107,7 @@
 	}
 
 	.word {
-		font-family: ui-monospace, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.9rem;
 		display: flex;
 		gap: 0.4rem;

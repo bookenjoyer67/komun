@@ -461,7 +461,7 @@
 	}
 
 	form { display: flex; flex-direction: column; gap: 0.6rem; max-width: 400px; }
-	input, textarea { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; color: var(--text); font-size: 1rem; font-family: inherit; }
+	input, textarea { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; color: var(--text); font-size: 1rem; }
 	input:focus, textarea:focus { outline: none; border-color: var(--accent); }
 
 	.save-btn { background: var(--accent); color: var(--text-on-accent); padding: 0.6rem; border-radius: var(--radius); font-weight: 600; }
@@ -537,7 +537,7 @@
 
 	.session-meta { display: block; color: var(--text-muted); font-size: 0.75rem; }
 	.server-url { display: block; color: var(--text-muted); font-size: 0.75rem; }
-	.active-badge { font-size: 0.65rem; color: var(--success); background: var(--success-softer); padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 0.4rem; }
+	.active-badge { font-size: 0.65rem; color: var(--success); background: var(--success-softer); padding: 0.1rem 0.4rem; border-radius: var(--radius-sm); margin-left: 0.4rem; }
 	.remove-btn { background: none; color: var(--critical); font-size: 0.8rem; padding: 0.2rem 0.5rem; border: 1px solid var(--critical); border-radius: var(--radius); white-space: nowrap; }
 	.remove-btn.wide { margin-top: 0.5rem; padding: 0.4rem 0.8rem; }
 

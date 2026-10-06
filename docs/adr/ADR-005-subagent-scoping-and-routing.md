@@ -64,7 +64,7 @@ Each definition states its denials positively. The orchestrator's definition now
 
 The gate server refuses a command string as well as a non-allowlisted name, so a call cannot smuggle arguments (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments`). The check surface and the write surface stay on two different roles. The role that writes a fix never runs the gate that judges it (`docs/routing-and-tool-grant-map.md:76` `the role that repairs a file never grades the repair`).
 
-Two recorded conflicts were resolved by fixing the definition to match the map. The orchestrator's file-tool conflict resolved to an empty grant list (`docs/governance-policy.md:41` `"orchestrator": []`). The reviewer's gate-tool conflict kept the check-mode gate denied (`docs/governance-policy.md:220` `keeps mcp__gate__run_gate denied`).
+Two recorded conflicts were resolved by fixing the definition to match the map. The orchestrator's file-tool conflict resolved to an empty grant list (`docs/governance-policy.md:41` `"orchestrator": []`). The reviewer's gate-tool conflict kept the check-mode gate denied (`docs/governance-policy.md:222` `keeps mcp__gate__run_gate denied`).
 
 The policy starts every role at no access and adds each grant explicitly (`docs/governance-policy.md:23` `Start every role at no access`). Every denial carries a stated reason (`docs/governance-policy.md:24` `give every denial a one-line reason`).
 

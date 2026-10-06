@@ -1,4 +1,9 @@
 :root {
+	/* Faces. Only Fraunces and Atkinson Hyperlegible are loaded; see app.css. */
+	--font-display: 'Fraunces', Georgia, serif;
+	--font-body: 'Atkinson Hyperlegible', system-ui, sans-serif;
+	--font-mono: ui-monospace, monospace;
+
 	/* Spacing scale (4px base) */
 	--space-1: 0.25rem;
 	--space-2: 0.5rem;

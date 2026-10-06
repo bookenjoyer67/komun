@@ -1,13 +1,23 @@
-@import url('/fonts/Inter.css');
 @import url('/fonts/Fraunces.css');
-@import url('/fonts/Space-Grotesk.css');
-@import url('/fonts/DM-Sans.css');
-@import url('/fonts/Source-Serif-4.css');
-@import url('/fonts/JetBrains-Mono.css');
 @import url('/fonts/Atkinson-Hyperlegible.css');
-@import url('/fonts/Playfair-Display.css');
 
 :root {
+	/* Default theme, duplicated here from themes.ts so the first paint has colours and a
+	   client without JS is still styled. theme.ts overwrites these on documentElement. */
+	--bg: #0d0d12;
+	--bg-surface: #18181f;
+	--bg-elevated: #22222b;
+	--text: #e4e4ec;
+	--text-muted: #6b6b7b;
+	--accent: #ff6b35;
+	--kind-need: #ff6b35;
+	--kind-offer: #2ec4a0;
+	--kind-resource: #7b9cff;
+	--success: #2ec4a0;
+	--warning: #e8a838;
+	--critical: #e63946;
+	--border: #2a2a35;
+
 	/* Legacy aliases — components still use these, they map to token values */
 	--radius: var(--radius-md);
 }
@@ -23,7 +33,7 @@ html {
 }
 
 body {
-	font-family: var(--font, 'Atkinson Hyperlegible', sans-serif);
+	font-family: var(--font-body);
 	background: var(--bg);
 	color: var(--text);
 	line-height: 1.6;
@@ -139,6 +149,17 @@ select:focus {
 	outline: none;
 	border-color: var(--accent);
 	box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
+/* ── Focus ── */
+
+/* Inputs carry their own ring via box-shadow; buttons and links had no explicit focus
+   affordance at all, which left keyboard users with the browser default or nothing. */
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
 }
 
 /* ── Scrollbar ── */

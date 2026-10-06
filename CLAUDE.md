@@ -92,7 +92,8 @@ work and evaluates what comes back; it never writes production code and never ru
 - Goal: take one requested change to Komun from request to a reviewed, mergeable diff.
 - Acceptance criteria for every run: `cargo test --workspace` passes, `cargo clippy --release -- -D warnings`
   reports zero warnings, `cargo fmt --check` is clean, `npm run check` and `npx vitest run` pass under `web/`,
-  and every changed prose file satisfies `docs/DOC-STYLE.md`.
+  and every changed prose file satisfies `docs/DOC-STYLE.md`, and every changed file under `web/` satisfies
+  `docs/UI-STYLE.md` (read `.claude/skills/frontend-craft/SKILL.md` first).
 
 ### Ordered sequence
 

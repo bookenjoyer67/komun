@@ -48,9 +48,15 @@
         return m[kind] || kind;
     }
 
+    // The palette carries two severity levels, not three; high and medium share --warning.
     function urgencyColor(urgency: string): string {
-        const m: Record<string, string> = { critical: '#ff4444', high: '#ff8800', medium: '#ffcc00', low: '#888' };
-        return m[urgency] || '#888';
+        const m: Record<string, string> = {
+            critical: 'var(--critical)',
+            high: 'var(--warning)',
+            medium: 'var(--warning)',
+            low: 'var(--text-muted)'
+        };
+        return m[urgency] || 'var(--text-muted)';
     }
 </script>
 
@@ -139,7 +145,7 @@
         width: 100%;
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: var(--radius, 8px);
+        border-radius: var(--radius);
         padding: 0.7rem 1rem;
         color: var(--text);
         font-size: 1rem;
@@ -165,7 +171,7 @@
         font-size: 0.9rem;
         padding: 0.3rem 0.6rem;
         cursor: pointer;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
     }
 
     .tab.active {
@@ -183,7 +189,7 @@
     .result-item {
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: var(--radius, 8px);
+        border-radius: var(--radius);
         padding: 0.75rem;
     }
 
@@ -207,7 +213,7 @@
     .kind-badge {
         font-size: 0.65rem;
         padding: 0.1rem 0.4rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         font-weight: 700;
         text-transform: uppercase;
     }

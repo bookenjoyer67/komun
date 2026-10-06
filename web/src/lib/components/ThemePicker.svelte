@@ -144,7 +144,7 @@
 		flex-direction: column;
 		width: 100%;
 		height: 32px;
-		border-radius: 3px;
+		border-radius: var(--radius-sm);
 		overflow: hidden;
 	}
 

@@ -106,7 +106,7 @@ What does the conversion change, and what does it leave open?
 - Integration is closed for lesson clauses 1 to 4. The orchestrator's definition runs the script
   (`.claude/agents/orchestrator.md:80` `on each prose file the change touches`), the routing map holds
   the step's MCP access as empty (`docs/routing-and-tool-grant-map.json:71` `"mcp_access": []`), and the
-  policy's reviewer entry carries the pointer (`docs/governance-policy.md:229` `its prose and citation
+  policy's reviewer entry carries the pointer (`docs/governance-policy.md:231` `its prose and citation
   half is converted`).
 - Clause 1 is half-satisfied, and the gap is named. The canonical instruction file is `CLAUDE.md`
   (`## Orchestration`), and the write to it was refused by this session's guardrail, so the orchestrator

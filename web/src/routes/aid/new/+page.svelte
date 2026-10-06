@@ -247,7 +247,6 @@
 		padding: 0.75rem;
 		color: var(--text);
 		font-size: 1rem;
-		font-family: inherit;
 	}
 
 	input:focus, textarea:focus, select:focus {

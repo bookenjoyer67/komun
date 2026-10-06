@@ -128,7 +128,7 @@
 	}
 
 	.note.error {
-		color: var(--critical, #c0392b);
+		color: var(--critical);
 	}
 
 	.map-layout {
@@ -144,7 +144,7 @@
 
 	.post-list {
 		border: 1px solid var(--border);
-		border-radius: var(--radius, 8px);
+		border-radius: var(--radius);
 		padding: 0.75rem 1rem;
 		max-height: 480px;
 		overflow-y: auto;

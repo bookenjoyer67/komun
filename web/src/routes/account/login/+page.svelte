@@ -97,7 +97,6 @@
 		padding: 0.7rem;
 		color: var(--text);
 		font-size: 1rem;
-		font-family: inherit;
 	}
 	input:focus { outline: none; border-color: var(--accent); }
 

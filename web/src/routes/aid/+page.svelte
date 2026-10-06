@@ -247,7 +247,7 @@
 
 	.kind {
 		padding: 0.15rem 0.5rem;
-		border-radius: 4px;
+		border-radius: var(--radius-sm);
 		font-weight: 600;
 		text-transform: uppercase;
 		font-size: 0.7rem;
@@ -265,8 +265,8 @@
 	.location { color: var(--text-muted); font-size: 0.8rem; }
 
 	.post-images { display: flex; gap: 0.4rem; margin: 0.5rem 0; align-items: center; }
-	.post-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
-	.more-images { font-size: 0.75rem; color: var(--text-muted); background: var(--bg-elevated); padding: 0.2rem 0.5rem; border-radius: 4px; }
+	.post-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border); }
+	.more-images { font-size: 0.75rem; color: var(--text-muted); background: var(--bg-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); }
 
 	.post-footer {
 		display: flex;
@@ -295,7 +295,7 @@
 	.fulfilled-badge { font-size: 0.75rem; color: var(--success); font-weight: 600; margin-left: auto; }
 
 	.edit-form { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem; }
-	.edit-form input, .edit-form textarea { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; color: var(--text); font-size: 0.9rem; font-family: inherit; }
+	.edit-form input, .edit-form textarea { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; color: var(--text); font-size: 0.9rem; }
 	.edit-actions { display: flex; gap: 0.4rem; }
 	.save-btn { background: var(--accent); color: var(--text-on-accent); padding: 0.3rem 0.8rem; border-radius: var(--radius); font-size: 0.8rem; font-weight: 600; }
 	.cancel-btn { background: var(--bg-elevated); color: var(--text-muted); padding: 0.3rem 0.8rem; border-radius: var(--radius); font-size: 0.8rem; border: 1px solid var(--border); }
