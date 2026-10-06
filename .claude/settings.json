@@ -3,7 +3,8 @@
     "coursetools",
     "storage",
     "retrieval",
-    "gate"
+    "gate",
+    "browser"
   ],
   "hooks": {
     "SessionStart": [
@@ -31,6 +32,14 @@
   },
   "permissions": {
     "allow": [
+      "mcp__browser__browser_open",
+      "mcp__browser__browser_snapshot",
+      "mcp__browser__browser_click",
+      "mcp__browser__browser_type",
+      "mcp__browser__browser_press",
+      "mcp__browser__browser_diagnostics",
+      "mcp__browser__browser_screenshot",
+      "mcp__browser__browser_close",
       "mcp__coursetools__codebase_search",
       "mcp__coursetools__file_read",
       "mcp__coursetools__file_write",

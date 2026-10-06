@@ -40,3 +40,14 @@ Which line citations moved because a fixed artifact changed length?
 - Confirm every moved citation (`grep -c 'reviewer.md:92' docs/governance-policy.md` -> `2`; `grep -c 'routing-and-tool-grant-map.json:60' docs/governance-policy.md` -> `1`).
 - Point the policy's seven container-permission lines at the launcher's own mount arguments (`scripts/run-agent.sh:165` `MOUNTS+=(-v "$REPO:/workspace:ro")`, `:168` `MOUNTS+=(-v "$REPO/.memory:/workspace/.memory")`), which is the one direction a later launcher edit moves them.
 - Confirm the launcher's own citations of the policy lines, which the seven rewrites left in place (`grep -n 'lines 110, 202' scripts/run-agent.sh` -> `13:#   * /workspace is read-only for the five roles whose entry says they write no file there (lines 110, 202,`).
+
+## How does the new `beta-tester` role reconcile?
+
+Which artifact answers for the beta-tester's grants, and does the addition move an existing grant?
+
+The role is new, so it introduces no conflict between two existing artifacts. Its grants are the map's own decision, and the launcher and the browser allow-list derive from them.
+
+- Read the roster row in the map rather than a second list (`docs/routing-and-tool-grant-map.md`).
+- Read the decision that adds the role and its browser server at `docs/adr/ADR-007-beta-tester-and-browser-mcp.md`.
+- Expect no conflict row here, because no existing definition disagrees with the map.
+- Expect the existing role rows unchanged, because the addition enumerates one new role and revises none.
