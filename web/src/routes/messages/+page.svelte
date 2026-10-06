@@ -4,6 +4,7 @@
 	import { isConnected } from '$lib/stores/server';
 	import { isAuthenticated } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	interface Conversation {
 		match_id: string;
@@ -51,10 +52,10 @@
 	{#if loading}
 		<p class="status">Loading...</p>
 	{:else if conversations.length === 0}
-		<div class="empty">
-			<p>No conversations yet.</p>
-			<p class="sub">Respond to a post to start a conversation.</p>
-		</div>
+		<EmptyState
+			title="No conversations yet."
+			description="Respond to a post to start a conversation."
+		/>
 	{:else}
 		<ul class="conversation-list">
 			{#each conversations as convo}
@@ -153,6 +154,4 @@
 	}
 
 	.status { text-align: center; color: var(--text-muted); padding: 3rem 0; }
-	.empty { text-align: center; padding: 3rem 0; color: var(--text-muted); }
-	.empty .sub { font-size: 0.85rem; margin-top: 0.5rem; }
 </style>
