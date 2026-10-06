@@ -67,7 +67,11 @@ mod tests {
     #[test]
     fn publishable_rating_is_withheld_below_the_threshold() {
         for count in [0, 1, 4] {
-            assert_eq!(publishable_rating(Some(4.5), count), None, "rating_count {count}");
+            assert_eq!(
+                publishable_rating(Some(4.5), count),
+                None,
+                "rating_count {count}"
+            );
         }
         assert_eq!(publishable_rating(None, 0), None);
     }
