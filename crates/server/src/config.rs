@@ -246,7 +246,7 @@ impl Default for NodeConfig {
     fn default() -> Self {
         Self {
             name: "Komun Node".into(),
-            description: "A community mutual aid server".into(),
+            description: "A community local listings server".into(),
             public_url: None,
             location_name: None,
             location_lat: None,
@@ -407,7 +407,7 @@ impl GeocodeConfig {
             None => concat!(
                 "Komun/",
                 env!("CARGO_PKG_VERSION"),
-                " (nominatim proxy; mutual-aid app)"
+                " (nominatim proxy; local-listings app)"
             )
             .to_string(),
         }

@@ -1,7 +1,7 @@
 {
 	"name": "Komun",
 	"short_name": "Komun",
-	"description": "Mutual aid for one community — needs meet resources, conversations stay encrypted",
+	"description": "Local listings for one community — needs meet resources, conversations stay encrypted",
 	"start_url": "/",
 	"display": "standalone",
 	"background_color": "#0f0f1a",
