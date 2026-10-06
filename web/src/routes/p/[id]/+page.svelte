@@ -6,7 +6,7 @@
 	import { auth } from '$lib/stores/auth';
 	import LinkPreview from '$lib/components/LinkPreview.svelte';
 	import RespondModal from '$lib/components/RespondModal.svelte';
-	import { formatPrice } from '$lib/api/market';
+	import { formatPrice, isMarketKind } from '$lib/api/market';
 	import type { PostLike } from '$lib/api/types';
 
 	/** The marketplace facet a listing/want carries; `PostLike` deliberately omits it. */
@@ -36,6 +36,9 @@
 		if (!server) return null;
 		return $auth.servers?.[server]?.userId || null;
 	})());
+
+	/** A market post belongs to the market; the aid feed is not where a sale returns to. */
+	let backHref = $derived(isMarketKind(post?.kind) ? '/market' : '/aid');
 
 	onMount(async () => {
 		try {
@@ -70,7 +73,7 @@
 	{:else if error}
 		<p class="status error">{error}</p>
 	{:else if post}
-		<a href="/aid" class="back">&larr; All listings</a>
+		<a href={backHref} class="back">&larr; All listings</a>
 
 		<article class="post-detail">
 			<div class="meta">

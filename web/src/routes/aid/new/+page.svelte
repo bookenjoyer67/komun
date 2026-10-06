@@ -98,6 +98,11 @@
 <div class="container">
 	<h1>New Post</h1>
 
+	<p class="hint">
+		Selling something, or looking to buy? <a href="/market/new">Post it on the market</a> — market
+		listings carry a price, a currency and a condition.
+	</p>
+
 	<form onsubmit={(e) => { e.preventDefault(); submit(); }}>
 		<label>
 			<span>Type</span>

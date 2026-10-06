@@ -47,6 +47,14 @@ export const MARKET_KIND_LABELS: Record<string, string> = {
 	want: 'Wanted'
 };
 
+/**
+ * Is this post kind one of the market facets? Keyed by `string` so a caller holding the wider
+ * `PostKind` can branch on it without narrowing first.
+ */
+export function isMarketKind(kind?: string | null): boolean {
+	return kind != null && (MARKET_KINDS as readonly string[]).includes(kind);
+}
+
 export interface MarketPost extends PostLike {
 	category_label?: string | null;
 	market_listed?: boolean;
@@ -56,7 +64,14 @@ export interface MarketPost extends PostLike {
 	item_condition?: ItemCondition | string | null;
 }
 
-/** An absent price is not a zero price: no `price_cents` reads "Free / negotiable", a real `0` formats as zero. */
+/**
+ * An absent price is not a zero price: no `price_cents` reads "Free / negotiable", a real `0`
+ * formats as its currency's zero, and a zero with no currency reads "Free".
+ *
+ * Currency is never invented — the server resolves `[market] default_currency` and keeps none when
+ * there is none. So an amount with no currency names the gap instead of rendering as a bare number
+ * a reader cannot place.
+ */
 export function formatPrice(
 	priceCents: number | null | undefined,
 	currency?: string | null,
@@ -65,6 +80,8 @@ export function formatPrice(
 	if (priceCents == null || !Number.isFinite(priceCents)) return 'Free / negotiable';
 
 	const amount = priceCents / 100;
+	if (priceCents === 0 && !currency) return negotiable ? 'Free / negotiable' : 'Free';
+
 	let formatted: string;
 	if (currency) {
 		try {
@@ -76,7 +93,7 @@ export function formatPrice(
 			formatted = `${amount.toFixed(2)} ${currency}`;
 		}
 	} else {
-		formatted = amount.toFixed(2);
+		formatted = `${amount.toFixed(2)} (no currency)`;
 	}
 
 	return negotiable ? `${formatted} (negotiable)` : formatted;
