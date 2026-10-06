@@ -1,11 +1,20 @@
 import { writable, get } from 'svelte/store';
-import { getActiveServer } from '$lib/stores/server';
+import { getActiveServer, isServingOrigin } from '$lib/stores/server';
 
 interface LocationState {
 	name: string;
 	lat: number | null;
 	lon: number | null;
 }
+
+export type LocationOutcome =
+	| { kind: 'found' }
+	| { kind: 'no-server' }
+	| { kind: 'refused'; server: string }
+	| { kind: 'unreachable'; server: string }
+	| { kind: 'unavailable'; server: string }
+	| { kind: 'busy' }
+	| { kind: 'not-found' };
 
 const STORAGE_KEY = 'komun_location';
 
@@ -42,27 +51,39 @@ export function getLocation(): LocationState {
  * The query is what the user typed, so it goes to the active server or nowhere. A directory is
  * someone else's server and is never a fallback.
  */
-export async function geocode(query: string): Promise<boolean> {
-	const serverUrl = getActiveServer();
-	if (!serverUrl) return false;
+export async function searchLocation(query: string): Promise<LocationOutcome> {
+	const server = getActiveServer();
+	if (!server) return { kind: 'no-server' };
+	if (!isServingOrigin(server)) return { kind: 'refused', server };
 
+	let res: Response;
 	try {
-		const encoded = encodeURIComponent(query);
-		const res = await fetch(`${serverUrl}/api/geocode?q=${encoded}`);
-		if (!res.ok) return false;
-
-		const result = await res.json();
-		if (!result.lat || !result.lon) return false;
-
-		location.set({
-			name: result.display_name.split(',').slice(0, 2).join(',').trim(),
-			lat: parseFloat(result.lat),
-			lon: parseFloat(result.lon),
-		});
-		return true;
+		res = await fetch(`${server}/api/geocode?q=${encodeURIComponent(query)}`);
 	} catch {
-		return false;
+		return { kind: 'unreachable', server };
 	}
+	if (res.status === 429 || res.status === 503) return { kind: 'busy' };
+	if (res.status === 400 || res.status === 404) return { kind: 'not-found' };
+	if (!res.ok) return { kind: 'unavailable', server };
+
+	let result: any;
+	try {
+		result = await res.json();
+	} catch {
+		return { kind: 'unavailable', server };
+	}
+	if (!result?.lat || !result?.lon) return { kind: 'not-found' };
+
+	location.set({
+		name: String(result.display_name ?? query).split(',').slice(0, 2).join(',').trim(),
+		lat: parseFloat(result.lat),
+		lon: parseFloat(result.lon),
+	});
+	return { kind: 'found' };
+}
+
+export async function geocode(query: string): Promise<boolean> {
+	return (await searchLocation(query)).kind === 'found';
 }
 
 export function clearLocation() {

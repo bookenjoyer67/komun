@@ -1,19 +1,27 @@
 import { writable, get } from 'svelte/store';
 
-const STORAGE_KEY = 'komun_directories';
-const DEFAULT_DIRECTORIES = [import.meta.env.VITE_DEFAULT_DIRECTORY || 'http://localhost:3001'];
+/** The legacy key holds only auto-saved build defaults, never a user choice, so it is dropped unread. */
+const LEGACY_KEY = 'komun_directories';
+const STORAGE_KEY = 'komun_chosen_directories';
+
+function defaultDirectories(): string[] {
+	const configured = String(import.meta.env.VITE_DEFAULT_DIRECTORY ?? '').trim();
+	if (configured) return [configured.replace(/\/+$/, '')];
+	return typeof window === 'undefined' ? [] : [window.location.origin];
+}
 
 function loadFromStorage(): string[] {
-	if (typeof localStorage === 'undefined') return DEFAULT_DIRECTORIES;
+	if (typeof localStorage === 'undefined') return defaultDirectories();
+	localStorage.removeItem(LEGACY_KEY);
 	const raw = localStorage.getItem(STORAGE_KEY);
-	if (!raw) return DEFAULT_DIRECTORIES;
+	if (!raw) return defaultDirectories();
 	try {
 		const parsed = JSON.parse(raw);
-		if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_DIRECTORIES;
-		if (parsed.length === 1 && parsed[0] === 'https://api.komun.buzz') return DEFAULT_DIRECTORIES;
+		if (!Array.isArray(parsed) || parsed.length === 0) return defaultDirectories();
+		if (!parsed.every((d) => typeof d === 'string')) return defaultDirectories();
 		return parsed;
 	} catch {
-		return DEFAULT_DIRECTORIES;
+		return defaultDirectories();
 	}
 }
 
@@ -22,20 +30,18 @@ function saveToStorage(dirs: string[]) {
 	localStorage.setItem(STORAGE_KEY, JSON.stringify(dirs));
 }
 
+/** Only an explicit add or remove is persisted, so a later build default still reaches this visitor. */
 export const directories = writable<string[]>(loadFromStorage());
-
-directories.subscribe(saveToStorage);
 
 export function addDirectory(url: string) {
 	const normalized = url.replace(/\/+$/, '');
-	directories.update((dirs) => {
-		if (dirs.includes(normalized)) return dirs;
-		return [...dirs, normalized];
-	});
+	directories.update((dirs) => (dirs.includes(normalized) ? dirs : [...dirs, normalized]));
+	saveToStorage(get(directories));
 }
 
 export function removeDirectory(url: string) {
 	directories.update((dirs) => dirs.filter((d) => d !== url));
+	saveToStorage(get(directories));
 }
 
 export function getDirectories(): string[] {

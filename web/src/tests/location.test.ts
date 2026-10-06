@@ -3,7 +3,8 @@ import { geocode, clearLocation } from '$lib/stores/location';
 import { getActiveServer } from '$lib/stores/server';
 
 vi.mock('$lib/stores/server', () => ({
-	getActiveServer: vi.fn(() => null)
+	getActiveServer: vi.fn(() => null),
+	isServingOrigin: vi.fn(() => true)
 }));
 
 // A directory is someone else's server: what the user typed must not reach it.

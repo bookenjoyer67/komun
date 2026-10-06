@@ -29,7 +29,7 @@
 			nodeInfo = info;
 			setTimeout(() => goto('/'), 500);
 		} catch (e: any) {
-			error = e.message || 'Could not connect to server';
+			error = e.message || 'Not connected: the server could not be reached.';
 		} finally {
 			loading = false;
 		}
@@ -72,7 +72,7 @@
 			</div>
 		{/if}
 
-		<form onsubmit={(e) => { e.preventDefault(); handleConnect(); }}>
+		<form novalidate onsubmit={(e) => { e.preventDefault(); handleConnect(); }}>
 			<input
 				type="url"
 				bind:value={url}
@@ -80,7 +80,7 @@
 				disabled={loading}
 			/>
 			{#if error}
-				<p class="error">{error}</p>
+				<p class="error" role="alert">{error}</p>
 			{/if}
 			<button type="submit" disabled={loading}>
 				{loading ? 'Connecting...' : 'Connect'}

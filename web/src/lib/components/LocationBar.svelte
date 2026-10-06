@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { location, geocode, clearLocation } from '$lib/stores/location';
+	import { location, searchLocation, clearLocation, type LocationOutcome } from '$lib/stores/location';
+
+	type Notice = Exclude<LocationOutcome, { kind: 'found' }> | { kind: 'empty' };
 
 	let query = $state('');
 	let loading = $state(false);
-	let error = $state('');
+	let notice: Notice | null = $state(null);
 
 	interface Props {
 		onLocationSet?: () => void;
@@ -12,15 +14,15 @@
 	let { onLocationSet }: Props = $props();
 
 	async function handleSearch() {
-		if (!query.trim()) { error = 'Enter a city, zip, or neighborhood'; return; }
+		if (!query.trim()) { notice = { kind: 'empty' }; return; }
 		loading = true;
-		error = '';
-		const ok = await geocode(query.trim());
+		notice = null;
+		const outcome = await searchLocation(query.trim());
 		loading = false;
-		if (ok) {
+		if (outcome.kind === 'found') {
 			onLocationSet?.();
 		} else {
-			error = 'Location not found. Try a different search.';
+			notice = outcome;
 		}
 	}
 
@@ -48,8 +50,24 @@
 			{loading ? '...' : 'Search'}
 		</button>
 	</form>
-	{#if error}
-		<p class="error">{error}</p>
+	{#if notice}
+		<p class="error" role="alert">
+			{#if notice.kind === 'empty'}
+				Enter a city, zip, or neighborhood
+			{:else if notice.kind === 'no-server'}
+				No server selected yet. Choose one on the <a href="/connect">Connect page</a>, then search again.
+			{:else if notice.kind === 'refused'}
+				This app only talks to the server it was loaded from, so {notice.server} was not asked. Choose a server on the <a href="/connect">Connect page</a>.
+			{:else if notice.kind === 'unreachable'}
+				Could not reach {notice.server}. Check your connection and try again.
+			{:else if notice.kind === 'unavailable'}
+				{notice.server} could not look up places right now. Try again later.
+			{:else if notice.kind === 'busy'}
+				Location search is busy. Try again in a moment.
+			{:else}
+				Location not found. Try a different search.
+			{/if}
+		</p>
 	{/if}
 {/if}
 
