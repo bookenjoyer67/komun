@@ -55,7 +55,7 @@ jobs:
       requires-governed-check: ${{ steps.classify.outputs.requires-governed-check }}
       touches-policy: ${{ steps.classify.outputs.touches-policy }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # The full history, so the base commit of the pull request is present and `git diff`
           # can compare the two revisions directly.
@@ -111,7 +111,7 @@ jobs:
     timeout-minutes: 30
     needs: change-type-check
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # Every repository-specific value this job needs is read from agentic.config.json through
       # scripts/agentic_config.py, each with this repository's current value as the fallback
@@ -167,7 +167,7 @@ jobs:
     timeout-minutes: 30
     needs: change-type-check
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # Every repository-specific value this job needs is read from agentic.config.json through
       # scripts/agentic_config.py, each with this repository's current value as the fallback default.
@@ -264,7 +264,7 @@ jobs:
     timeout-minutes: 20
     needs: change-type-check
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d  # stable
         with:
@@ -301,7 +301,7 @@ jobs:
       # Full history, because the conformance gate reads the pull request's base commit out of this
       # checkout's object database (`git show <base>:<file>`), and the default depth-1 clone carries
       # only the merge commit. The base-presence step below makes a regression here fail loudly.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
@@ -419,7 +419,7 @@ jobs:
           PY
 
       - name: Check out the base revision for comparison
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
@@ -644,7 +644,7 @@ jobs:
       # Used by one step only: the one that posts the review summary as a pull request comment.
       pull-requests: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Run the advisory reviewer
         env:
@@ -711,7 +711,7 @@ jobs:
     if: always()
     continue-on-error: true
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # Lesson 4.2 acceptance, block [169]: "actions/download-artifact@v4 is used with
       # merge-multiple: true to flatten all artifacts into one directory".
