@@ -73,6 +73,15 @@ fi
 [ -x "$tmp/unpacked/komun-server" ] || { log "FAILED the release carries no executable server"; exit 1; }
 [ -f "$tmp/unpacked/frontend/index.html" ] || { log "FAILED the release carries no frontend"; exit 1; }
 
+# The last line of defence against a bundle built without its production configuration. A frontend that
+# carries the source's development fallback is a deploy that looks green and breaks a feature silently,
+# because the served policy blocks the call it makes. The release job refuses to publish one; the host
+# refuses to install one, so the box survives a pipeline that has not learned the lesson yet.
+if grep -rl 'localhost:' "$tmp/unpacked/frontend" >/dev/null 2>&1; then
+    log "FAILED the release's frontend carries a development fallback; leaving the running build alone"
+    exit 1
+fi
+
 log "deploying $version (was ${current:-none})"
 
 # Stage everything next to its target first, so the swap itself is only renames.
