@@ -14,9 +14,11 @@ use uuid::Uuid;
 
 use crate::auth::{require_auth, AuthUser};
 use crate::config::is_currency_code;
-use crate::db::posts::{PostFilter, DEFAULT_LIMIT, MAX_LIMIT};
+use crate::db::posts::{FeedPost, FeedSort, PostFilter, DEFAULT_LIMIT, MAX_LIMIT, MAX_RADIUS_KM};
 use crate::AppState;
-use komun_core::models::{CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency};
+use komun_core::models::{
+    coarsen_coordinate, CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency,
+};
 
 use super::categories::{bad_request, validate_slug};
 use super::StatusError;
@@ -51,6 +53,10 @@ pub(crate) struct PostFilters {
     pub(crate) max_price_cents: Option<String>,
     pub(crate) currency: Option<String>,
     pub(crate) item_condition: Option<String>,
+    pub(crate) near_lat: Option<String>,
+    pub(crate) near_lon: Option<String>,
+    pub(crate) radius_km: Option<String>,
+    pub(crate) sort: Option<String>,
     pub(crate) limit: Option<String>,
     pub(crate) offset: Option<String>,
 }
@@ -58,13 +64,16 @@ pub(crate) struct PostFilters {
 async fn list_posts(
     State(state): State<AppState>,
     Query(filters): Query<PostFilters>,
-) -> Result<Json<Vec<Post>>, StatusError> {
+) -> Result<Json<Vec<FeedPost>>, StatusError> {
     let filter = validate_filters(&filters).map_err(bad_request)?;
     let posts = crate::db::posts::list(&state.pool, &filter).await?;
     Ok(Json(
         posts
             .into_iter()
-            .map(|post| redact_buyer(post, None))
+            .map(|mut item| {
+                item.post = redact_buyer(item.post, None);
+                item
+            })
             .collect(),
     ))
 }
@@ -125,6 +134,27 @@ pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> 
         }
     };
 
+    let near = centre_filter(raw.near_lat.as_deref(), raw.near_lon.as_deref())?;
+    let radius_km = radius_filter(raw.radius_km.as_deref())?;
+    let sort = enum_filter(
+        "sort",
+        raw.sort.as_deref(),
+        FeedSort::parse,
+        FeedSort::ALL,
+        FeedSort::as_str,
+    )?
+    .unwrap_or_default();
+    // Without a centre a radius would match nothing and a distance order would be the recency
+    // order, so either is a mistake worth naming.
+    if near.is_none() {
+        if radius_km.is_some() {
+            return Err("radius_km needs near_lat and near_lon".to_string());
+        }
+        if sort == FeedSort::Distance {
+            return Err("sort=distance needs near_lat and near_lon".to_string());
+        }
+    }
+
     Ok(PostFilter {
         kind,
         category,
@@ -134,6 +164,9 @@ pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> 
         max_price_cents,
         currency,
         item_condition,
+        near,
+        radius_km,
+        sort,
         limit: bounded("limit", raw.limit.as_deref(), DEFAULT_LIMIT, 1, MAX_LIMIT)?,
         offset: bounded("offset", raw.offset.as_deref(), 0, 0, i64::MAX)?,
     })
@@ -145,8 +178,8 @@ fn trimmed(raw: Option<&str>) -> Option<&str> {
     raw.map(str::trim).filter(|value| !value.is_empty())
 }
 
-/// A filter restricted to a DB enum's values; the error lists them, rendered from the enum so it
-/// cannot fall behind the `CHECK`.
+/// A filter restricted to a closed set; the refusal lists the set as the type itself renders it,
+/// so the message cannot drift from the values the type accepts.
 fn enum_filter<T: Copy>(
     name: &str,
     raw: Option<&str>,
@@ -165,6 +198,52 @@ fn enum_filter<T: Copy>(
             all.iter().map(as_str).collect::<Vec<_>>().join(", ")
         )),
     }
+}
+
+/// The range is checked on the value as sent, as `validate_location` does, and the centre is then
+/// coarsened here too: a client that sends an exact point gets the same answer as one that
+/// coarsened it first.
+fn centre_filter(lat: Option<&str>, lon: Option<&str>) -> Result<Option<(f64, f64)>, String> {
+    match (trimmed(lat), trimmed(lon)) {
+        (None, None) => Ok(None),
+        (Some(lat), Some(lon)) => {
+            let lat = coordinate_filter("near_lat", lat, 90.0)?;
+            let lon = coordinate_filter("near_lon", lon, 180.0)?;
+            Ok(Some((coarsen_coordinate(lat), coarsen_coordinate(lon))))
+        }
+        _ => Err("near_lat and near_lon must be sent together".to_string()),
+    }
+}
+
+/// `"NaN"` and `"inf"` parse as `f64`, and fall outside the range.
+fn coordinate_filter(name: &str, value: &str, limit: f64) -> Result<f64, String> {
+    let parsed: f64 = value
+        .parse()
+        .map_err(|_| format!("{name} must be a number (got {value:?})"))?;
+    if !(-limit..=limit).contains(&parsed) {
+        return Err(format!(
+            "{name} must be a finite number from -{limit} to {limit} (got {value:?})"
+        ));
+    }
+    Ok(parsed)
+}
+
+/// Refused rather than clamped, like `bounded`: a clamped radius answers a question the caller did
+/// not ask.
+fn radius_filter(raw: Option<&str>) -> Result<Option<f64>, String> {
+    let Some(value) = trimmed(raw) else {
+        return Ok(None);
+    };
+
+    let km: f64 = value
+        .parse()
+        .map_err(|_| format!("radius_km must be a number of kilometres (got {value:?})"))?;
+    if !km.is_finite() || km <= 0.0 || km > MAX_RADIUS_KM {
+        return Err(format!(
+            "radius_km must be greater than 0 and at most {MAX_RADIUS_KM} (got {value:?})"
+        ));
+    }
+    Ok(Some(km))
 }
 
 /// Prices are whole cents; a negative bound is rejected as a client mistake rather than matching

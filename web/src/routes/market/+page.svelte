@@ -3,13 +3,20 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { isConnected } from '$lib/stores/server';
+	import { location as savedLocation } from '$lib/stores/location';
 	import MarketCard from '$lib/components/MarketCard.svelte';
 	import {
+		DEFAULT_RADIUS_KM,
+		distanceLabel,
 		filtersToQuery,
 		ITEM_CONDITIONS,
 		listMarketPosts,
+		nextRadius,
 		parsePriceToCents,
+		parseRadiusChoice,
 		queryToFilters,
+		RADIUS_CHOICES,
+		type Centre,
 		type MarketFilters,
 		type MarketKind,
 		type MarketPost
@@ -31,12 +38,17 @@
 	// URL is the single source of truth for filters, so a filtered view is linkable and Back works.
 	let filters = $derived(queryToFilters($page.url.searchParams));
 
+	let centre = $derived<Centre>({ lat: $savedLocation.lat, lon: $savedLocation.lon });
+	let hasCentre = $derived(centre.lat != null && centre.lon != null);
+	let radius = $derived(filters.radius_km ?? DEFAULT_RADIUS_KM);
+	let wider = $derived(nextRadius(radius));
+
 	// Text-input drafts, kept apart from the URL so typing does not rewrite history on every keystroke.
 	let searchText = $state('');
 	let minPriceText = $state('');
 	let maxPriceText = $state('');
 
-	// Guards the effect from re-loading the URL it just applied; `null` (not `''`) so a bare `/market` still loads.
+	// Guards the effect from re-loading what it just applied; `null` (not `''`) so a bare `/market` still loads.
 	let lastLoaded = $state<string | null>(null);
 
 	onMount(async () => {
@@ -55,24 +67,27 @@
 
 	$effect(() => {
 		const query = $page.url.searchParams.toString();
+		const activeCentre = centre;
+		// A moved location changes the results as much as a changed filter does.
+		const key = `${query}|${activeCentre.lat},${activeCentre.lon}`;
 		// Tracked, not untracked: the effect must run once `connected` flips true even if it ran first.
 		if (!connected) return;
-		if (query === untrack(() => lastLoaded)) return;
+		if (key === untrack(() => lastLoaded)) return;
 
 		const parsed = queryToFilters(query);
-		lastLoaded = query;
+		lastLoaded = key;
 		searchText = parsed.q ?? '';
 		minPriceText = parsed.min_price_cents != null ? String(parsed.min_price_cents / 100) : '';
 		maxPriceText = parsed.max_price_cents != null ? String(parsed.max_price_cents / 100) : '';
 		limit = PAGE_SIZE;
-		void runLoad(parsed, PAGE_SIZE);
+		void runLoad(parsed, PAGE_SIZE, activeCentre);
 	});
 
-	async function runLoad(active: MarketFilters, size: number) {
+	async function runLoad(active: MarketFilters, size: number, at: Centre) {
 		loading = true;
 		error = '';
 		try {
-			posts = await listMarketPosts({ ...active, limit: size });
+			posts = await listMarketPosts({ ...active, limit: size }, at);
 		} catch (e) {
 			// A rejected filter is a server-named error, not an empty result; "no listings" would hide the mistake.
 			error = e instanceof Error ? e.message : 'Failed to load the marketplace';
@@ -93,7 +108,7 @@
 		loadingMore = true;
 		error = '';
 		try {
-			posts = await listMarketPosts({ ...filters, limit: nextLimit });
+			posts = await listMarketPosts({ ...filters, limit: nextLimit }, centre);
 			limit = nextLimit;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load more listings';
@@ -116,6 +131,19 @@
 		applyFilters({
 			item_condition: (value || undefined) as MarketFilters['item_condition']
 		});
+	}
+
+	// The default stays out of the URL, so an untouched view links as a bare `/market`.
+	function setRadius(choice: MarketFilters['radius_km']) {
+		applyFilters({ radius_km: choice === DEFAULT_RADIUS_KM ? undefined : choice });
+	}
+
+	function onRadius(e: Event) {
+		setRadius(parseRadiusChoice((e.currentTarget as HTMLSelectElement).value));
+	}
+
+	function widen() {
+		if (wider !== null) setRadius(wider);
 	}
 
 	function onSearch(e: Event) {
@@ -144,7 +172,9 @@
 				filters.q ||
 				filters.item_condition ||
 				filters.min_price_cents != null ||
-				filters.max_price_cents != null
+				filters.max_price_cents != null ||
+				filters.radius_km != null ||
+				filters.sort
 		)
 	);
 	// At the cap, newer posts may exist beyond the truncation, so say so rather than imply the end.
@@ -210,6 +240,27 @@
 			</select>
 		</label>
 
+		<label>
+			<span>Distance</span>
+			<select value={String(radius)} onchange={onRadius} disabled={!hasCentre}>
+				{#each RADIUS_CHOICES as choice}
+					<option value={String(choice.value)}>{choice.label}</option>
+				{/each}
+			</select>
+		</label>
+
+		{#if hasCentre}
+			<button
+				type="button"
+				class="widen"
+				disabled={wider === null || loading}
+				aria-busy={loading}
+				onclick={widen}
+			>
+				Widen the area
+			</button>
+		{/if}
+
 		<label class="price-field">
 			<span>Min price</span>
 			<input type="number" min="0" step="0.01" bind:value={minPriceText} onchange={onPriceCommit} />
@@ -225,16 +276,31 @@
 		{/if}
 	</div>
 
+	{#if !hasCentre}
+		<p class="hint">Set your location to filter by distance.</p>
+	{/if}
+
 	{#if error}
 		<p class="status error" role="alert">{error}</p>
 	{:else if loading}
 		<p class="status">Loading...</p>
 	{:else if posts.length === 0}
-		<p class="status">No listings match these filters yet.</p>
+		<p class="status">
+			{#if hasCentre && radius !== 'any'}
+				No listings within {radius} km match these filters yet.
+			{:else}
+				No listings match these filters yet.
+			{/if}
+		</p>
 	{:else}
 		<div class="market-grid">
 			{#each posts as post (post.id)}
-				<MarketCard {post} />
+				<div class="market-cell">
+					<MarketCard {post} />
+					{#if distanceLabel(post.distance_km)}
+						<p class="distance">{distanceLabel(post.distance_km)}</p>
+					{/if}
+				</div>
 			{/each}
 		</div>
 
@@ -364,8 +430,42 @@
 		border-color: var(--accent);
 	}
 
+	.filters select:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
 	.price-field input {
 		width: 7rem;
+	}
+
+	.widen {
+		background: var(--bg-elevated);
+		color: var(--text);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: var(--space-2) var(--space-3);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		transition: border-color var(--transition-fast);
+	}
+
+	.widen:hover:not(:disabled) {
+		border-color: var(--accent);
+	}
+
+	.widen:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	.widen:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.widen[aria-busy='true'] {
+		cursor: progress;
 	}
 
 	.clear-filters {
@@ -379,10 +479,27 @@
 		min-height: unset;
 	}
 
+	.hint {
+		color: var(--text-muted);
+		font-size: var(--text-sm);
+		margin-bottom: var(--space-4);
+	}
+
 	.market-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 		gap: 0.9rem;
+	}
+
+	.market-cell {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+	}
+
+	.distance {
+		color: var(--text-muted);
+		font-size: var(--text-xs);
 	}
 
 	.more {
