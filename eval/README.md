@@ -2,8 +2,8 @@
 
 ## Which rules does `eval/test_policy.py` enforce?
 
-- Compare the seven policy entries with the artifacts that enforce them in both directions (`docs/governance-policy.md` `Hold no retrieval ceiling and no storage ceiling`).
-- Read the policy, the routing map, both allow-lists, the seven definitions and the launcher (`scripts/run-agent.sh` `role_profile()`).
+- Compare the eight policy entries with the artifacts that enforce them in both directions (`docs/governance-policy.md` `Hold no retrieval ceiling and no storage ceiling`).
+- Read the policy, the routing map, both allow-lists, the eight definitions and the launcher (`scripts/run-agent.sh` `role_profile()`).
 
 | Artifact | What the suite compares against the policy |
 |---|---|

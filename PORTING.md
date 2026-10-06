@@ -122,10 +122,10 @@ What does the fork get to watch the gate with, without reading journals by hand?
 
 Which command proves which layer still works?
 
-- Run the policy suite, the 80-check permission regression (`python3 -m pytest eval/test_policy.py --collect-only -q` -> `80 tests collected in 0.02s`).
-- Run the doc-conformance step test, the 18-check validator regression (`python3 -m pytest eval/test_deterministic_step.py --collect-only -q` -> `18 tests collected in 0.06s`).
+- Run the policy suite, the 98-check permission regression (`python3 -m pytest eval/test_policy.py --collect-only -q` -> `98 tests collected in 0.03s`).
+- Run the doc-conformance step test, the 34-check validator regression (`python3 -m pytest eval/test_deterministic_step.py --collect-only -q` -> `34 tests collected in 0.02s`).
 - Run the gate server's own self-test against a live server (`mcp/gate/selftest.py:13` `python3 mcp/gate/selftest.py --url http://localhost:8003/mcp`).
-- Run the launcher's matrix, one row per role (`bash scripts/run-agent.sh --matrix` -> seven rows).
+- Run the launcher's matrix, one row per role (`bash scripts/run-agent.sh --matrix` -> eight rows).
 - Run the launcher's config report, the keys it consumes (`bash scripts/run-agent.sh --print-config` -> `"containers.tools_image": "agent-sandbox:komun-m3"`).
 - Override one value for a dev run, because an environment variable beats the config (`scripts/run-agent.sh:26` `IMAGE="${IMAGE:-$(cfg containers.tools_image 'agent-sandbox:komun-m3')}"`).
 - Override the broker, its port, the registry volume and both networks the same way (`scripts/run-agent.sh:36` `NET_BROKER="${NET_BROKER:-$(cfg containers.networks.broker 'agent-net')}"`).

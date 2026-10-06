@@ -55,8 +55,12 @@ What does the addition change, and what does it leave open?
 - The role introduces no conflict between the map and the definitions (`docs/policy-reconciliation.md:44` `How does the new`).
 - The change is recorded as the run's change under gate (`docs/iteration-log.md:1446` `- Change under gate: ticket`), the entry appended rather than prepended so existing citations do not drift.
 - The browser server joins the hash chain, so its journal is anchored like the other three.
-- The `CLAUDE.md` role list still reads seven roles. A write to `CLAUDE.md` was refused by this session's guardrail, so that single line stays pending, as one did for the conformance conversion (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:113` `One line stays pending`).
-- The change awaits one operator commit, and this session stages explicit paths and pushes nothing.
+- The `CLAUDE.md` role list still reads seven roles. The human authorized the edit, but this session's
+  guardrail refused the write when its own approval prompt went unanswered, so the line stays pending and a
+  later session may land it with that prompt answered
+  (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:113` `One line stays pending`).
+- The operator committed the change on `harness/beta-tester-role` and pushed it, and the release decision
+  stays with the human.
 
 ## Authority
 
