@@ -923,15 +923,22 @@ jobs:
           npm ci --prefix web --no-audit --no-fund
           npm run build --prefix web
 
-      # A bundle with a development fallback is a broken deploy that looks like a green one.
-      - name: Refuse to ship a development fallback
+      # A bundle with a development fallback, or with a hostname of its own, is a broken deploy that
+      # looks like a green one. Both have shipped: the fallback pointed every visitor's server-discovery
+      # call at their own machine, and a baked name made the app depend on a host that may not resolve.
+      - name: Refuse to ship a development fallback or a baked hostname
         run: |
           if grep -rl 'localhost:' web/build >/dev/null; then
             echo 'the built bundle carries a development fallback:'
             grep -rl 'localhost:' web/build | head -5
             exit 1
           fi
-          echo 'no development fallback in the bundle'
+          if grep -rl 'komun\.buzz' web/build >/dev/null; then
+            echo 'the built bundle names a host that does not resolve:'
+            grep -rl 'komun\.buzz' web/build | head -5
+            exit 1
+          fi
+          echo 'no development fallback and no baked hostname in the bundle'
 
       - name: Build the server for an Alpine host
         run: |

@@ -211,3 +211,26 @@ Two limits worth knowing. The checksum in `SHA256SUMS` comes from the same origi
 catches a corrupted download, not a compromised release — what it does guarantee is that the host only
 ever runs a revision this pipeline published. And the updater asks for *latest*: if you ever publish
 releases for something other than the server, give the updater a tag filter first.
+
+## 9. The server and directory defaults a build resolves
+
+Which server does a first-time visitor talk to, and what may a build set to change that?
+
+A release build sets neither variable, so both defaults resolve to the origin that served the app
+(`web/src/lib/stores/server.ts:39` `return servingOrigin();`;
+`web/src/lib/stores/directories.ts:10` `return typeof window === 'undefined' ? [] : [window.location.origin];`).
+
+- Set `VITE_DEFAULT_SERVER` to name a different server explicitly (`web/src/lib/stores/server.ts:36`
+  `const configured = String(import.meta.env.VITE_DEFAULT_SERVER ?? '').trim();`).
+- Set `VITE_DEFAULT_SERVER=none` to send a visitor to Connect before any search
+  (`web/src/lib/stores/server.ts:37` `if (configured === 'none') return null;`).
+- Set `VITE_DEFAULT_DIRECTORY` only to point discovery at a directory that is not the server's own
+  (`web/src/lib/stores/directories.ts:8` `const configured = String(import.meta.env.VITE_DEFAULT_DIRECTORY ?? '').trim();`).
+- Bake no hostname into the bundle, because the served policy allows only the app's own origin
+  (`web/svelte.config.js:36` `'connect-src': ['self', ...devConnectSources],`).
+
+The pipeline refuses a bundle that carries a hostname of its own
+(`.github/workflows/ci.yml:936` `if grep -rl 'komun\.buzz' web/build >/dev/null; then`).
+
+Name the deployment's canonical host in `[node] public_url` instead
+(`config.example.toml:21` `# public_url = "https://komun.example.org"`).
