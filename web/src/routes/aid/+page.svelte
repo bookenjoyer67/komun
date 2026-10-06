@@ -19,6 +19,10 @@
 	let editTitle = $state('');
 	let editBody = $state('');
 
+	/** A pause is the stored `matched` status; readers see PAUSED_LABEL, never the stored word. */
+	const PAUSED_STATUS = 'matched';
+	const PAUSED_LABEL = 'Paused — not taking responses';
+
 	async function fulfillPost(postId: string) {
 		await api.posts.update(postId, { status: 'fulfilled' });
 		await loadPosts();
@@ -148,11 +152,16 @@
 						{#if post.location_name}
 							<span class="location">{post.location_name}</span>
 						{/if}
+						{#if post.status === PAUSED_STATUS}
+							<span class="paused-note">{PAUSED_LABEL}</span>
+						{/if}
 						{#if post.author_id !== myUserId}
-							{#if post.kind === 'need'}
-								<button class="respond-btn" onclick={() => respondingTo = post}>I can help</button>
-							{:else if post.kind === 'offer'}
-								<button class="respond-btn" onclick={() => respondingTo = post}>Request this</button>
+							{#if post.status === 'active'}
+								{#if post.kind === 'need'}
+									<button class="respond-btn" onclick={() => respondingTo = post}>I can help</button>
+								{:else if post.kind === 'offer'}
+									<button class="respond-btn" onclick={() => respondingTo = post}>Request this</button>
+								{/if}
 							{/if}
 						{:else if post.status === 'fulfilled'}
 							<span class="fulfilled-badge">Fulfilled</span>
@@ -263,6 +272,7 @@
 	h3 { font-size: 1.05rem; margin-bottom: 0.3rem; }
 	.body { color: var(--text-muted); font-size: 0.9rem; }
 	.location { color: var(--text-muted); font-size: 0.8rem; }
+	.paused-note { color: var(--text-muted); font-size: var(--text-xs); font-weight: 600; }
 
 	.post-images { display: flex; gap: 0.4rem; margin: 0.5rem 0; align-items: center; }
 	.post-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border); }
