@@ -22,6 +22,13 @@
     let publishedRating = $derived(
         typeof profile?.rating_avg === 'number' && profile.rating_count > 0 ? profile.rating_avg : null
     );
+    // Badges are decided by the server's rules and only rendered here: re-deriving one from a count would let the page and the rules disagree.
+    let reciprocityBadges = $derived(
+        (Array.isArray(profile?.badges) ? profile.badges : []).filter(
+            (badge: { code?: unknown; label?: unknown } | null) =>
+                typeof badge?.code === 'string' && typeof badge?.label === 'string'
+        ) as { code: string; label: string }[]
+    );
 
     // profile_json is owner-written through PUT /api/auth/me, so a link renders only with an http(s) href; any other link is dropped.
     const safeLinks = $derived(
@@ -143,6 +150,14 @@
                 <span class="rating-none">No reviews yet</span>
             {/if}
         </div>
+
+        {#if reciprocityBadges.length}
+            <ul class="reciprocity-badges" aria-label="Badges">
+                {#each reciprocityBadges as badge}
+                    <li class="reciprocity-badge">{badge.label}</li>
+                {/each}
+            </ul>
+        {/if}
 
         {#if profile.bio}
             <div class="bio-section">
@@ -339,6 +354,26 @@
     .rating-none {
         color: var(--text-muted);
         font-size: 0.8rem;
+    }
+
+    .reciprocity-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: var(--space-2);
+        list-style: none;
+        margin: 0 0 var(--space-5);
+        padding: 0;
+    }
+
+    .reciprocity-badge {
+        font-size: var(--text-xs);
+        font-weight: 600;
+        padding: var(--space-1) var(--space-3);
+        border-radius: var(--radius-full);
+        border: 1px solid var(--success);
+        color: var(--success);
+        background: var(--bg-surface);
     }
 
     .bio-section {

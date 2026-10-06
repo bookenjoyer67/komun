@@ -1,5 +1,6 @@
 //! Passwords, timing, single-use tokens and session revocation.
 
+mod badges;
 mod deal_and_moderation;
 mod key_change;
 mod key_coherence;

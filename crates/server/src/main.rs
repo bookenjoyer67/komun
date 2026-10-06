@@ -1,5 +1,6 @@
 mod api;
 pub mod auth;
+mod badges;
 pub mod config;
 mod db;
 mod rate_limit;
