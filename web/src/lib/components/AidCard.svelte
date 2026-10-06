@@ -37,6 +37,10 @@
 	let showModal = $state(false);
 	let showMap = $state(false);
 
+	/** A pause is the stored `matched` status; readers see PAUSED_LABEL, never the stored word. */
+	const PAUSED_STATUS = 'matched';
+	const PAUSED_LABEL = 'Paused — not taking responses';
+
 	// Coarsened here too: a post from another server may still carry exact coordinates.
 	const mapPoint = $derived(post.location_lat != null && post.location_lon != null
 		? { lat: coarsenCoordinate(post.location_lat), lon: coarsenCoordinate(post.location_lon) }
@@ -145,6 +149,9 @@
 					<button class="map-btn" onclick={() => showMap = true} title="View on map">📍</button>
 				{/if}
 				<a class="map-btn permalink" href="/p/{post.id}" title="Open this post">🔗</a>
+				{#if post.status === PAUSED_STATUS}
+					<span class="paused-note">{PAUSED_LABEL}</span>
+				{/if}
 				{#if post.author_id === myUserId && (onFulfill || onEdit || onDelete)}
 					{#if post.status === 'fulfilled'}
 						<span class="fulfilled-badge">Fulfilled</span>
@@ -154,9 +161,11 @@
 						{#if onDelete}<button class="action-btn delete" onclick={() => onDelete(post.id)}>Delete</button>{/if}
 					{/if}
 				{:else if post.author_id !== myUserId}
-					<button class="btn-primary respond-btn" onclick={() => showModal = true}>
-						{#if post.kind === 'need'}I can help{:else if post.kind === 'offer'}Request this{:else}Respond{/if}
-					</button>
+					{#if post.status === 'active'}
+						<button class="btn-primary respond-btn" onclick={() => showModal = true}>
+							{#if post.kind === 'need'}I can help{:else if post.kind === 'offer'}Request this{:else}Respond{/if}
+						</button>
+					{/if}
 				{:else}
 					<span class="your-post">Your post</span>
 				{/if}
@@ -248,6 +257,7 @@
 	.permalink { display: inline-flex; align-items: center; text-decoration: none; line-height: 1; }
 	.respond-btn { font-size: var(--text-xs); padding: var(--space-1) var(--space-3); }
 	.your-post { color: var(--text-muted); font-size: var(--text-xs); font-style: italic; }
+	.paused-note { color: var(--text-muted); font-size: var(--text-xs); font-weight: 600; }
 	.fulfilled-badge { font-size: 0.75rem; color: var(--success); font-weight: 600; }
 
 	.action-btn { padding: 0.3rem 0.6rem; border-radius: var(--radius-full); font-size: 0.75rem; font-weight: 600; border: 1px solid; cursor: pointer; }

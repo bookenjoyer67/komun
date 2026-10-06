@@ -23,6 +23,16 @@
 	let loading = $state(true);
 	let showModal = $state(false);
 
+	/**
+	 * A pause reuses the stored `matched` status, which the server already refuses responses
+	 * on. The stored word is never shown; readers see PAUSED_LABEL.
+	 */
+	const PAUSED_STATUS = 'matched';
+	const PAUSED_LABEL = 'Paused — not taking responses';
+
+	let pauseBusy = $state(false);
+	let pauseError = $state('');
+
 	const kindLabels: Record<string, string> = {
 		resource: 'Resource', need: 'Need', offer: 'Offer', listing: 'Listing', want: 'Want'
 	};
@@ -37,6 +47,9 @@
 		return $auth.servers?.[server]?.userId || null;
 	})());
 
+	let isAuthor = $derived(!!myUserId && post?.author_id === myUserId);
+	let paused = $derived(post?.status === PAUSED_STATUS);
+
 	/** A market post belongs to the market; the aid feed is not where a sale returns to. */
 	let backHref = $derived(isMarketKind(post?.kind) ? '/market' : '/aid');
 
@@ -48,6 +61,20 @@
 		}
 		loading = false;
 	});
+
+	async function setPaused(pause: boolean) {
+		if (!post || pauseBusy) return;
+		const next = pause ? PAUSED_STATUS : 'active';
+		pauseBusy = true;
+		pauseError = '';
+		try {
+			await api.posts.update(post.id, { status: next });
+			post = { ...post, status: next };
+		} catch (e: any) {
+			pauseError = e.message || 'Could not change whether this post takes responses';
+		}
+		pauseBusy = false;
+	}
 
 	function timeAgo(dateStr: string): string {
 		const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -115,6 +142,27 @@
 				</div>
 			{/if}
 
+			{#if paused}
+				<p class="paused-note" role="status">{PAUSED_LABEL}</p>
+			{/if}
+
+			{#if isAuthor && (post.status === 'active' || paused)}
+				<div class="pause-control">
+					<button
+						type="button"
+						class="btn-ghost pause-btn"
+						onclick={() => setPaused(!paused)}
+						disabled={pauseBusy}
+						aria-busy={pauseBusy}
+					>
+						{#if pauseBusy}Saving...{:else if paused}Resume responses{:else}Pause responses{/if}
+					</button>
+					{#if pauseError}
+						<p class="error pause-error" role="alert">{pauseError}</p>
+					{/if}
+				</div>
+			{/if}
+
 			{#if post.status === 'active' && post.author_id && post.author_id !== myUserId}
 				<button class="btn-primary respond-btn" onclick={() => showModal = true}>
 					{#if post.kind === 'need'}I can help{:else if post.kind === 'offer'}Request this{:else if post.kind === 'listing' || post.kind === 'want'}Make an offer{:else}Respond{/if}
@@ -150,6 +198,10 @@
 	.contact { color: var(--text-muted); font-size: var(--text-sm); margin-bottom: var(--space-2); }
 	.images { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: var(--space-3); }
 	.images img { max-width: 100%; max-height: 400px; border-radius: var(--radius-md); border: 1px solid var(--border); }
+	.paused-note { margin-top: var(--space-4); color: var(--text-muted); font-size: var(--text-sm); font-weight: 600; }
+	.pause-control { margin-top: var(--space-4); display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+	.pause-btn:disabled { color: var(--text-muted); cursor: not-allowed; }
+	.pause-error { font-size: var(--text-sm); }
 	.respond-btn { margin-top: var(--space-4); background: var(--accent); color: var(--text-on-accent); padding: var(--space-2) var(--space-4); border-radius: var(--radius-full); font-weight: 600; }
 	.status { text-align: center; color: var(--text-muted); padding: 3rem 0; }
 	.error { color: var(--critical); }
