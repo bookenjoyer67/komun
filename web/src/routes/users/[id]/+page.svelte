@@ -18,6 +18,10 @@
     let endorsed = $derived(data.hasEndorsed);
     let endCount = $derived(data.endorsements?.count || 0);
     let endorseError = $state('');
+    // The server sends rating_avg as null below its publish threshold while rating_count stays visible, so the count alone never licenses showing an average.
+    let publishedRating = $derived(
+        typeof profile?.rating_avg === 'number' && profile.rating_count > 0 ? profile.rating_avg : null
+    );
 
     // profile_json is owner-written through PUT /api/auth/me, so a link renders only with an http(s) href; any other link is dropped.
     const safeLinks = $derived(
@@ -114,15 +118,23 @@
 
         <div
             class="rating-badge"
-            aria-label={profile.rating_count > 0
-                ? `Rated ${profile.rating_avg} out of 5 from ${profile.rating_count} reviews`
-                : 'No reviews yet'}
+            aria-label={publishedRating !== null
+                ? `Rated ${publishedRating} out of 5 from ${profile.rating_count} reviews`
+                : profile.rating_count > 0
+                  ? `Not yet rated publicly, ${profile.rating_count} ${profile.rating_count === 1 ? 'review' : 'reviews'}`
+                  : 'No reviews yet'}
         >
-            {#if profile.rating_count > 0}
+            {#if publishedRating !== null}
                 <span class="rating-stars" aria-hidden="true">
-                    {#each [1, 2, 3, 4, 5] as star (star)}{star <= Math.round(profile.rating_avg) ? '★' : '☆'}{/each}
+                    {#each [1, 2, 3, 4, 5] as star (star)}{star <= Math.round(publishedRating) ? '★' : '☆'}{/each}
                 </span>
-                <span class="rating-value">{profile.rating_avg}</span>
+                <span class="rating-value">{publishedRating}</span>
+                <span class="rating-count"
+                    >({profile.rating_count}
+                    {profile.rating_count === 1 ? 'review' : 'reviews'})</span
+                >
+            {:else if profile.rating_count > 0}
+                <span class="rating-none">Not yet rated publicly</span>
                 <span class="rating-count"
                     >({profile.rating_count}
                     {profile.rating_count === 1 ? 'review' : 'reviews'})</span

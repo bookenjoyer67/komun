@@ -10,6 +10,14 @@ use crate::auth;
 use crate::db::users;
 use crate::AppState;
 
+/// Below this many reviews the mean is withheld from the profile: a handful of reviews is an
+/// anecdote, and at neighbourhood scale a published anecdote is a lasting reputation.
+pub(crate) const RATING_PUBLISH_THRESHOLD: i64 = 5;
+
+pub(crate) fn publishable_rating(rating_avg: Option<f64>, rating_count: i64) -> Option<f64> {
+    rating_avg.filter(|_| rating_count >= RATING_PUBLISH_THRESHOLD)
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new().route("/{id}", get(profile)).with_state(state)
 }
@@ -42,12 +50,33 @@ async fn profile(
         "post_count": row.post_count,
         "verified_post_count": row.verified_post_count,
         "endorsement_count": row.endorsement_count,
-        // `rating_avg` is `null`, never 0, for a user nobody has reviewed; `rating_count`
-        // distinguishes a reputation from a single review.
-        "rating_avg": row.rating_avg,
+        // `rating_avg` is `null`, never 0, until `rating_count` reaches the publish threshold.
+        // `rating_count` stays public: a withheld mean still reads as reviewed, not yet rated.
+        "rating_avg": publishable_rating(row.rating_avg, row.rating_count),
         "rating_count": row.rating_count,
         "joined_at": row.created_at,
         "last_seen": row.last_seen,
         "profile_json": row.profile_json,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn publishable_rating_is_withheld_below_the_threshold() {
+        for count in [0, 1, 4] {
+            assert_eq!(publishable_rating(Some(4.5), count), None, "rating_count {count}");
+        }
+        assert_eq!(publishable_rating(None, 0), None);
+    }
+
+    #[test]
+    fn publishable_rating_is_published_at_the_threshold() {
+        // Checked at compile time: clippy rejects a run-time assert over two constants.
+        const _: () = assert!(RATING_PUBLISH_THRESHOLD == 5);
+        assert_eq!(publishable_rating(Some(4.5), 5), Some(4.5));
+        assert_eq!(publishable_rating(Some(4.5), 6), Some(4.5));
+    }
 }
