@@ -49,7 +49,7 @@
 	let {
 		lat,
 		lon,
-		zoom = 13,
+		zoom = 11,
 		tileUrl = typeof __KOMUN_TILE_URL__ === 'string' ? __KOMUN_TILE_URL__ : OSM_TILE_URL,
 		attribution = '&copy; OpenStreetMap contributors',
 		markers = [],

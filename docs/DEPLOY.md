@@ -17,8 +17,8 @@ cd web && npm ci && npm run build && cd ..
 cargo build --release --bin komun-server
 ```
 
-Artifacts: `target/release/komun-server` and `web/build/` (the server serves the SPA's static
-files itself; you can also serve them from the reverse proxy).
+Artifacts: `target/release/komun-server` and `web/build/`, which the reverse proxy serves: the
+router mounts only `/api`, `/avatars` and `/post-images` (`crates/server/src/main.rs:124` `.nest("/api", api::router(state.clone()))`).
 
 ## 2. Provision the database
 
@@ -49,7 +49,7 @@ chown -R komun:komun /opt/komun
 ```
 
 Directory routes are only mounted when `[discovery] directory_enabled = true`; with it false
-`/api/directory*` returns 404 by design.
+`/api/directory*` returns 404 by design (`crates/server/src/api/mod.rs:71` `if state.config.discovery.directory_enabled {`).
 
 ## 4. Run it as a service
 
@@ -92,7 +92,7 @@ How is TLS put in front of a server that speaks only plain HTTP?
 
 Komun speaks plain HTTP; put a reverse proxy in front for TLS. `deploy/nginx-komun.conf` is a
 starting point (proxy `/api/`, `/avatars/`, `/post-images/` to the server; serve the SPA with
-an `index.html` fallback). There is **no** WebSocket/relay route to proxy any more.
+an `index.html` fallback). No WebSocket or relay route exists to proxy (`crates/server/src/main.rs:124` `.nest("/api", api::router(state.clone()))`).
 
 ```nginx
 server {
@@ -117,12 +117,12 @@ ignored, which is the safe default.
 
 What does a running server need from its operator day to day?
 
-- **Health:** `curl -s http://127.0.0.1:3000/api/health` → `{"service":"komun","status":"ok",...}`.
+- **Health:** `curl -s http://127.0.0.1:3000/api/health` → `{"service":"komun","status":"ok",...}` (`crates/server/src/api/mod.rs:43` `.merge(health::router())`).
 - **Media:** avatars and post images live under `[media]` paths inside the working directory —
   include them in backups.
 - **Database:** back up PostgreSQL (the schema, plus the tables in `docs/DATABASE.md`).
 - **Seed (optional):** `psql "$DATABASE_URL" -f deploy/seed.sql` adds demo accounts and posts;
-  the 23 marketplace/aid categories come from `001_schema.sql` and are not in the seed file.
+  the 23 categories come from `001_schema.sql` and are not in the seed file (`crates/core/src/tests.rs:257` `assert_eq!(rows.len(), 23, "expected 23 seeded categories");`).
 - **Categories:** the taxonomy is a runtime-editable table (`docs/ARCHITECTURE.md`, "Categories
   are data"). An admin adds, relabels, reorders or retires a category through
   `POST`/`PATCH /api/admin/categories`; retiring means `active = false`, never a delete.
@@ -130,7 +130,7 @@ What does a running server need from its operator day to day?
   If you do not run SMTP, keep `[registration] require_email_verification = false`; the server
   otherwise refuses to start.
 - **Upgrades:** stop the service, install the new binary and `web/build`, start it — the
-  migrator applies any new additive migrations on boot.
+  migrator applies any new additive migrations on boot. (`crates/server/src/main.rs:75` `sqlx::migrate!("../../migrations")`).
 
 ## 7. Map tiles and the geocode contact
 

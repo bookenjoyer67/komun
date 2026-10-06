@@ -4,10 +4,6 @@ import { resolveMapTiles } from '../../map-tiles.config.js';
 const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ORIGINS = ['https://tile.openstreetmap.org', 'https://*.tile.openstreetmap.org'];
 
-/**
- * Read at build time, because the CSP is a build-time meta tag: a value served at runtime could
- * change the tile URL but never the `img-src` that has to allow it.
- */
 describe('map tile configuration', () => {
 	it('defaults to OpenStreetMap when nothing is set', () => {
 		expect(resolveMapTiles({})).toEqual({ tileUrl: OSM_TILE_URL, cspOrigins: OSM_ORIGINS });
