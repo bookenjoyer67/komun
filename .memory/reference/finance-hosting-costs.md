@@ -22,4 +22,4 @@ The infrastructure contract runs for twelve months from 2026-03-01 and renews au
 
 Do not paste these figures into a public document, a grant application or a session running with an internal ceiling. An agent asked about hosting cost must answer from the deploy topology document and the infrastructure variable names, never from this file. Direct any question about renewal terms or the vendor contact to the finance lead.
 
-The operational detail lives elsewhere: the host runs the service under OpenRC and terminates TLS at nginx (`` `docs/DEPLOY.md:51` `OpenRC (Alpine)` — `deploy/komun.initd` is a ready starting point ``).
+The operational detail lives elsewhere: the host runs the service under OpenRC and terminates TLS at nginx (`` `docs/DEPLOY.md:61` `OpenRC (Alpine)` — `deploy/komun.initd` is a ready starting point ``).
