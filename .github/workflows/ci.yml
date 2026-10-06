@@ -72,6 +72,34 @@ jobs:
           # can compare the two revisions directly.
           fetch-depth: 0
 
+      # GitHub only reports a bad pin when the job using it starts, and the release job runs only on
+      # a push to the default branch -- so a typo in it is discovered during a publish. Measured here:
+      # a rust-cache pin one character short failed the job with "unable to resolve action ... unable
+      # to find version". Resolving each reference answers the real question (does this pin exist?)
+      # rather than guessing from its shape: a tag and a full SHA both resolve, a truncated or
+      # mistyped one does not.
+      - name: Resolve every action pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=$(git ls-files | grep -E '(\.github/workflows/.*\.ya?ml|(^|/)action\.ya?ml)$')
+          fail=0
+          for f in $files; do
+            for ref in $(grep -oE 'uses:[[:space:]]+[^[:space:]#]+' "$f" | sed 's/^uses:[[:space:]]*//'); do
+              case "$ref" in
+                ./*|../*|docker://*) continue ;;   # a local action or an image has nothing to resolve
+              esac
+              slug="${ref%@*}"
+              pin="${ref##*@}"
+              if ! gh api "repos/$slug/commits/$pin" --jq .sha >/dev/null 2>&1; then
+                echo "::error file=$f::unresolvable action pin: $ref"
+                fail=1
+              fi
+            done
+          done
+          [ "$fail" -eq 0 ] || { echo "at least one action reference does not resolve"; exit 1; }
+          echo "every action reference resolves"
+
       # One place resolves the revision this run compares against: the pull request's base on a
       # pull_request event, the previous tip on a push. A push of a new branch, a force push or a
       # shallow clone can leave that commit absent, so the step falls back to the pushed commit's
@@ -870,7 +898,7 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcaf7e3dddab59af2b6  # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
