@@ -130,7 +130,7 @@
 		font-size: var(--text-4xl);
 		font-weight: 800;
 		letter-spacing: -1.5px;
-		font-family: 'Space Grotesk', sans-serif;
+		font-family: var(--font-display);
 		margin-bottom: 0.25rem;
 	}
 

@@ -163,7 +163,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-family: 'Space Grotesk', sans-serif;
+		font-family: var(--font-display);
 		font-size: 1.3rem;
 		font-weight: 800;
 		color: var(--text);
