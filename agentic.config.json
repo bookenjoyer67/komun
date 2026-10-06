@@ -273,7 +273,8 @@
         "docs/memory-architecture.md",
         "docs/orchestration-diagram.md",
         "mcp/gate/SCHEMA.md",
-        "docs/calibration-log.md"
+        "docs/calibration-log.md",
+        "docs/DEPLOY.md"
       ]
     }
   },

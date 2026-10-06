@@ -1,5 +1,8 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { resolveMapTiles } from './map-tiles.config.js';
+
+const mapTiles = resolveMapTiles(process.env);
 
 /** @typedef {NonNullable<NonNullable<import('@sveltejs/kit').KitConfig['csp']>['directives']>} CspDirectiveSet */
 /** @typedef {NonNullable<CspDirectiveSet['connect-src']>} CspSourceList */

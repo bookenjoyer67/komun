@@ -2,6 +2,25 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Every post coordinate the server writes or serves sits on this grid; changing the precision is
+/// this line. It must divide one degree into a whole number of steps.
+pub const LOCATION_PRECISION_DEGREES: f64 = 0.1;
+
+/// Snaps a coordinate to the [`LOCATION_PRECISION_DEGREES`] grid. It divides a whole step count
+/// rather than multiplying by the step, because `378.0 * 0.1` is `37.800000000000004`. A tie rounds
+/// away from zero, and the browser's copy in `web/src/lib/geo.ts` must round it the same way:
+/// `-122.25` is `-122.3` in both.
+pub fn coarsen_coordinate(value: f64) -> f64 {
+    let steps_per_degree = (1.0 / LOCATION_PRECISION_DEGREES).round();
+    let coarse = (value * steps_per_degree).round() / steps_per_degree;
+    // A served -0.0 would tell a reader which side of the line the exact value sat on.
+    if coarse == 0.0 {
+        0.0
+    } else {
+        coarse
+    }
+}
+
 db_enum!(
     PostKind {
         Resource => "resource",

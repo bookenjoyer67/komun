@@ -1,8 +1,10 @@
 <script lang="ts">
 	import RespondModal from './RespondModal.svelte';
 	import LinkPreview from './LinkPreview.svelte';
+	import LocationMap from './LocationMap.svelte';
 	import { auth, getToken } from '$lib/stores/auth';
 	import { getActiveServer } from '$lib/stores/server';
+	import { coarsenCoordinate } from '$lib/geo';
 	import type { PostLike } from '$lib/api/types';
 
 	interface Props {
@@ -34,6 +36,11 @@
 	}: Props = $props();
 	let showModal = $state(false);
 	let showMap = $state(false);
+
+	// Coarsened here too: a post from another server may still carry exact coordinates.
+	const mapPoint = $derived(post.location_lat != null && post.location_lon != null
+		? { lat: coarsenCoordinate(post.location_lat), lon: coarsenCoordinate(post.location_lon) }
+		: null);
 
 	let myUserId = $derived((() => {
 		const server = getActiveServer();
@@ -134,7 +141,7 @@
 		<div class="footer">
 			<span class="origin">{post.server_name || ''}</span>
 			<div class="footer-actions">
-				{#if post.location_lat != null && post.location_lon != null}
+				{#if mapPoint}
 					<button class="map-btn" onclick={() => showMap = true} title="View on map">📍</button>
 				{/if}
 				<a class="map-btn permalink" href="/p/{post.id}" title="Open this post">🔗</a>
@@ -158,7 +165,7 @@
 	{/if}
 </article>
 
-{#if showMap}
+{#if showMap && mapPoint}
 	<!--
 		The backdrop dismisses on click and must do the same from the keyboard; it is focusable so
 		`role="dialog"` means something to a screen reader.
@@ -172,7 +179,7 @@
 		onclick={() => showMap = false}
 		onkeydown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') showMap = false; }}
 	>
-		<!-- Click-catcher: it exists only to stop the backdrop dismissing when the map is clicked. -->
+		<!-- Without this, a click or drag on the map would reach the backdrop and close it. -->
 		<div
 			class="map-popout"
 			role="presentation"
@@ -180,12 +187,9 @@
 			onkeydown={(e) => e.stopPropagation()}
 		>
 			<button class="map-close" onclick={() => showMap = false}>&times;</button>
-			<iframe
-				title="Post location"
-				src={post.location_lat != null && post.location_lon != null
-					? `https://www.openstreetmap.org/export/embed.html?bbox=${post.location_lon - 0.01},${post.location_lat - 0.005},${post.location_lon + 0.01},${post.location_lat + 0.005}&layer=mapnik&marker=${post.location_lat},${post.location_lon}`
-					: `https://www.openstreetmap.org/export/embed.html?bbox=-0.01,-0.005,0.01,0.005&layer=mapnik`}
-			></iframe>
+			<div class="map-frame">
+				<LocationMap lat={mapPoint.lat} lon={mapPoint.lon} markers={[mapPoint]} />
+			</div>
 		</div>
 	</div>
 {/if}
@@ -236,7 +240,8 @@
 	.map-btn:hover { border-color: var(--accent); }
 	.map-overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
 	.map-popout { position: relative; width: 100%; max-width: 500px; aspect-ratio: 1; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-	.map-popout iframe { width: 100%; height: 100%; border: none; }
+	/* Leaflet's panes and controls sit at z-index 400 and up; isolating them keeps the close button above the map. */
+	.map-frame { position: absolute; inset: 0; isolation: isolate; }
 	.map-close { position: absolute; top: 0.5rem; right: 0.5rem; z-index: 1; background: var(--bg-surface); color: var(--text); border: 1px solid var(--border); border-radius: 50%; width: 28px; height: 28px; font-size: 1rem; display: flex; align-items: center; justify-content: center; padding: 0; min-height: unset; min-width: unset; }
 
 	.origin { font-size: var(--text-sm); color: var(--text); font-weight: 600; }

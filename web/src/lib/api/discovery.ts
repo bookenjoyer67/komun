@@ -1,5 +1,6 @@
 import { getDirectories } from '$lib/stores/directories';
 import { getLocation } from '$lib/stores/location';
+import { coarsenCoordinate } from '$lib/geo';
 import type { PostLike } from '$lib/api/types';
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -52,9 +53,13 @@ export async function discoverNearbyServers(): Promise<NearbyServer[]> {
 
 	if (!loc.lat || !loc.lon) return [];
 
+	// A directory is someone else's server: it gets the grid cell, never the exact point.
+	const lat = coarsenCoordinate(loc.lat);
+	const lon = coarsenCoordinate(loc.lon);
+
 	const results = await Promise.allSettled(
 		dirs.map(async (dirUrl) => {
-			const url = `${dirUrl}/api/directory?lat=${loc.lat}&lon=${loc.lon}&radius=50`;
+			const url = `${dirUrl}/api/directory?lat=${lat}&lon=${lon}&radius=50`;
 			const res = await fetch(url);
 			if (!res.ok) return [];
 			const data = await res.json();

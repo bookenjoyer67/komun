@@ -15,7 +15,7 @@ use super::categories::bad_request;
 use super::StatusError;
 use crate::auth::{require_auth, AuthUser};
 use crate::config::is_currency_code;
-use crate::db::conversations::{DealStep, OfferRow, Thread};
+use crate::db::conversations::{DealStep, OfferRow, RespondRefusal, RespondStep, Thread};
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
@@ -93,7 +93,7 @@ async fn respond_to_post(
 
     let (ciphertext, nonce) = input.decode()?;
 
-    let (match_id, _message_id) = crate::db::conversations::create_match(
+    let step = crate::db::conversations::create_match(
         &state.pool,
         post_id,
         auth.user_id,
@@ -101,6 +101,18 @@ async fn respond_to_post(
         nonce.as_deref(),
     )
     .await?;
+
+    let match_id = match step {
+        RespondStep::Opened(match_id) => match_id,
+        // The same answer as a missing id, so a post the feed hides is not confirmed to exist.
+        RespondStep::Refused(RespondRefusal::NotFound) => {
+            return Err(StatusError::with_status(
+                StatusCode::NOT_FOUND,
+                "post not found",
+            ))
+        }
+        RespondStep::Refused(RespondRefusal::Closed(why)) => return Err(conflict(why)),
+    };
 
     Ok(Json(serde_json::json!({
         "match_id": match_id,

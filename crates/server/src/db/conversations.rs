@@ -8,7 +8,7 @@ use serde::Serialize;
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
-use komun_core::models::{MatchStatus, OfferKind, PostKind};
+use komun_core::models::{MatchStatus, OfferKind, PostKind, PostStatus, Visibility};
 
 fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
@@ -112,31 +112,97 @@ impl From<ConversationPreviewRow> for ConversationPreview {
     }
 }
 
+pub const ALREADY_SOLD: &str = "this listing is already sold";
+
+pub const NOT_OPEN_FOR_RESPONSES: &str = "this post is not open for responses";
+
+/// Why a response opened no thread. `NotFound` covers every post the public feed does not show,
+/// so the refusal is the one a missing id gets and confirms nothing about a hidden post.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RespondRefusal {
+    NotFound,
+    Closed(&'static str),
+}
+
+pub enum RespondStep {
+    Opened(Uuid),
+    Refused(RespondRefusal),
+}
+
+/// A response opens a thread only on a post the feed shows that is still active and unsold.
+/// Only `Active` passes, so a future status is refused until someone decides it is open.
+pub fn check_respond_allowed(
+    status: PostStatus,
+    visibility: Visibility,
+    sold: bool,
+) -> Result<(), RespondRefusal> {
+    if !super::posts::publicly_visible(status, visibility) {
+        return Err(RespondRefusal::NotFound);
+    }
+    if sold {
+        return Err(RespondRefusal::Closed(ALREADY_SOLD));
+    }
+    match status {
+        PostStatus::Active => Ok(()),
+        _ => Err(RespondRefusal::Closed(NOT_OPEN_FOR_RESPONSES)),
+    }
+}
+
+#[derive(FromRow)]
+struct RespondTarget {
+    author_id: Uuid,
+    status: String,
+    visibility: String,
+    sold: bool,
+}
+
 pub async fn create_match(
     pool: &PgPool,
     post_id: Uuid,
     responder_id: Uuid,
     ciphertext: &[u8],
     nonce: Option<&[u8]>,
-) -> Result<(Uuid, Uuid)> {
-    let post_author = sqlx::query_scalar::<_, Uuid>("SELECT author_id FROM posts WHERE id = $1")
-        .bind(post_id)
-        .fetch_optional(pool)
-        .await?;
+) -> Result<RespondStep> {
+    let mut tx = pool.begin().await?;
 
-    if let Some(author_id) = post_author {
-        if author_id == responder_id {
-            return Err(anyhow!("cannot respond to your own post"));
-        }
+    // `FOR SHARE` holds the post as checked until the thread commits, so a withdrawal, a
+    // moderation action or a sale cannot land between the check and the insert.
+    let target = sqlx::query_as::<_, RespondTarget>(
+        r#"SELECT author_id, status, visibility, sold_at IS NOT NULL AS sold
+           FROM posts WHERE id = $1
+           FOR SHARE"#,
+    )
+    .bind(post_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some(target) = target else {
+        return Ok(RespondStep::Refused(RespondRefusal::NotFound));
+    };
+
+    if target.author_id == responder_id {
+        return Err(anyhow!("cannot respond to your own post"));
     }
 
-    let mut tx = pool.begin().await?;
+    // An unreadable status or visibility is refused rather than defaulted: the row conversion's
+    // defaults are `active` and `public`, which would open the thread.
+    let gate = match (
+        PostStatus::parse(&target.status),
+        Visibility::parse(&target.visibility),
+    ) {
+        (Some(status), Some(visibility)) => check_respond_allowed(status, visibility, target.sold),
+        _ => Err(RespondRefusal::NotFound),
+    };
+    if let Err(refusal) = gate {
+        return Ok(RespondStep::Refused(refusal));
+    }
+
     let match_id = Uuid::now_v7();
     let message_id = Uuid::now_v7();
     let now = Utc::now();
 
-    // `matches.message` stays NULL: writing the opening message into that plaintext TEXT column
-    // would restore the readable copy this card exists to remove.
+    // The opening message goes into `messages` as ciphertext and nowhere else: `matches` holds no
+    // message text, so the server never stores a readable copy of it.
     sqlx::query(
         "INSERT INTO matches (id, post_id, responder_id, status, created_at) VALUES ($1, $2, $3, 'proposed', $4)"
     )
@@ -161,31 +227,29 @@ pub async fn create_match(
 
     tx.commit().await?;
 
-    if let Some(author_id) = post_author {
-        let responder_name =
-            sqlx::query_scalar::<_, String>("SELECT display_name FROM users WHERE id = $1")
-                .bind(responder_id)
-                .fetch_optional(pool)
-                .await?
-                .unwrap_or_default();
-        let post_title = sqlx::query_scalar::<_, String>("SELECT title FROM posts WHERE id = $1")
-            .bind(post_id)
+    let responder_name =
+        sqlx::query_scalar::<_, String>("SELECT display_name FROM users WHERE id = $1")
+            .bind(responder_id)
             .fetch_optional(pool)
             .await?
             .unwrap_or_default();
-        super::notifications::create(
-            pool,
-            author_id,
-            "response",
-            &format!("{} responded to: {}", responder_name, post_title),
-            None,
-            Some(&format!("/messages/{}", match_id)),
-        )
-        .await
-        .ok();
-    }
+    let post_title = sqlx::query_scalar::<_, String>("SELECT title FROM posts WHERE id = $1")
+        .bind(post_id)
+        .fetch_optional(pool)
+        .await?
+        .unwrap_or_default();
+    super::notifications::create(
+        pool,
+        target.author_id,
+        "response",
+        &format!("{} responded to: {}", responder_name, post_title),
+        None,
+        Some(&format!("/messages/{}", match_id)),
+    )
+    .await
+    .ok();
 
-    Ok((match_id, message_id))
+    Ok(RespondStep::Opened(match_id))
 }
 
 pub async fn list_conversations(pool: &PgPool, user_id: Uuid) -> Result<Vec<ConversationPreview>> {
@@ -485,6 +549,11 @@ pub const SELF_ACCEPT: &str =
 pub const NOTHING_TO_ACCEPT: &str =
     "there is no offer on this conversation yet, so there is nothing to accept";
 
+pub const OFF_THE_TABLE: &str =
+    "an accept must carry the amount and currency of the offer it accepts";
+
+pub const NOT_OPEN_FOR_DEALS: &str = "this post is not open for deals";
+
 /// Whether a thread in `from` may be moved to `to`.
 ///
 /// Pure and shared by the handler and the locked transaction, so there is only one idea of a legal
@@ -529,6 +598,33 @@ pub fn check_accept_actor(last_offeror: Option<Uuid>, actor_id: Uuid) -> Result<
         None => Err(NOTHING_TO_ACCEPT.to_string()),
         Some(offeror) if offeror == actor_id => Err(SELF_ACCEPT.to_string()),
         Some(_) => Ok(()),
+    }
+}
+
+/// An accept agrees to the offer on the table, so it carries that offer's amount and currency;
+/// other terms are a counter. Refused rather than replaced with the stored terms, so a client
+/// that shows different terms learns so before anything is agreed.
+pub fn check_accept_terms(
+    offered_amount: Option<i64>,
+    offered_currency: Option<&str>,
+    amount_cents: i64,
+    currency: Option<&str>,
+) -> Result<(), String> {
+    if offered_amount == Some(amount_cents) && offered_currency == currency {
+        Ok(())
+    } else {
+        Err(OFF_THE_TABLE.to_string())
+    }
+}
+
+/// A deal completes only while its post is open: completion writes `fulfilled` (and, on a market
+/// post, the sale) over whatever the post says, so a withdrawal, a moderation state or an earlier
+/// outcome would be overwritten. Written as the open set, so a future status is refused until
+/// someone decides it is open.
+pub fn check_completion_post_status(status: PostStatus) -> Result<(), String> {
+    match status {
+        PostStatus::Active | PostStatus::Matched => Ok(()),
+        _ => Err(NOT_OPEN_FOR_DEALS.to_string()),
     }
 }
 
@@ -668,8 +764,8 @@ pub async fn accept_offer(
 
     // The last row that put a number on the table: a `decline` or an earlier `accept` is not an
     // offer, so neither can be the thing being accepted.
-    let last_offeror: Option<Uuid> = sqlx::query_scalar(
-        r#"SELECT actor_id FROM match_offers
+    let last_offer: Option<(Uuid, Option<i64>, Option<String>)> = sqlx::query_as(
+        r#"SELECT actor_id, amount_cents, currency FROM match_offers
            WHERE match_id = $1 AND kind IN ('offer', 'counter')
            ORDER BY created_at DESC, id DESC
            LIMIT 1"#,
@@ -678,7 +774,16 @@ pub async fn accept_offer(
     .fetch_optional(&mut *tx)
     .await?;
 
+    let last_offeror = last_offer.as_ref().map(|(offeror, _, _)| *offeror);
     if let Err(why) = check_accept_actor(last_offeror, actor_id) {
+        return Ok(DealStep::Conflict(why));
+    }
+
+    let (offered_amount, offered_currency) = match &last_offer {
+        Some((_, amount, currency)) => (*amount, currency.as_deref()),
+        None => (None, None),
+    };
+    if let Err(why) = check_accept_terms(offered_amount, offered_currency, amount_cents, currency) {
         return Ok(DealStep::Conflict(why));
     }
 
@@ -757,10 +862,10 @@ pub async fn update_status(pool: &PgPool, match_id: Uuid, to: MatchStatus) -> Re
     // One listing, one sale. Two matches on the same post may each reach `accepted`, but only the
     // first to complete is the sale; without this the second silently rewrites `sold_at` and
     // `buyer_id`. `FOR UPDATE OF p` serialises two completions rather than letting both read NULL
-    // and both write.
+    // and both write, and holds the post's status as checked until commit.
     if to == MatchStatus::Completed {
-        let sold_at: Option<Option<DateTime<Utc>>> = sqlx::query_scalar(
-            r#"SELECT p.sold_at
+        let post: Option<(bool, String)> = sqlx::query_as(
+            r#"SELECT p.sold_at IS NOT NULL, p.status
                FROM posts p
                JOIN matches m ON m.post_id = p.id
                WHERE m.id = $1
@@ -770,10 +875,18 @@ pub async fn update_status(pool: &PgPool, match_id: Uuid, to: MatchStatus) -> Re
         .fetch_optional(&mut *tx)
         .await?;
 
-        if let Some(Some(_)) = sold_at {
-            return Ok(DealStep::Conflict(
-                "this listing is already sold".to_string(),
-            ));
+        let Some((sold, post_status)) = post else {
+            return Ok(DealStep::Conflict(NOT_OPEN_FOR_DEALS.to_string()));
+        };
+        if sold {
+            return Ok(DealStep::Conflict(ALREADY_SOLD.to_string()));
+        }
+        let open = match PostStatus::parse(&post_status) {
+            Some(status) => check_completion_post_status(status),
+            None => Err(NOT_OPEN_FOR_DEALS.to_string()),
+        };
+        if let Err(why) = open {
+            return Ok(DealStep::Conflict(why));
         }
     }
 
@@ -794,22 +907,113 @@ pub async fn update_status(pool: &PgPool, match_id: Uuid, to: MatchStatus) -> Re
     if to == MatchStatus::Completed {
         // `sold_at`/`buyer_id` are only allowed on a `listing` or `want` by the CHECK on `posts`,
         // while `fulfilled` applies to every kind. One statement, so a completed deal and a sold
-        // post commit together or not at all. The buyer is the non-author participant, derived
-        // from the row rather than from whoever pressed the button.
-        sqlx::query(
+        // post commit together or not at all. The buyer comes from the row, never from whoever
+        // pressed the button: the responder on a listing, and the author on a want, who is the
+        // one buying. The status guard repeats `check_completion_post_status`; returning before
+        // commit rolls the match update back with it.
+        let written = sqlx::query(
             r#"UPDATE posts p SET
                  status = 'fulfilled',
                  sold_at = CASE WHEN p.kind IN ('listing', 'want') THEN now() ELSE p.sold_at END,
-                 buyer_id = CASE WHEN p.kind IN ('listing', 'want') THEN m.responder_id ELSE p.buyer_id END,
+                 buyer_id = CASE WHEN p.kind = 'listing' THEN m.responder_id
+                                 WHEN p.kind = 'want' THEN p.author_id
+                                 ELSE p.buyer_id END,
                  updated_at = now()
                FROM matches m
-               WHERE m.id = $1 AND p.id = m.post_id"#,
+               WHERE m.id = $1 AND p.id = m.post_id AND p.status IN ('active', 'matched')"#,
         )
         .bind(match_id)
         .execute(&mut *tx)
-        .await?;
+        .await?
+        .rows_affected();
+
+        if written != 1 {
+            return Ok(DealStep::Conflict(NOT_OPEN_FOR_DEALS.to_string()));
+        }
     }
 
     tx.commit().await?;
     Ok(DealStep::Done(()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accept_terms_must_equal_the_offer_on_the_table() {
+        assert_eq!(
+            check_accept_terms(Some(2500), Some("EUR"), 2500, Some("EUR")),
+            Ok(())
+        );
+        assert_eq!(check_accept_terms(Some(2500), None, 2500, None), Ok(()));
+
+        for (amount, currency) in [
+            (1500, Some("EUR")),
+            (2500, Some("USD")),
+            (2500, None),
+            (2501, Some("EUR")),
+        ] {
+            assert_eq!(
+                check_accept_terms(Some(2500), Some("EUR"), amount, currency),
+                Err(OFF_THE_TABLE.to_string()),
+                "accepting {amount} {currency:?} against 2500 EUR"
+            );
+        }
+        assert_eq!(
+            check_accept_terms(None, Some("EUR"), 2500, Some("EUR")),
+            Err(OFF_THE_TABLE.to_string()),
+            "an offer row without an amount has no terms to agree to"
+        );
+        assert_eq!(
+            check_accept_terms(Some(2500), None, 2500, Some("EUR")),
+            Err(OFF_THE_TABLE.to_string())
+        );
+    }
+
+    #[test]
+    fn completion_needs_an_active_or_matched_post() {
+        for status in PostStatus::ALL {
+            let open = matches!(status, PostStatus::Active | PostStatus::Matched);
+            let got = check_completion_post_status(*status);
+            if open {
+                assert_eq!(got, Ok(()), "completion on a {status} post");
+            } else {
+                assert_eq!(
+                    got,
+                    Err(NOT_OPEN_FOR_DEALS.to_string()),
+                    "completion on a {status} post"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_response_opens_only_on_a_public_active_unsold_post() {
+        for status in PostStatus::ALL {
+            for visibility in Visibility::ALL {
+                for sold in [false, true] {
+                    let feed_hides = *visibility == Visibility::Private
+                        || matches!(
+                            status,
+                            PostStatus::Withdrawn | PostStatus::Hidden | PostStatus::Flagged
+                        );
+                    let want = if feed_hides {
+                        Err(RespondRefusal::NotFound)
+                    } else if sold {
+                        Err(RespondRefusal::Closed(ALREADY_SOLD))
+                    } else if *status == PostStatus::Active {
+                        Ok(())
+                    } else {
+                        Err(RespondRefusal::Closed(NOT_OPEN_FOR_RESPONSES))
+                    };
+                    assert_eq!(
+                        check_respond_allowed(*status, *visibility, sold),
+                        want,
+                        "response to a {visibility} {status} post (sold: {sold})"
+                    );
+                }
+            }
+        }
+    }
 }

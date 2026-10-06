@@ -1,6 +1,5 @@
 import { writable, get } from 'svelte/store';
 import { getActiveServer } from '$lib/stores/server';
-import { getDirectories } from '$lib/stores/directories';
 
 interface LocationState {
 	name: string;
@@ -39,8 +38,12 @@ export function getLocation(): LocationState {
 	return get(location);
 }
 
+/**
+ * The query is what the user typed, so it goes to the active server or nowhere. A directory is
+ * someone else's server and is never a fallback.
+ */
 export async function geocode(query: string): Promise<boolean> {
-	const serverUrl = getActiveServer() || getDirectories()[0];
+	const serverUrl = getActiveServer();
 	if (!serverUrl) return false;
 
 	try {

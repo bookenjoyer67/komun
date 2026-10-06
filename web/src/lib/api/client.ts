@@ -64,7 +64,12 @@ export const api = {
 			const qs = params ? `?${params}` : '';
 			return request<any[]>(`/posts${qs}`);
 		},
-		get: (id: string) => request<any>(`/posts/${id}`),
+		/**
+		 * The session is optional here: `requestOn` attaches it only when one exists, and the server
+		 * reads a missing or stale one as anonymous. With one, a post's author and admins also see
+		 * posts the feed does not show.
+		 */
+		get: (id: string) => request<any>(`/posts/${id}`, { auth: true }),
 		create: (data: any) =>
 			request<any>('/posts', {
 				method: 'POST',

@@ -4,7 +4,7 @@ use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 use komun_core::models::{
-    CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency, Visibility,
+    coarsen_coordinate, CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency, Visibility,
 };
 
 /// Every column the `Post` model is built from, in one place so `list` and `get` cannot drift.
@@ -56,6 +56,18 @@ impl Default for PostFilter {
             offset: 0,
         }
     }
+}
+
+/// Whether the public feed shows a post: the same rule `list` applies in SQL. Every status is
+/// named, so a new one does not compile until someone decides whether the public sees it.
+pub fn publicly_visible(status: PostStatus, visibility: Visibility) -> bool {
+    let open = match status {
+        PostStatus::Active | PostStatus::Matched | PostStatus::Fulfilled | PostStatus::Expired => {
+            true
+        }
+        PostStatus::Withdrawn | PostStatus::Hidden | PostStatus::Flagged => false,
+    };
+    open && visibility == Visibility::Public
 }
 
 /// The public feed: a flat, server-wide collection.
@@ -119,6 +131,8 @@ pub async fn get(pool: &PgPool, id: Uuid) -> Result<Option<Post>> {
     Ok(row.map(Into::into))
 }
 
+/// The caller validates the coordinates first: coarsening here would turn an out-of-range value
+/// into a legal one.
 pub async fn create(pool: &PgPool, author_id: Uuid, input: CreatePost) -> Result<Post> {
     let id = Uuid::now_v7();
     let now = Utc::now();
@@ -147,8 +161,8 @@ pub async fn create(pool: &PgPool, author_id: Uuid, input: CreatePost) -> Result
     .bind(&input.title)
     .bind(&input.body)
     .bind(&input.location_name)
-    .bind(input.location_lat)
-    .bind(input.location_lon)
+    .bind(input.location_lat.map(coarsen_coordinate))
+    .bind(input.location_lon.map(coarsen_coordinate))
     .bind(urgency)
     .bind(input.quantity)
     .bind(visibility)
@@ -169,6 +183,10 @@ pub async fn create(pool: &PgPool, author_id: Uuid, input: CreatePost) -> Result
         .ok_or_else(|| anyhow::anyhow!("post disappeared immediately after insert"))
 }
 
+/// An author's edit. The WHERE repeats the handler's rule, so a post moderated or sold between
+/// the handler's read and this write is left alone; 0 rows written means that happened.
+/// `IS DISTINCT FROM` rather than `NOT ($5 = 'active' AND ...)`: with no status in the edit `$5`
+/// is NULL, and the `NOT` form would then be NULL and refuse a text edit on a sold listing.
 pub async fn update(
     pool: &PgPool,
     id: Uuid,
@@ -176,15 +194,17 @@ pub async fn update(
     body: Option<String>,
     urgency: Option<Urgency>,
     status: Option<PostStatus>,
-) -> Result<()> {
-    sqlx::query(
+) -> Result<u64> {
+    let result = sqlx::query(
         r#"UPDATE posts SET
            title = COALESCE($2, title),
            body = COALESCE($3, body),
            urgency = COALESCE($4, urgency),
            status = COALESCE($5, status),
            updated_at = $6
-           WHERE id = $1"#,
+           WHERE id = $1
+             AND status NOT IN ('hidden', 'flagged')
+             AND ($5::text IS DISTINCT FROM 'active' OR sold_at IS NULL)"#,
     )
     .bind(id)
     .bind(title)
@@ -194,7 +214,7 @@ pub async fn update(
     .bind(Utc::now())
     .execute(pool)
     .await?;
-    Ok(())
+    Ok(result.rows_affected())
 }
 
 pub async fn withdraw(pool: &PgPool, id: Uuid) -> Result<()> {
@@ -254,8 +274,10 @@ impl From<PostRow> for Post {
             title: r.title,
             body: r.body,
             location_name: r.location_name,
-            location_lat: r.location_lat,
-            location_lon: r.location_lon,
+            // Coarsened again on read: rows written before coarsening keep their exact stored
+            // values, and this is the only place they leave the database.
+            location_lat: r.location_lat.map(coarsen_coordinate),
+            location_lon: r.location_lon.map(coarsen_coordinate),
             urgency: r.urgency.as_deref().and_then(Urgency::parse),
             quantity: r.quantity,
             status: PostStatus::parse(&r.status).unwrap_or(PostStatus::Active),
@@ -359,5 +381,25 @@ mod tests {
         assert_eq!(post.visibility, Visibility::Public);
         assert_eq!(post.urgency, None);
         assert_eq!(post.item_condition, None);
+    }
+
+    /// Rows written before coarsening keep their exact values, so the read path is what serves
+    /// them coarse.
+    #[test]
+    fn an_exact_stored_location_is_served_coarse() {
+        let mut r = row("need");
+        r.location_lat = Some(37.80443);
+        r.location_lon = Some(-122.27121);
+
+        let post: Post = r.into();
+        assert_eq!(post.location_lat, Some(37.8));
+        assert_eq!(post.location_lon, Some(-122.3));
+    }
+
+    #[test]
+    fn a_post_without_a_location_still_has_none() {
+        let post: Post = row("need").into();
+        assert_eq!(post.location_lat, None);
+        assert_eq!(post.location_lon, None);
     }
 }
