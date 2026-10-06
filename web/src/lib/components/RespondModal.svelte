@@ -4,6 +4,12 @@
 	import { connectToServer, isConnected, getActiveServer } from '$lib/stores/server';
 	import { api } from '$lib/api/client';
 	import { deriveConversationKey, encryptMessage } from '$lib/crypto';
+	import {
+		encodeResponse,
+		MAX_WHAT_LENGTH,
+		MAX_WHEN_LENGTH,
+		MAX_NOTE_LENGTH
+	} from '$lib/messageFormat';
 
 	interface Props {
 		post: {
@@ -18,7 +24,9 @@
 
 	let { post, onClose }: Props = $props();
 
-	let message = $state('');
+	let what = $state('');
+	let when = $state('');
+	let note = $state('');
 	let error = $state('');
 	let loading = $state(false);
 	let success = $state(false);
@@ -26,6 +34,7 @@
 
 	/** Responding needs an account, which needs a signup page — so this branch offers the door rather than a field. */
 	let needsAccount = $derived(!isAuthenticated());
+	let offering = $derived(post.kind === 'need');
 
 	function goSignUp() {
 		onClose();
@@ -55,8 +64,8 @@
 			goSignUp();
 			return;
 		}
-		if (!message.trim()) {
-			error = 'Write a message';
+		if (!what.trim()) {
+			error = offering ? 'Say what you can offer' : 'Say what you are asking for';
 			return;
 		}
 
@@ -68,7 +77,7 @@
 				await connectToServer(post.server_url);
 			}
 
-			const ciphertext = await seal(message.trim());
+			const ciphertext = await seal(encodeResponse({ what, when, note }));
 			const result = await api.conversations.respond(post.id, ciphertext, post.server_url);
 			matchId = result.match_id;
 			success = true;
@@ -99,7 +108,7 @@
 				</div>
 			</div>
 		{:else}
-			<h2>{post.kind === 'need' ? 'Offer help' : 'Request this'}</h2>
+			<h2>{offering ? 'Offer help' : 'Request this'}</h2>
 			<p class="post-ref">Re: {post.title}</p>
 
 			{#if needsAccount}
@@ -108,12 +117,35 @@
 			{:else}
 				<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
 					<label>
-						<span>Your message</span>
-						<textarea bind:value={message} placeholder={post.kind === 'need' ? "What can you offer? When/where can you help?" : "What do you need? How can they reach you?"} rows="4" disabled={loading}></textarea>
+						<span>{offering ? 'What you can offer' : 'What you are asking for'}</span>
+						<input
+							type="text"
+							bind:value={what}
+							maxlength={MAX_WHAT_LENGTH}
+							aria-required="true"
+							placeholder={offering ? 'A ladder and two hours of help' : 'The bike, if it is still free'}
+							disabled={loading}
+						/>
+					</label>
+
+					<label>
+						<span>When <small>(optional)</small></span>
+						<input
+							type="text"
+							bind:value={when}
+							maxlength={MAX_WHEN_LENGTH}
+							placeholder="Saturday morning"
+							disabled={loading}
+						/>
+					</label>
+
+					<label>
+						<span>Anything else <small>(optional)</small></span>
+						<textarea bind:value={note} maxlength={MAX_NOTE_LENGTH} placeholder="Where to meet, how to reach you" rows="3" disabled={loading}></textarea>
 					</label>
 
 					{#if error}
-						<p class="error">{error}</p>
+						<p class="error" role="alert">{error}</p>
 					{/if}
 
 					<button type="submit" class="btn-primary" disabled={loading}>
@@ -185,6 +217,9 @@
 		color: var(--text-muted);
 	}
 
+	label small { font-weight: 400; }
+
+	input,
 	textarea {
 		background: var(--bg);
 		border: 1px solid var(--border);
@@ -195,10 +230,14 @@
 		font-family: inherit;
 	}
 
+	input:focus,
 	textarea:focus {
 		outline: none;
 		border-color: var(--accent);
 	}
+
+	input:disabled,
+	textarea:disabled { opacity: 0.6; cursor: not-allowed; }
 
 	.btn-primary {
 		background: var(--accent);

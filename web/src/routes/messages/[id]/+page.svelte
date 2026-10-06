@@ -6,6 +6,8 @@
 	import { isAuthenticated, auth, getEncryptionSecretKey } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { deriveConversationKey, encryptMessage, decryptMessage } from '$lib/crypto';
+	// Decoded fields are written by the other party: render them by text interpolation only, never as raw HTML.
+	import { decodeMessage } from '$lib/messageFormat';
 	import OfferPanel from '$lib/components/OfferPanel.svelte';
 	import DealReviewModal from '$lib/components/DealReviewModal.svelte';
 	import { listOffers, type Offer } from '$lib/api/offers';
@@ -75,6 +77,8 @@
 
 	/** Offers are for listings and wanted ads; an aid thread keeps its plain propose/accept flow. */
 	const isMarket = $derived(convo?.post_kind === 'listing' || convo?.post_kind === 'want');
+	/** Must agree with the rule `RespondModal` uses to title the response it encoded. */
+	const responseLabel = $derived(convo?.post_kind === 'need' ? 'Offering' : 'Asking for');
 	const names = $derived<Record<string, string>>(
 		convo ? { [convo.author_id]: convo.author_name, [convo.responder_id]: convo.responder_name } : {}
 	);
@@ -261,7 +265,26 @@
 					{#if msg.undecryptable}
 						<p class="undecryptable-text">&#x26a0; {UNDECRYPTABLE_PLACEHOLDER}</p>
 					{:else}
-						<p>{msg.body}</p>
+						{@const decoded = decodeMessage(msg.body)}
+						{#if decoded.kind === 'response'}
+							<dl class="response-header">
+								<div>
+									<dt>{responseLabel}</dt>
+									<dd>{decoded.what}</dd>
+								</div>
+								{#if decoded.when}
+									<div>
+										<dt>When</dt>
+										<dd>{decoded.when}</dd>
+									</div>
+								{/if}
+							</dl>
+							{#if decoded.note}
+								<p class="response-note">{decoded.note}</p>
+							{/if}
+						{:else}
+							<p>{msg.body}</p>
+						{/if}
 					{/if}
 					<span class="msg-time">
 						{formatTime(msg.created_at)}
@@ -414,6 +437,19 @@
 
 	.bubble p { margin: 0; word-break: break-word; }
 	.bubble p.undecryptable-text { font-style: italic; }
+
+	.response-header {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		margin: 0;
+	}
+
+	.response-header div { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+	.response-header dt { font-weight: 600; }
+	.response-header dt::after { content: ':'; }
+	.response-header dd { margin: 0; word-break: break-word; }
+	.bubble p.response-note { margin-top: 0.4rem; }
 
 	.msg-time {
 		display: block;
