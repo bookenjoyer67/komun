@@ -32,6 +32,12 @@ on:
 permissions:
   contents: read
 
+# One run per pull request: two pushes in a row otherwise run two pipelines against the same
+# head revision, both writing artifacts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ---------------------------------------------------------------------------------------------
   # Row 1 of the lesson's table: "Change Classifier | Which files changed | No | Every run | No |
@@ -49,7 +55,7 @@ jobs:
       requires-governed-check: ${{ steps.classify.outputs.requires-governed-check }}
       touches-policy: ${{ steps.classify.outputs.touches-policy }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # The full history, so the base commit of the pull request is present and `git diff`
           # can compare the two revisions directly.
@@ -84,7 +90,7 @@ jobs:
 
       - name: Upload the change classification
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: change-classification
           path: |
@@ -95,8 +101,9 @@ jobs:
 
   # ---------------------------------------------------------------------------------------------
   # Row 2: "Policy Test Suite | Whether permissions match the governance policy | No | Every run |
-  # Yes | Policy report". Gating. Runs eval/test_policy.py, the 4.1 suite, inside the sandbox
-  # image with the workspace read-only, and uploads the JSON report with if: always().
+  # Yes | Policy report". Gating. Runs the two suites the gate table's `policy` gate names
+  # (`agentic.config.json` `toolchain.commands.policy.argv`), inside the sandbox image with the
+  # workspace read-only, and uploads the JSON report with if: always().
   # ---------------------------------------------------------------------------------------------
   policy-gate:
     name: Policy Test Suite
@@ -104,7 +111,7 @@ jobs:
     timeout-minutes: 30
     needs: change-type-check
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
       # Every repository-specific value this job needs is read from agentic.config.json through
       # scripts/agentic_config.py, each with this repository's current value as the fallback
@@ -134,18 +141,150 @@ jobs:
             -v "$GITHUB_WORKSPACE/ci-artifacts":/reports \
             -w ${{ env.AGENT_WORKSPACE }} \
             ${{ env.AGENT_IMAGE_TOOLS }} \
-            python -m pytest eval/test_policy.py -v \
+            python -m pytest eval/test_policy.py eval/test_deterministic_step.py -v \
               --json-report \
               --json-report-file=/reports/policy-report.json
 
       - name: Upload policy report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: policy-report
           path: ci-artifacts/policy-report.json
           retention-days: 90
           if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------------------------
+  # Row 3a of the lesson's table, applied to the frontend: the two deterministic gates the
+  # repository's own gate table already names (`agentic.config.json` `toolchain.commands.webcheck`
+  # and `webtest`). They run on the runner rather than in the sandbox because `npm ci` and
+  # `svelte-kit sync` must write `web/node_modules` and `web/.svelte-kit`, and the sandbox's
+  # workspace mount is read-only. Gating: both are deterministic.
+  # ---------------------------------------------------------------------------------------------
+  web-gate:
+    name: Web Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: change-type-check
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # Every repository-specific value this job needs is read from agentic.config.json through
+      # scripts/agentic_config.py, each with this repository's current value as the fallback default.
+      - name: Resolve the portability config
+        run: |
+          cfg() { local v; v="$(python3 scripts/agentic_config.py --get "$1" --default "$2" 2>/dev/null)" || v="$2"; [ -n "$v" ] || v="$2"; printf '%s' "$v"; }
+          {
+            echo "AGENT_IMAGE_BASE=$(cfg containers.base_image 'agent-sandbox:komun')"
+            echo "AGENT_IMAGE_TOOLS=$(cfg containers.tools_image 'agent-sandbox:komun-m3')"
+            echo "AGENT_WORKSPACE=$(cfg containers.workspace '/workspace')"
+            echo "AGENT_CACHE_TARGET=${RUNNER_TEMP}/$(cfg containers.cargo_target_cache 'cargo-target')"
+            echo "AGENT_CACHE_REGISTRY=${RUNNER_TEMP}/$(cfg containers.cargo_registry_cache 'cargo-registry')"
+          } >> "$GITHUB_ENV"
+
+      # The tools image is this job's toolchain, and a jobs starts on a fresh runner with no local
+      # image: without these two builds the wasm step fails with `pull access denied for
+      # agent-sandbox` (measured on this branch's first run, job 111965569371).
+      - name: Build the sandbox image
+        run: |
+          docker build -t ${{ env.AGENT_IMAGE_BASE }} .
+          docker build -f sandbox/Dockerfile.m3 -t ${{ env.AGENT_IMAGE_TOOLS }} .
+
+      # `web/package.json` depends on `komun-wasm: file:../crates/wasm/pkg`, and that package is a
+      # gitignored build artifact (`docs/DEVELOPMENT.md:129` `wasm-pack build crates/wasm --target web`),
+      # so a clean checkout cannot type-check without it. Measured without this step:
+      # `svelte-check found 2 errors` -- "Cannot find module 'komun-wasm'". The build runs in the sandbox
+      # image, which already carries the compiler and wasm-pack; the pkg directory is bind-mounted back
+      # into the checkout so the runner's npm sees it (the same writable-bind trick the guards use).
+      - name: Build the wasm package the frontend imports
+        run: |
+          mkdir -p crates/wasm/pkg "${{ env.AGENT_CACHE_TARGET }}" "${{ env.AGENT_CACHE_REGISTRY }}"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":${{ env.AGENT_WORKSPACE }}:ro \
+            -v "$GITHUB_WORKSPACE/crates/wasm/pkg":${{ env.AGENT_WORKSPACE }}/crates/wasm/pkg \
+            -v "${{ env.AGENT_CACHE_TARGET }}":/ci-target \
+            -v "${{ env.AGENT_CACHE_REGISTRY }}":/usr/local/cargo/registry \
+            -e CARGO_TARGET_DIR=/ci-target \
+            -w ${{ env.AGENT_WORKSPACE }} \
+            ${{ env.AGENT_IMAGE_TOOLS }} \
+            wasm-pack build crates/wasm --target web
+
+      # 22.23.2 is the version the sandbox image installs (`Dockerfile:15` ARG NODE_VERSION), so a
+      # pass here and a pass in the sandbox mean the same thing.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install the frontend dependencies
+        run: npm ci --prefix web --no-audit --no-fund
+
+      # The workflow does not read a command out of agentic.config.json and execute it: that file is
+      # pull-request controlled, so executing an argv from it would be a command-injection path on the
+      # runner. It asserts the two commands still match the seam table instead, so a fork that changes
+      # a gate's argv is told here rather than silently drifted.
+      - name: Assert the commands still match the gate table
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+
+          EXPECTED = {
+              "webcheck": ["npm", "--prefix", "web", "run", "check"],
+              "webtest": ["npm", "--prefix", "web", "run", "test"],
+          }
+          for gate, argv in EXPECTED.items():
+              out = subprocess.run(
+                  ["python3", "scripts/agentic_config.py", "--get", f"toolchain.commands.{gate}.argv"],
+                  capture_output=True,
+                  text=True,
+                  check=True,
+              ).stdout
+              got = json.loads(out)
+              assert got == argv, f"{gate}: the gate table says {got}, this workflow runs {argv}"
+          print("the web gate argv matches agentic.config.json")
+          PY
+
+      - name: Type-check the frontend
+        run: npm --prefix web run check
+
+      - name: Unit-test the frontend
+        run: npm --prefix web run test
+
+  # ---------------------------------------------------------------------------------------------
+  # The console crate's own gate, run from this workflow because `console/.github/workflows/ci.yml`
+  # cannot execute here: GitHub reads workflows only from the repository root. The crate is
+  # deliberately its own workspace root (`console/Cargo.toml`), so `cargo test --workspace` never
+  # sees it either. Same three commands the crate's documentation tells a reader to run.
+  # ---------------------------------------------------------------------------------------------
+  console-gate:
+    name: Console Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: change-type-check
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d  # stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2
+        with:
+          workspaces: console
+
+      - name: format
+        run: cargo fmt --check
+        working-directory: console
+
+      - name: lint
+        run: cargo clippy --release --all-targets -- -D warnings
+        working-directory: console
+
+      - name: tests
+        run: cargo test --release
+        working-directory: console
 
   # ---------------------------------------------------------------------------------------------
   # Row 3: "Evaluation Harness | Whether agent behavior remains acceptable | Can run both
@@ -159,7 +298,12 @@ jobs:
     needs: [change-type-check, policy-gate]
     if: needs.change-type-check.outputs.requires-governed-check == 'true'
     steps:
-      - uses: actions/checkout@v4
+      # Full history, because the conformance gate reads the pull request's base commit out of this
+      # checkout's object database (`git show <base>:<file>`), and the default depth-1 clone carries
+      # only the merge commit. The base-presence step below makes a regression here fail loudly.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
 
       # Every repository-specific value this job needs is read from agentic.config.json through
       # scripts/agentic_config.py, each with this repository's current value as the fallback
@@ -183,13 +327,22 @@ jobs:
       # The compiler caches live outside the checkout, because the checkout is mounted read-only
       # apart from the two files the guards touch, which are writable binds like these caches.
       - name: Restore the cargo caches
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: |
             ${{ env.AGENT_CACHE_TARGET }}
             ${{ env.AGENT_CACHE_REGISTRY }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      # The conformance gate compares the working tree against the pull request's base revision,
+      # so a missing base object would leave it comparing the tree against itself and passing.
+      - name: Verify the pull request's base revision is present
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git -C "$GITHUB_WORKSPACE" cat-file -e "${BASE_SHA}^{commit}" \
+            || { echo "the base commit ${BASE_SHA} is not in this checkout"; exit 1; }
 
       - name: Run the deterministic gates through the gate server
         run: |
@@ -204,11 +357,13 @@ jobs:
             -e CARGO_TARGET_DIR=/ci-target \
             -e GATE_WORKSPACE=${{ env.AGENT_WORKSPACE }} \
             -e GATE_AUDIT_PATH=/reports/gate-audit.log \
+            -e CONFORMANCE_BASE_REF=${{ github.event.pull_request.base.sha }} \
             -w ${{ env.AGENT_WORKSPACE }} \
             ${{ env.AGENT_IMAGE_TOOLS }} python3 - <<'PY'
-          """Run the gate server's three allowlisted gates and write one report.
+          """Run the gate server's four allowlisted gates and write one report.
 
-          The argv and each gate's cache-hit guard are the server's own: this script loads
+          The argv, each gate's cache-hit guard and the conformance gate's base revision are the
+          server's own (BASE_ENV, passed in through the environment): this script loads
           mcp/gate/server.py and calls its run_gate() tool, so nothing is re-typed here. run_gate
           journals one line per executed gate to GATE_AUDIT_PATH.
           """
@@ -227,7 +382,7 @@ jobs:
           # (scripts/build-audit-trail.py, harness_summary()).
           counts = {"passed": 0, "failed": 0, "total": 0}
           gates = {}
-          for name in ("test", "clippy", "fmt"):
+          for name in ("test", "clippy", "fmt", "conformance"):
               result = gate.run_gate(name, "ci", 1800)
               gates[name] = {
                   "argv": result["argv"],
@@ -264,7 +419,7 @@ jobs:
           PY
 
       - name: Check out the base revision for comparison
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
@@ -449,7 +604,7 @@ jobs:
 
       - name: Upload the deterministic gate reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: deterministic-report
           path: |
@@ -460,7 +615,7 @@ jobs:
 
       - name: Upload the retrieval harness report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: retrieval-report
           path: |
@@ -489,7 +644,7 @@ jobs:
       # Used by one step only: the one that posts the review summary as a pull request comment.
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
       - name: Run the advisory reviewer
         env:
@@ -528,7 +683,7 @@ jobs:
 
       - name: Upload the review report and its audit log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: advisory-review-report
           path: |
@@ -549,16 +704,19 @@ jobs:
     name: Audit Trail
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [change-type-check, policy-gate, eval-gate, advisory-review]
+    # Every gating job, so the trail is assembled from a finished run. Its three recorded result
+    # keys are the lesson table's, not an inventory of the jobs: web-gate and console-gate upload no
+    # artifact, and their verdicts are read from the run itself.
+    needs: [change-type-check, policy-gate, web-gate, console-gate, eval-gate, advisory-review]
     if: always()
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
       # Lesson 4.2 acceptance, block [169]: "actions/download-artifact@v4 is used with
       # merge-multiple: true to flatten all artifacts into one directory".
       - name: Download every earlier artifact into one directory
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           path: ci-artifacts
           merge-multiple: true
@@ -575,6 +733,7 @@ jobs:
           python3 scripts/build-audit-trail.py \
             --artifacts-dir ci-artifacts \
             --sha "$SHA" \
+            --head-sha "${{ github.event.pull_request.head.sha }}" \
             --event "$EVENT" \
             --pull-request "$PULL_REQUEST_NUMBER" \
             --policy-gate "$POLICY_GATE_RESULT" \
@@ -583,7 +742,7 @@ jobs:
 
       - name: Upload the audit trail
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: audit-trail
           path: ci-artifacts/audit-trail.json

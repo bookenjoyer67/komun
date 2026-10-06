@@ -241,6 +241,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     paths = read_paths(args.paths)
+    if not paths:
+        # An empty change set is not the same answer as "no agent-affecting file": both report
+        # `deterministic`, and only the second is legitimate. Only the caller can tell them apart, so
+        # the classifier refuses the ambiguous input instead of answering it. Measured before this
+        # guard: `printf '' | python3 scripts/classify-change.py` -> exit 0, requires_governed_check
+        # false, which skips the eval gate and goes green having verified nothing.
+        print(
+            "no changed files were supplied: refusing to classify an empty change set, because an empty "
+            "list and a list with no agent-affecting file report the same change_type",
+            file=sys.stderr,
+        )
+        return 2
     result = classify(paths)
 
     payload = json.dumps(result, indent=2, sort_keys=False)

@@ -129,8 +129,8 @@ What does the conversion change, and what does it leave open?
   `docs/calibration-log.md`, `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`,
   `scripts/validate_doc_conformance_deterministic.py` and `eval/test_deterministic_step.py`. One
   `git revert` of that commit undoes the conversion, as Lesson 4.3, block [52] (VERBATIM) requires.
-- The CI job stays open, because `.github/workflows/ci.yml` is held by another workstream in this
-  session, and it runs no conformance job yet.
+- The CI job was open when this decision was written, because `.github/workflows/ci.yml` was held
+  by another workstream in that session; the change that closes it is recorded at the end.
 - Acceptance is settled. The regression passed on 2026-09-29, and its four runs are recorded in
   `docs/calibration-log.md` with per-run wall clock, gate evidence and verdicts.
 
@@ -182,4 +182,25 @@ Yes, on 2026-10-03, and it is not the single clean command the Decision section 
 - Record the before and after of that one command: exit 0 at `HEAD`, and exit 2 once the rollback has landed.
 - Note that the drill ran in a separate git worktree, so no shipped file was touched and no revert commit was published.
 - Carry the result into the entries that claimed otherwise (`docs/reflection-log.md:99` `Which rollback claim did exercising it correct?`).
+
+## Wiring
+
+What put the gate in the workflow, and when did it land?
+
+On 2026-10-05, which is what turns the Status claim above ("The script runs in the workflow through
+the `conformance` gate") from a statement about a config entry into a statement about wiring. The
+evaluation harness calls the gate by name, against the pull request's base revision
+(`.github/workflows/ci.yml` `-e CONFORMANCE_BASE_REF=${{ github.event.pull_request.base.sha }}`),
+and the journal row the gate writes names the revision it compared against.
+
+Two consequences this record should carry, because the first draft of the wiring had neither:
+
+- The seam is an environment variable and not an argument. An argument would be a mode a caller
+  could contribute, and the wrapper's empty argv is the property that lets the gate sit behind one
+  execution path. A value that is not a hex commit SHA is refused before git sees it, and a hex SHA
+  that names no commit fails closed rather than reporting every file as having no baseline.
+- The base revision is not optional in CI. A checkout in a workflow *is* its `HEAD`, so a gate that
+  compared the working tree against `HEAD` would have passed on every change: measured on a scratch
+  clone carrying a deliberate three-finding drift, the HEAD-against-HEAD comparison printed
+  `"verdict": "pass"`.
 
