@@ -39,6 +39,7 @@ Which steps hold their place as agentic work, and which ones are now determinist
 | Ticket bracketing | agentic | — | `.claude/agents/project-manager.md:37` `records the released status rather than deciding it` |
 | External research | agentic, on request | — | `.claude/agents/researcher.md:35` `the researcher returns the answer rather than acting on it` |
 | Gate sequencing and escalation | agentic, by design | — | `.claude/agents/orchestrator.md:18` `The orchestrator sequences the work` |
+| Beta-test pass against the running app | agentic, on request | — | `docs/adr/ADR-007-beta-tester-and-browser-mcp.md` |
 
 ## Step: prose and citation conformance check — CONVERTED
 
@@ -177,3 +178,12 @@ Which step must keep a human in the loop?
   (`docs/iteration-log.md:703` `the closing report's self-reported edit count does not reproduce`),
   and a role called a tool its own map denies (`docs/iteration-log.md:433` `the orchestrator called`).
 - **Next review:** 2026-12-15. Escalation is a judgment about a run, and no rule set settles it.
+
+## Step: beta-test pass against the running app — stays agentic, on request
+
+When does a check need the running application rather than the repository?
+
+- The role drives the deployed app through the browser MCP server instead of reading files (`docs/adr/ADR-007-beta-tester-and-browser-mcp.md`).
+- It holds no repository write and no gate tool, so its finding is evidence rather than a repair (`docs/routing-and-tool-grant-map.md:7` `This map is the design decision of record for the gate.`).
+- It runs only when a human requests a pre-release pass, and it decides nothing about the change (`docs/adr/ADR-007-beta-tester-and-browser-mcp.md`).
+- **Next review:** 2026-12-15. One pass per release resists a rule set, and the app's behaviour is not reproducible from the repository alone.

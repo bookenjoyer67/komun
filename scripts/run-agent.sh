@@ -30,7 +30,7 @@ TARGET_VOL="${TARGET_VOL:-rev-cargo-target}"
 REGISTRY_VOL="${REGISTRY_VOL:-$(cfg containers.registry_volume 'komun-cargo-registry')}"
 OPENCODE_JSON="$SCRIPT_DIR/../sandbox/opencode-sandbox.json"
 TMP="${TMPDIR:-/tmp}"
-VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher"
+VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher beta-tester"
 VALID_CMDS="bash sh claude opencode"
 NET_INTERNAL="${NET_INTERNAL:-$(cfg containers.networks.internal 'agent-internal')}"
 NET_BROKER="${NET_BROKER:-$(cfg containers.networks.broker 'agent-net')}"
@@ -73,6 +73,7 @@ MATRIX_ROWS="$(cat <<'ROWS'
 | `reviewer` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one review entry and denies a workspace write (`docs/governance-policy.md:251` `writes one review entry into`). |
 | `project-manager` | `/workspace` read-only | not mounted (visible read-only through the workspace bind) | agent-internal + agent-net (broker only) | Policy grants memory reads and no write (`docs/governance-policy.md:295` `reads stored entries from`). |
 | `researcher` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one research entry and denies a repository read (`docs/governance-policy.md:340` `writes one `public` research entry into`). |
+| `beta-tester` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one result entry and its screenshots and denies a workspace write (`docs/governance-policy.md:385` `writes no file there`). |
 ROWS
 )"
 
@@ -88,7 +89,7 @@ print_matrix() {
 # absent; the loop after it then overrides each dimension from roles.mounts.<role>. ROLE_MEM=rw is derived
 # from the grant map: exactly the roles the map gives mcp__storage__write_entry hold a writable memory
 # path (`docs/routing-and-tool-grant-map.json:17` `"mcp__storage__write_entry"`), which is planner,
-# implementer, tester, reviewer and researcher.
+# implementer, tester, reviewer, researcher and beta-tester.
 role_profile() {
   case "$1" in
     orchestrator)    ROLE_WS=rw; ROLE_MEM=ro;   ROLE_TARGET=ro ;;
@@ -98,6 +99,7 @@ role_profile() {
     reviewer)        ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;
     project-manager) ROLE_WS=ro; ROLE_MEM=none; ROLE_TARGET=ro ;;
     researcher)      ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;
+    beta-tester)     ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;
     *) return 1 ;;
   esac
   local dim var mode; for dim in workspace:ROLE_WS memory:ROLE_MEM build_cache:ROLE_TARGET; do
@@ -193,11 +195,13 @@ fi
 declare -a OVERLAY_FILES=(
   "mcp/storage/allow-list.json"
   "mcp/retrieval/allow-list.json"
+  "mcp/browser/allow-list.json"
   "mcp/roles.allowlist.json"
   "docs/routing-and-tool-grant-map.json"
   ".memory/storage-audit.log"
   ".memory/retrieval-audit.log"
   ".memory/gate-audit.log"
+  ".memory/browser-audit.log"
   # The retrieval ceiling is enforced against the `classification` in each reference document's own
   # front matter (mcp/retrieval/server.py loads this directory at startup), and the gate vocabulary —
   # names, argv, guards — comes from agentic.config.json. Both sat in writable binds, so a role could

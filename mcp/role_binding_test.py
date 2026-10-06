@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Role-binding test for the storage, retrieval and gate MCP servers (the AGENT_ROLE guard).
+"""Role-binding test for the storage, retrieval, gate and browser MCP servers (the AGENT_ROLE guard).
 
-The three servers bind every caller to the container's own ``AGENT_ROLE``: a ``calling_role``
+The four servers bind every caller to the container's own ``AGENT_ROLE``: a ``calling_role``
 argument that disagrees with it is refused outright, an omitted or ``unknown`` argument yields the
 environment role, and with ``AGENT_ROLE`` unset the server behaves exactly as it did before the
 guard existed. This test drives the servers **in process**, because the environment variable being
@@ -28,6 +28,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -45,6 +46,7 @@ os.environ["STORAGE_DB_PATH"] = str(SCRATCH / "storage.db")
 os.environ["STORAGE_AUDIT_PATH"] = str(SCRATCH / "storage-audit.log")
 os.environ["RETRIEVAL_AUDIT_PATH"] = str(SCRATCH / "retrieval-audit.log")
 os.environ["GATE_AUDIT_PATH"] = str(SCRATCH / "gate-audit.log")
+os.environ["BROWSER_AUDIT_PATH"] = str(SCRATCH / "browser-audit.log")
 # The primary role the escalation cases are bound to. The caller passes it as ``-e AGENT_ROLE``;
 # the test sets it explicitly before each call anyway, so the guard is exercised deliberately.
 PRIMARY = (os.environ.get("AGENT_ROLE") or "project-manager").strip() or "project-manager"
@@ -105,7 +107,7 @@ def is_denied(error: Exception) -> bool:
 
 
 # --- storage ----------------------------------------------------------------------------------
-async def test_storage(storage: Any) -> None:
+async def check_storage(storage: Any) -> None:
     # (a) AGENT_ROLE set and the argument matches it: authorised.
     set_role("implementer")
     try:
@@ -163,7 +165,7 @@ async def test_storage(storage: Any) -> None:
 
 
 # --- retrieval --------------------------------------------------------------------------------
-def test_retrieval(retrieval: Any) -> None:
+def check_retrieval(retrieval: Any) -> None:
     kwargs = {"project_id": PROJECT, "requested_ceiling": "internal", "query": "cost of hosting"}
 
     # (a) AGENT_ROLE set and the argument matches it: authorised (the guard returns the role).
@@ -225,7 +227,7 @@ def test_retrieval(retrieval: Any) -> None:
 
 
 # --- gate -------------------------------------------------------------------------------------
-def test_gate(gate: Any) -> None:
+def check_gate(gate: Any) -> None:
     # (a) AGENT_ROLE set and the argument matches it: authorised, so the name check is what refuses.
     set_role("tester")
     try:
@@ -287,16 +289,74 @@ def test_gate(gate: Any) -> None:
                   not is_denied(error) and needle in str(error), str(error)[:200])
 
 
+# --- browser ----------------------------------------------------------------------------------
+def check_browser(browser: Any) -> None:
+    # (a) AGENT_ROLE set and the argument matches it: authorised (the guard returns the role).
+    set_role("beta-tester")
+    try:
+        role = browser._authorize("beta-tester", "browser_open")
+        check("browser (a) AGENT_ROLE=beta-tester + calling_role=beta-tester -> authorised",
+              role == "beta-tester", f"role={role!r}")
+    except Exception as error:  # noqa: BLE001
+        check("browser (a) AGENT_ROLE=beta-tester + calling_role=beta-tester -> authorised",
+              False, f"{type(error).__name__}: {error}")
+
+    # (b) AGENT_ROLE set and the argument disagrees: refused, and journalled.
+    set_role(PRIMARY)
+    try:
+        browser._authorize("beta-tester", "browser_open")
+        check(f"browser (b) AGENT_ROLE={PRIMARY} + calling_role=beta-tester -> REFUSED", False,
+              "the call was allowed")
+    except Exception as error:  # noqa: BLE001
+        text = f"{type(error).__name__}: {error}"
+        check(f"browser (b) AGENT_ROLE={PRIMARY} + calling_role=beta-tester -> REFUSED, names the mismatch",
+              is_denied(error) and "disagrees" in str(error) and "beta-tester" in str(error)
+              and PRIMARY in str(error), text[:240])
+    record = denial_in(Path(os.environ["BROWSER_AUDIT_PATH"]), role=PRIMARY)
+    check("browser (b) the refusal is journalled with allowed=false and the bound role",
+          bool(record) and record.get("allowed") is False and record.get("tool") == "browser_open",
+          json.dumps(record, sort_keys=True)[:240] if record else "no denial record")
+
+    # (c) AGENT_ROLE set and the argument omitted: the environment role is used.
+    set_role("beta-tester")
+    try:
+        role = browser._authorize(None, "browser_open")
+        check("browser (c) AGENT_ROLE=beta-tester + no argument -> the environment role is used",
+              role == "beta-tester", f"role={role!r}")
+    except Exception as error:  # noqa: BLE001
+        check("browser (c) AGENT_ROLE=beta-tester + no argument -> the environment role is used",
+              False, f"{type(error).__name__}: {error}")
+
+    # (d) AGENT_ROLE unset: today's behaviour, enforced by the allow-list alone.
+    set_role(None)
+    try:
+        role = browser._authorize("beta-tester", "browser_open")
+        allowed_ok, detail = role == "beta-tester", f"role={role!r}"
+    except Exception as error:  # noqa: BLE001
+        allowed_ok, detail = False, f"{type(error).__name__}: {error}"
+    check("browser (d) AGENT_ROLE unset + calling_role=beta-tester -> the allow-list still governs",
+          allowed_ok, detail)
+    try:
+        browser._authorize("unknown", "browser_open")
+        check("browser (d) AGENT_ROLE unset + unknown role -> refused, as before",
+              False, "the call was allowed")
+    except Exception as error:  # noqa: BLE001
+        check("browser (d) AGENT_ROLE unset + unknown role -> refused, as before",
+              is_denied(error) and "unknown role" in str(error), str(error)[:200])
+
+
 async def main() -> int:
     print(f"role-binding test at {SCRATCH}  primary role={PRIMARY!r}")
     print(f"bound AGENT_ROLE from the container at start: {os.environ.get('AGENT_ROLE')!r}")
     storage = load_module("rb_storage", REPO / "mcp" / "storage" / "server.py")
     retrieval = load_module("rb_retrieval", REPO / "mcp" / "retrieval" / "server.py")
     gate = load_module("rb_gate", REPO / "mcp" / "gate" / "server.py")
+    browser = load_module("rb_browser", REPO / "mcp" / "browser" / "server.py")
 
-    await test_storage(storage)
-    test_retrieval(retrieval)
-    test_gate(gate)
+    await check_storage(storage)
+    check_retrieval(retrieval)
+    check_gate(gate)
+    check_browser(browser)
 
     passed = sum(1 for _, ok, _ in RESULTS if ok)
     total = len(RESULTS)
@@ -306,6 +366,15 @@ async def main() -> int:
             print(f"FAILED: {name} -- {detail}")
     print(f"ROLE_BINDING_RESULT passed={passed} total={total}")
     return 0 if passed == total else 1
+
+
+def test_role_binding_script_runs() -> None:
+    """Run the whole check as a script, so `pytest mcp/role_binding_test.py` exercises it."""
+    completed = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve())],
+        capture_output=True, text=True, check=False, timeout=600,
+    )
+    assert completed.returncode == 0, completed.stdout[-4000:] + completed.stderr[-4000:]
 
 
 if __name__ == "__main__":

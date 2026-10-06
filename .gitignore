@@ -20,6 +20,11 @@ data/post-images/
 .memory/storage.db-shm
 .memory/storage-audit.log
 
+# The beta-tester's own run output: the screenshots the browser server captures are evidence a
+# report cites, not source. The browser journal beside them IS committed, as the gate journal is:
+# it is the record of what the server was asked to do and what it refused.
+.memory/beta-evidence/
+
 # Build and test caches — local run output, never committed.
 __pycache__/
 *.pyc

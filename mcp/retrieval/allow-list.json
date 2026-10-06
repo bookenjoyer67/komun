@@ -21,7 +21,8 @@
     "tester": "refused retrieve: it works from the supplied acceptance criteria and the gate output, and searches no corpus",
     "reviewer": "holds retrieve at ceiling internal: a review cites the same reference documents the change cites, bounded to internal",
     "project-manager": "refused retrieve: it owns the ticket tool and performs no reference lookup",
-    "researcher": "refused retrieve: its channel is the open web, and the internal corpus would only widen its context"
+    "researcher": "refused retrieve: its channel is the open web, and the internal corpus would only widen its context",
+    "beta-tester": "refused retrieve: its evidence is the app's behaviour, and the reference corpus would only widen its context"
   },
   "denial_note_by_operation": {
     "retrieve": "refused to the roles that read no corpus at all, so no reference document reaches a context that does not need one; the ceiling then bounds the four roles that do, and a role capped at internal can never obtain a confidential or secret document by asking for a higher ceiling"
@@ -39,6 +40,7 @@
       "retrieve"
     ],
     "project-manager": [],
-    "researcher": []
+    "researcher": [],
+    "beta-tester": []
   }
 }
