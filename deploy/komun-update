@@ -45,19 +45,22 @@ cleanup() { rm -rf "$tmp"; }
 trap cleanup EXIT INT TERM
 
 log "checking for a newer release"
-if ! curl -fsSL --max-time 120 "$BASE/komun-prod.tar.gz" -o "$tmp/app.tar.gz"; then
+if ! curl -fsSL --max-time 120 "$BASE/komun-prod.tar.gz" -o "$tmp/komun-prod.tar.gz"; then
     # A release without the production asset (or no release at all) is not an error for this host.
     log "no production asset at $BASE/komun-prod.tar.gz; nothing to do"
     exit 0
 fi
 curl -fsSL --max-time 60 "$BASE/SHA256SUMS" -o "$tmp/SHA256SUMS"
+# The download keeps the name SHA256SUMS lists, so `sha256sum -c` finds it. Measured before this was
+# fixed: saving it as anything else makes every run fail verification, which is fail-closed but never
+# deploys.
 if ! (cd "$tmp" && sha256sum -c SHA256SUMS >/dev/null); then
     log "FAILED checksum verification; leaving the running build alone"
     exit 1
 fi
 
 mkdir -p "$tmp/unpacked"
-tar -xzf "$tmp/app.tar.gz" -C "$tmp/unpacked"
+tar -xzf "$tmp/komun-prod.tar.gz" -C "$tmp/unpacked"
 version="$(cat "$tmp/unpacked/VERSION" 2>/dev/null || true)"
 [ -n "$version" ] || { log "FAILED the release carries no VERSION"; exit 1; }
 
@@ -69,6 +72,15 @@ fi
 
 [ -x "$tmp/unpacked/komun-server" ] || { log "FAILED the release carries no executable server"; exit 1; }
 [ -f "$tmp/unpacked/frontend/index.html" ] || { log "FAILED the release carries no frontend"; exit 1; }
+
+# The last line of defence against a bundle built without its production configuration. A frontend that
+# carries the source's development fallback is a deploy that looks green and breaks a feature silently,
+# because the served policy blocks the call it makes. The release job refuses to publish one; the host
+# refuses to install one, so the box survives a pipeline that has not learned the lesson yet.
+if grep -rl 'localhost:' "$tmp/unpacked/frontend" >/dev/null 2>&1; then
+    log "FAILED the release's frontend carries a development fallback; leaving the running build alone"
+    exit 1
+fi
 
 log "deploying $version (was ${current:-none})"
 

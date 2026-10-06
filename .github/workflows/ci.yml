@@ -355,7 +355,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d  # stable
 
@@ -862,7 +862,7 @@ jobs:
     permissions:
       contents: write   # one step creates the release; every other step only reads
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
@@ -872,7 +872,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcaf7e3dddab59af2b6  # v2
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: '22.23.2'
           cache: npm
@@ -890,10 +890,30 @@ jobs:
           wasm-pack --version
 
       - name: Build the wasm package and the frontend
+        env:
+          # The SPA's only build-time variable. Unset, the source's development fallback is baked
+          # into the bundle (`web/src/lib/stores/directories.ts:4` `import.meta.env
+          # .VITE_DEFAULT_DIRECTORY || 'http://localhost:3001'`), so every visitor's
+          # server-discovery call goes to their own machine -- and the served policy
+          # (`connect-src 'self'`) blocks it, so the failure is silent in the console. Measured: a
+          # build with no environment carries `localhost:` in its directories chunk.
+          # Same origin on purpose: a cross-origin value would also have to be added to connect-src.
+          VITE_DEFAULT_DIRECTORY: https://komun.buzz
         run: |
           wasm-pack build crates/wasm --target web
           npm ci --prefix web --no-audit --no-fund
           npm run build --prefix web
+          grep -rho 'https://komun.buzz' web/build | head -1
+
+      # A bundle with a development fallback is a broken deploy that looks like a green one.
+      - name: Refuse to ship a development fallback
+        run: |
+          if grep -rl 'localhost:' web/build >/dev/null; then
+            echo 'the built bundle carries a development fallback:'
+            grep -rl 'localhost:' web/build | head -5
+            exit 1
+          fi
+          echo 'no development fallback in the bundle'
 
       - name: Build the server for an Alpine host
         run: |
@@ -921,7 +941,7 @@ jobs:
 
       - name: Upload the artifact for a manual run
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: komun-prod
           path: |
