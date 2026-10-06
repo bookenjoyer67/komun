@@ -1899,3 +1899,102 @@ mod review_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod refusal_scan_tests {
+    //! Wave 0's guard over the store, from ADR-008's five refusals. A scan of the directory rather
+    //! than `include_str!` per file, because the point is to catch a migration nobody has written yet
+    //! — an `include_str!` list silently misses the next `004_*.sql`.
+
+    use std::fs;
+
+    /// `env!("CARGO_MANIFEST_DIR")` is `crates/server`, so this resolves to the repo's `migrations/`.
+    const MIGRATIONS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../migrations");
+
+    /// Columns that exist only to count engagement (ADR-008, R-1).
+    const ENGAGEMENT_COLUMNS: [&str; 7] = [
+        "view_count",
+        "click_count",
+        "like_count",
+        "impression_count",
+        "engagement_score",
+        "popularity",
+        "trending_score",
+    ];
+
+    /// Table-name words that mean money moved (ADR-008, R-5).
+    const PAYMENT_WORDS: [&str; 5] = ["payment", "payments", "escrow", "fee", "fees"];
+
+    fn identifiers(text: &str) -> Vec<&str> {
+        text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .filter(|token| !token.is_empty())
+            .collect()
+    }
+
+    /// Every `migrations/*.sql`, lowercased, with its path. Fails on an unreadable directory and on a
+    /// short read rather than returning an empty list: a scan that read nothing must not pass.
+    fn migrations() -> Vec<(String, String)> {
+        let mut paths: Vec<_> = fs::read_dir(MIGRATIONS)
+            .unwrap_or_else(|why| panic!("read {MIGRATIONS}: {why}"))
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("sql"))
+            .collect();
+        paths.sort();
+        assert!(
+            paths.len() >= 3,
+            "read {} migration files under {MIGRATIONS}; the scan must not pass vacuously",
+            paths.len()
+        );
+        paths
+            .into_iter()
+            .map(|path| {
+                let text = fs::read_to_string(&path)
+                    .unwrap_or_else(|why| panic!("read {}: {why}", path.display()));
+                (path.display().to_string(), text.to_lowercase())
+            })
+            .collect()
+    }
+
+    /// The identifier that follows each `create table [if not exists]`.
+    fn declared_tables(sql: &str) -> Vec<String> {
+        sql.split("create table")
+            .skip(1)
+            .map(|chunk| {
+                let rest = chunk.trim_start();
+                let rest = rest
+                    .strip_prefix("if not exists")
+                    .unwrap_or(rest)
+                    .trim_start();
+                identifiers(rest).first().copied().unwrap_or("").to_owned()
+            })
+            .filter(|name| !name.is_empty())
+            .collect()
+    }
+
+    #[test]
+    fn no_migration_declares_an_engagement_counter_column() {
+        for (path, sql) in migrations() {
+            for token in identifiers(&sql) {
+                assert!(
+                    !ENGAGEMENT_COLUMNS.contains(&token),
+                    "{path} declares the engagement counter `{token}`; ADR-008 R-1 refuses ranking by \
+                     engagement"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_migration_declares_a_payment_escrow_or_fee_table() {
+        for (path, sql) in migrations() {
+            for table in declared_tables(&sql) {
+                for word in table.split('_') {
+                    assert!(
+                        !PAYMENT_WORDS.contains(&word),
+                        "{path} declares the table `{table}`; ADR-008 R-5 refuses payments and escrow"
+                    );
+                }
+            }
+        }
+    }
+}
