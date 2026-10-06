@@ -207,7 +207,7 @@ warnings` → exit 0, no lints (the only line cargo prints is a future-incompat 
 `crates/wasm/pkg/` to exist first.
 Measured 2026-10-05 on this branch, with the same two commands: `cargo test --workspace` →
 **28 passed in `komun-core`, and 198 passed, 0 failed, 76 ignored in `komun-server`** (the ignored
-ones all need a live Postgres); `npx vitest run` → **100 tests in 12 files, all passing**. The
+ones all need a live Postgres); `npx vitest run` → **121 tests in 16 files, all passing**. The
 2026-09-25 figures above are that commit's record rather than this branch's.
 
 
