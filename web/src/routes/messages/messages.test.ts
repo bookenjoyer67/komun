@@ -6,6 +6,7 @@ import { decrypt_with_shared_key, encrypt_with_shared_key } from 'komun-wasm';
 import { serverState } from '$lib/stores/server';
 import { auth } from '$lib/stores/auth';
 import { bytesToBase64 } from '$lib/crypto';
+import { RESPONSE_PREFIX, encodeResponse } from '$lib/messageFormat';
 import ThreadPage from './[id]/+page.svelte';
 
 /**
@@ -252,5 +253,72 @@ describe('thread page render path (VC17)', () => {
 		expect(dom).not.toContain(FORGED_SEALED_TEXT);
 		expect(screen.getAllByText(/Could not decrypt this message\./)).toHaveLength(2);
 		expect(decrypt_with_shared_key).toHaveBeenCalled();
+	});
+});
+
+describe('thread page structured responses (marketplace-parity Wave 1)', () => {
+	const OFFER = 'fake offer: a ladder and two hours';
+	const WHEN = 'fake time: Saturday morning';
+	const NOTE = 'fake note: I live two streets away';
+	const PLAIN = 'fake plain reply with no structure';
+	/** Starts like an envelope but is cut off, so it must render as the text it is. */
+	const MALFORMED = `${RESPONSE_PREFIX}{"v":1,"what":`;
+
+	function opensTo(text: string): string {
+		return bytesToBase64(new TextEncoder().encode(text));
+	}
+
+	beforeEach(() => {
+		vi.mocked(decrypt_with_shared_key).mockImplementation(((data: Uint8Array) => {
+			if (new TextDecoder().decode(data).startsWith('FORGED')) {
+				throw new Error('aead: authentication failed');
+			}
+			return data.slice().buffer;
+		}) as never);
+		signIn({ withSecret: true });
+	});
+
+	it('S1: a structured response renders an Offering line, a When line and its note', async () => {
+		fetchMock = installServer({
+			messages: [
+				{
+					id: 's1',
+					sender_id: ME,
+					body: opensTo(encodeResponse({ what: OFFER, when: WHEN, note: NOTE })),
+					created_at: '2026-10-01T10:00:00Z'
+				}
+			]
+		});
+		render(ThreadPage);
+
+		const offering = await screen.findByText('Offering');
+		expect(offering.tagName).toBe('DT');
+		expect(offering.closest('div')).toHaveTextContent(OFFER);
+		expect(screen.getByText('When').closest('div')).toHaveTextContent(WHEN);
+		expect(screen.getByText(NOTE).tagName).toBe('P');
+		expect(document.body.innerHTML).not.toContain(RESPONSE_PREFIX.trim());
+	});
+
+	it('S2: plain, malformed and undecryptable messages render exactly as before', async () => {
+		fetchMock = installServer({
+			messages: [
+				{ id: 'p1', sender_id: THEM, body: opensTo(PLAIN), created_at: '2026-10-01T10:00:00Z' },
+				{ id: 'p2', sender_id: THEM, body: opensTo(MALFORMED), created_at: '2026-10-01T10:01:00Z' },
+				{ id: 'p3', sender_id: THEM, body: RAW_FORGED_SEALED, created_at: '2026-10-01T10:02:00Z' }
+			]
+		});
+		render(ThreadPage);
+
+		const plain = await screen.findByText(PLAIN);
+		expect(plain.tagName).toBe('P');
+		expect(plain.parentElement).toHaveClass('bubble');
+
+		const malformed = screen.getByText(MALFORMED.replace(/\s+/g, ' ').trim());
+		expect(malformed.tagName).toBe('P');
+
+		expect(screen.queryByText('Offering')).not.toBeInTheDocument();
+		expect(document.querySelector('dl')).toBeNull();
+		expect(screen.getAllByText(/Could not decrypt this message\./)).toHaveLength(1);
+		expect(document.body.innerHTML).not.toContain(FORGED_SEALED_TEXT);
 	});
 });
