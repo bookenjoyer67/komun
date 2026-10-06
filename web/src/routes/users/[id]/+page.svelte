@@ -386,7 +386,7 @@
         font-weight: 600;
         font-size: 0.9rem;
         cursor: pointer;
-        transition: border-color 0.15s, background 0.15s;
+        transition: border-color var(--transition-fast), background var(--transition-fast);
     }
 
     .endorse-btn:hover:not(:disabled) {
