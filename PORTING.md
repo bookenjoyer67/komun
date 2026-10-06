@@ -98,8 +98,8 @@ Which parts of this gate are content and code rather than values?
 
 Which path names differ from the course material, and are they deliberate?
 
-- Keep `mcp/` at the repository root instead of the course's `mcp-servers/` (`docs/ci-step-design.md:421` `The lesson names the course repository's paths and this repository carries the same classes at different paths`).
-- Read the course-to-here mapping as a path translation rather than a new rule (`docs/ci-step-design.md:424` `| Lesson path | Path here | Flag |`).
+- Keep `mcp/` at the repository root instead of the course's `mcp-servers/` (`docs/ci-step-design.md:464` `The lesson names the course repository's paths and this repository carries the same classes at different paths`).
+- Read the course-to-here mapping as a path translation rather than a new rule (`docs/ci-step-design.md:467` `| Lesson path | Path here | Flag |`).
 - Keep `.memory/` for the memory layer where the course writes `logs/` [UNVERIFIED] (`ls -d .memory/knowledge .memory/reference` -> `.memory/knowledge  .memory/reference`).
 
 Claims needing verification:

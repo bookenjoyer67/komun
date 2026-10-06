@@ -211,6 +211,14 @@ ones all need a live Postgres); `npx vitest run` → **100 tests in 12 files, al
 2026-09-25 figures above are that commit's record rather than this branch's.
 
 
+Re-measured 2026-10-05 on the revision the CI work branches from (`22cee7d`), because the figures
+above are three weeks old and two of them have moved: `cargo test --workspace` → **184 passed, 0
+failed, 36 ignored** (the ignored set needs `KOMUN_TEST_DATABASE_URL` and a live Postgres, so the
+workflow reports it as ignored rather than passing it); `cargo clippy --release --all-targets -- -D
+warnings` → exit 0; `npm run check` → **0 errors, 0 warnings**; `npm run test` → **107 tests in 12
+files, all passing**. The `0 ignored` in the older line is a property of that older revision, not
+of the gate: it predates the four suites that carry `#[ignore]` today.
+
 The enum↔CHECK agreement test reads `migrations/001_schema.sql` at test time.
 
 ## Security model (short)

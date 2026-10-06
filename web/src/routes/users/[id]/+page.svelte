@@ -4,6 +4,7 @@
     import { getActiveServer, isConnected } from '$lib/stores/server';
     import { getActiveAuth, getToken } from '$lib/stores/auth';
     import { api } from '$lib/api/client';
+    import { safeHttpUrl } from '$lib/safeUrl';
 
     let { data } = $props();
 
@@ -17,6 +18,16 @@
     let endorsed = $derived(data.hasEndorsed);
     let endCount = $derived(data.endorsements?.count || 0);
     let endorseError = $state('');
+
+    // profile_json is owner-written through PUT /api/auth/me, so a link renders only with an http(s) href; any other link is dropped.
+    const safeLinks = $derived(
+        (Array.isArray(profile?.profile_json?.links) ? profile.profile_json.links : []).flatMap(
+            (link: { label?: unknown; url?: unknown } | null) => {
+                const href = safeHttpUrl(link?.url);
+                return href ? [{ label: link?.label, href }] : [];
+            }
+        )
+    );
 
     function copyPublicKey() {
         if (!profile?.public_key) return;
@@ -197,11 +208,11 @@
             </div>
         </div>
 
-        {#if profile.profile_json?.links?.length}
+        {#if safeLinks.length}
             <div class="links-section">
                 <h3>Links</h3>
-                {#each profile.profile_json.links as link}
-                    <a href={link.url} target="_blank" rel="noopener" class="profile-link">{link.label || link.url}</a>
+                {#each safeLinks as link}
+                    <a href={link.href} target="_blank" rel="noopener" class="profile-link">{link.label || link.href}</a>
                 {/each}
             </div>
         {/if}

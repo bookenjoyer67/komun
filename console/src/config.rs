@@ -1000,8 +1000,18 @@ mod tests {
         // edits. This check is the one the build can make: the file and the embedded fallback must
         // agree on the wording, the order and the checkpoint scoping, or a repository with no
         // readable config would offer a different ruling than the file it replaced.
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(CONFIG_FILENAME);
-        let text = std::fs::read_to_string(&path).expect("this repository's own config file");
+        // The config sits beside this crate in the standalone repository and one level up in the kit
+        // (`komun/console/`), so both layouts resolve. Before this, the kit layout panicked with
+        // `Os { code: 2, kind: NotFound }` on console/agentic.config.json.
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = [
+            manifest.join(CONFIG_FILENAME),
+            manifest.join("..").join(CONFIG_FILENAME),
+        ]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .expect("agentic.config.json, in this crate or in the repository around it");
+        let text = std::fs::read_to_string(&path).expect("the config file is readable");
         let root: Value = serde_json::from_str(&text).expect("the config file is valid JSON");
         let console = root
             .get("console")

@@ -54,6 +54,8 @@ What is compared, and what is not
 from __future__ import annotations
 
 import json
+import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -68,6 +70,11 @@ CHECKER = ROOT / "scripts" / "validate_doc_conformance_deterministic.py"
 GIT: tuple[str, ...] = ("git", "-c", f"safe.directory={ROOT}", "-C", str(ROOT))
 CONFIG_KEY = "gates.conformance.files"
 RULES: tuple[str, ...] = ("R1", "R2", "R3", "R4", "CIT")
+# The base revision seam. The wrapper's argv stays empty -- an argument would be a mode a
+# caller can contribute -- so the operator sets the revision the working tree is compared
+# against in the environment. Absent, the comparison is against HEAD, as it always was.
+BASE_ENV = "CONFORMANCE_BASE_REF"
+SHA_RE = re.compile(r"\A[0-9a-f]{7,40}\Z")
 
 # This repository's copy of `gates.conformance.files`, so the gate runs unchanged on a tree with no
 # config file. Keep it in step with `agentic.config.json` the way `scripts/agentic_config.py` does.
@@ -184,22 +191,32 @@ def new_findings(current: list[dict[str, Any]], base: list[dict[str, Any]]) -> l
     return fresh
 
 
-def head_revision(relative: str) -> tuple[str | None, str | None]:
-    """The file's text at HEAD, or None and why it could not be read."""
+def base_revision() -> tuple[str | None, str | None]:
+    """The revision to compare against: HEAD, or the SHA in CONFORMANCE_BASE_REF."""
+    raw = os.environ.get(BASE_ENV, "").strip()
+    if not raw:
+        return "HEAD", None
+    if not SHA_RE.match(raw):
+        return None, f"{BASE_ENV} must be a hex commit SHA, not {raw!r}"
+    return raw, None
+
+
+def revision(relative: str, ref: str) -> tuple[str | None, str | None]:
+    """The file's text at `ref`, or None and why it could not be read."""
     completed = subprocess.run(  # noqa: S603 - a fixed argv, never a caller-supplied string
-        [*GIT, "show", f"HEAD:{relative}"],
+        [*GIT, "show", f"{ref}:{relative}"],
         capture_output=True,
         text=True,
         check=False,
     )
     if completed.returncode != 0:
         detail = completed.stderr.strip().splitlines()
-        return None, detail[0] if detail else f"git show HEAD:{relative} failed"
+        return None, detail[0] if detail else f"git show {ref}:{relative} failed"
     return completed.stdout, None
 
 
 def main() -> int:
-    """Check every configured file against its HEAD revision and print the JSON verdict."""
+    """Check every configured file against its base revision and print the JSON verdict."""
     if len(sys.argv) > 1:
         return refuse()
     if not CHECKER.is_file():
@@ -213,6 +230,19 @@ def main() -> int:
     )
     if probe.returncode != 0:
         return fail(f"{ROOT} is not a git checkout with a HEAD commit, so no base can be compared")
+
+    base_ref, base_error = base_revision()
+    if base_ref is None:
+        return fail(base_error or f"{BASE_ENV} is unusable")
+    if base_ref != "HEAD":
+        base_probe = subprocess.run(  # noqa: S603 - a fixed argv, never a caller-supplied string
+            [*GIT, "rev-parse", "--verify", "--quiet", f"{base_ref}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if base_probe.returncode != 0:
+            return fail(f"{BASE_ENV} names no commit this checkout has: {base_ref}")
 
     files, config_source = listed_files()
     missing = [name for name in files if not (ROOT / name).is_file()]
@@ -230,13 +260,13 @@ def main() -> int:
             current_findings = current_report["inputs"][0]["violations"]
 
             entry: dict[str, Any] = {"file": name, "current": current}
-            base_text, base_error = head_revision(name)
+            base_text, base_error = revision(name, base_ref)
             if base_text is None:
                 entry.update(
                     {
                         "base_comparable": False,
                         "base": None,
-                        "reason": f"no baseline in HEAD: {base_error}",
+                        "reason": f"no baseline in {base_ref}: {base_error}",
                         "new_findings": [],
                         "verdict": "pass",
                     }
@@ -248,7 +278,7 @@ def main() -> int:
             base_copy.write_text(base_text, encoding="utf-8")
             base_report, base_check_error = run_checker(base_copy, scratch / "base.json")
             if base_report is None:
-                return fail(f"the checker could not read HEAD:{name}: {base_check_error}")
+                return fail(f"the checker could not read {base_ref}:{name}: {base_check_error}")
             base = counts(base_report)
 
             fresh = new_findings(current_findings, base_report["inputs"][0]["violations"])
@@ -263,31 +293,31 @@ def main() -> int:
             )
             if risen:
                 entry["reason"] = "; ".join(
-                    f"{rule} found {current[rule]} where HEAD found {base[rule]}" for rule in risen
+                    f"{rule} found {current[rule]} where {base_ref} found {base[rule]}" for rule in risen
                 )
             else:
-                entry["reason"] = "no rule found more than its HEAD count"
+                entry["reason"] = f"no rule found more than its {base_ref} count"
             results.append(entry)
 
     failed = [entry for entry in results if entry["verdict"] == "fail"]
     if failed:
         verdict = "fail"
-        reason = "new conformance drift against HEAD: " + "; ".join(
+        reason = f"new conformance drift against {base_ref}: " + "; ".join(
             f"{entry['file']} ({entry['reason']})" for entry in failed
         )
     else:
         verdict = "pass"
         reason = (
-            "no rule's finding count rose against HEAD"
+            f"no rule's finding count rose against {base_ref}"
             if all(entry["base_comparable"] for entry in results)
-            else "no rule's finding count rose against HEAD where a HEAD baseline exists"
+            else f"no rule's finding count rose against {base_ref} where a baseline exists"
         )
 
     summary = {
         "gate": "conformance",
         "verdict": verdict,
         "reason": reason,
-        "base_revision": "HEAD",
+        "base_revision": base_ref,
         "config_key": CONFIG_KEY,
         "config_source": config_source,
         "citation_comparison": CITATION_COMPARISON,
