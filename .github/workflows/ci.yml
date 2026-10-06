@@ -33,6 +33,10 @@ on:
   # resolved below or guarded to the pull_request event.
   push:
     branches: [main]
+  # A manual run builds the same production artifact and uploads it as a workflow artifact instead of
+  # publishing a release, so the build can be exercised -- and the tarball tried on a host -- before the
+  # first release exists.
+  workflow_dispatch:
 
 # Least privilege at the workflow level. A job asks for more only where a step uses it.
 permissions:
@@ -827,3 +831,115 @@ jobs:
           path: ci-artifacts/audit-trail.json
           retention-days: 90
           if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------------------------
+  # The production artifact. It runs only for a push to the default branch, and only when every gating
+  # job has passed, so the host that pulls it can only ever run a revision this pipeline verified. The
+  # host pulls on a timer and has no inbound port for this; nothing here reaches the host.
+  #
+  # The binary is built inside an Alpine image rather than cross-compiled, because production is Alpine:
+  # the same libc, and no OpenSSL in the toolchain (every TLS dependency here is rustls). The SPA carries
+  # one inline bootstrap script whose sha256 the served policy pins, so the policy is generated for this
+  # build by scripts/csp-hash.sh and shipped in the same tarball.
+  # ---------------------------------------------------------------------------------------------
+  release:
+    name: Production Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [change-type-check, policy-gate, web-gate, console-gate, database-gate, eval-gate]
+    # always(), because a skipped eval gate is a legitimate shape (a change that touches nothing
+    # governed) and must not silence the release. Each gating job's result is checked explicitly.
+    if: |
+      always()
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && (github.event_name != 'push' || github.ref == 'refs/heads/main')
+      && needs.change-type-check.result == 'success'
+      && needs.policy-gate.result == 'success'
+      && needs.web-gate.result == 'success'
+      && needs.console-gate.result == 'success'
+      && needs.database-gate.result == 'success'
+      && (needs.eval-gate.result == 'success' || needs.eval-gate.result == 'skipped')
+    permissions:
+      contents: write   # one step creates the release; every other step only reads
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d  # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcaf7e3dddab59af2b6  # v2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install wasm-pack
+        env:
+          # Mirrors `Dockerfile` ARG WASM_PACK_VERSION, so the artifact is built by the tool the image
+          # carries rather than whatever the installer script downloads today.
+          WASM_PACK_VERSION: 0.15.0
+        run: |
+          curl -fsSL "https://github.com/rustwasm/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz"             -o /tmp/wasm-pack.tar.gz
+          tar -xzf /tmp/wasm-pack.tar.gz -C /tmp
+          install -m 0755 "/tmp/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack" /usr/local/bin/wasm-pack
+          wasm-pack --version
+
+      - name: Build the wasm package and the frontend
+        run: |
+          wasm-pack build crates/wasm --target web
+          npm ci --prefix web --no-audit --no-fund
+          npm run build --prefix web
+
+      - name: Build the server for an Alpine host
+        run: |
+          mkdir -p "$RUNNER_TEMP/musl-target"
+          docker run --rm             -v "$GITHUB_WORKSPACE":/src             -v "$RUNNER_TEMP/musl-target":/target             -e CARGO_TARGET_DIR=/target             -e SQLX_OFFLINE=true             -w /src             rust:1.95-alpine             sh -c 'apk add --no-cache musl-dev >/dev/null && cargo build --release --bin komun-server'
+          file "$RUNNER_TEMP/musl-target/release/komun-server"
+
+      - name: Generate the policy for this build
+        run: scripts/csp-hash.sh web/build/index.html > deploy/csp.conf
+        # The hash pins this build's inline bootstrap script; an old policy under a new frontend is a
+        # blank page for every visitor, with nothing in the server log to say why.
+
+      - name: Assemble the tarball
+        run: |
+          rm -rf staging
+          mkdir -p staging
+          install -m 0755 "$RUNNER_TEMP/musl-target/release/komun-server" staging/komun-server
+          cp -a web/build staging/frontend
+          install -m 0644 deploy/csp.conf staging/csp.conf
+          printf '%s\n' "$GITHUB_SHA" > staging/VERSION
+          printf '%s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > staging/BUILD
+          tar -czf "$RUNNER_TEMP/komun-prod.tar.gz" -C staging .
+          ( cd "$RUNNER_TEMP" && sha256sum komun-prod.tar.gz > SHA256SUMS )
+          ls -l "$RUNNER_TEMP/komun-prod.tar.gz" && cat staging/VERSION
+
+      - name: Upload the artifact for a manual run
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: komun-prod
+          path: |
+            ${{ runner.temp }}/komun-prod.tar.gz
+            ${{ runner.temp }}/SHA256SUMS
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish the release the host pulls
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          short="$(printf '%s' "$SHA" | cut -c1-7)"
+          tag="prod-${short}-r${GITHUB_RUN_NUMBER}"
+          gh release create "$tag"             --title "production ${short}"             --latest             --notes "Built and published by the pipeline from ${SHA}, after every gating job passed. The production host pulls the newest release on a timer; see docs/DEPLOY.md.
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"             "$RUNNER_TEMP/komun-prod.tar.gz#komun-prod.tar.gz"             "$RUNNER_TEMP/SHA256SUMS#SHA256SUMS"
+          gh release view "$tag" --json tagName,isLatest,assets \
+            -q '{tag: .tagName, latest: .isLatest, assets: [.assets[].name]}'
