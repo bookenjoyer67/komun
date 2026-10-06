@@ -131,7 +131,7 @@
 <style>
 	.container { max-width: 640px; margin: 0 auto; padding: 2rem 1rem; }
 	.back { color: var(--text-muted); font-size: 0.85rem; display: inline-block; margin-bottom: 1.5rem; }
-	.post-detail { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 2px 8px 2px 8px; padding: var(--space-5); }
+	.post-detail { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
 	.meta { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; font-size: var(--text-xs); }
 	.kind { padding: 0.15rem 0.5rem; border-radius: var(--radius-full); font-weight: 700; text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.3px; }
 	.kind-need { background: var(--kind-need-soft); color: var(--kind-need, var(--critical)); }

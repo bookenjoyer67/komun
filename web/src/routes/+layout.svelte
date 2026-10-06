@@ -199,7 +199,7 @@
 		width: 5px;
 		height: 5px;
 		background: var(--text);
-		border-radius: 1px;
+		border-radius: var(--radius-sm);
 		transition: all 0.2s;
 	}
 

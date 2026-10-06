@@ -45,7 +45,7 @@
 	.market-card {
 		background: var(--bg-surface);
 		border: 1px solid transparent;
-		border-radius: 2px 8px 2px 8px;
+		border-radius: var(--radius-md);
 		padding: var(--space-4);
 		box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.15), 4px 6px 12px rgba(0, 0, 0, 0.2);
 		transition: transform var(--transition-base), box-shadow var(--transition-base),

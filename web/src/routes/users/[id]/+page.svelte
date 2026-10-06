@@ -238,7 +238,7 @@
     .own-banner {
         background: var(--accent-soft, rgba(30, 255, 157, 0.1));
         border: 1px solid var(--accent, #1eff9d);
-        border-radius: var(--radius, 8px);
+        border-radius: var(--radius);
         padding: 0.5rem 1rem;
         text-align: center;
         margin-bottom: 1.5rem;
@@ -288,7 +288,7 @@
     .role-badge {
         font-size: 0.7rem;
         padding: 0.15rem 0.5rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         font-weight: 600;
         text-transform: uppercase;
     }
@@ -332,7 +332,7 @@
     .bio-section {
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: var(--radius, 8px);
+        border-radius: var(--radius);
         padding: 1rem;
         margin-bottom: 1.5rem;
     }
@@ -353,7 +353,7 @@
         flex: 1;
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: var(--radius, 8px);
+        border-radius: var(--radius);
         padding: 0.75rem;
         text-align: center;
     }
@@ -381,7 +381,7 @@
         background: var(--bg-elevated);
         color: var(--text);
         border: 1px solid var(--border);
-        border-radius: var(--radius, 8px);
+        border-radius: var(--radius);
         padding: 0.5rem 1.5rem;
         font-weight: 600;
         font-size: 0.9rem;
@@ -446,7 +446,7 @@
     .endorsement-item {
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: var(--radius, 8px);
+        border-radius: var(--radius);
         padding: 0.6rem 0.8rem;
         margin-bottom: 0.4rem;
     }
@@ -479,7 +479,7 @@
         gap: 0.5rem;
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: var(--radius, 8px);
+        border-radius: var(--radius);
         padding: 0.5rem 0.75rem;
         margin-top: 0.3rem;
     }
@@ -495,7 +495,7 @@
         background: var(--bg-elevated);
         color: var(--text);
         padding: 0.25rem 0.5rem;
-        border-radius: var(--radius, 4px);
+        border-radius: var(--radius);
         font-size: 0.75rem;
         border: 1px solid var(--border);
     }

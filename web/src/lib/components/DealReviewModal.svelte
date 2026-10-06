@@ -226,7 +226,6 @@
 		padding: 0.6rem;
 		color: var(--text);
 		font-size: 0.95rem;
-		font-family: inherit;
 		resize: vertical;
 	}
 

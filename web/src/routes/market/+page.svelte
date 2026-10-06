@@ -356,7 +356,6 @@
 		padding: 0.4rem 0.55rem;
 		color: var(--text);
 		font-size: 0.85rem;
-		font-family: inherit;
 	}
 
 	.filters select:focus,

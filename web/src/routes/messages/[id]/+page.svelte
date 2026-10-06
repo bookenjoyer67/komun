@@ -365,7 +365,7 @@
 	.status-badge {
 		font-size: 0.7rem;
 		padding: 0.2rem 0.5rem;
-		border-radius: 4px;
+		border-radius: var(--radius-sm);
 		text-transform: uppercase;
 		font-weight: 600;
 	}

@@ -71,7 +71,7 @@
     .search-input {
         background: var(--bg-surface);
         border: 1px solid var(--accent);
-        border-radius: var(--radius, 6px);
+        border-radius: var(--radius);
         padding: 0.35rem 0.6rem;
         color: var(--text);
         font-size: 0.9rem;

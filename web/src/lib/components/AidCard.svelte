@@ -205,7 +205,7 @@
 	.aid-card {
 		background: var(--bg-surface);
 		border: 1px solid transparent;
-		border-radius: 2px 8px 2px 8px;
+		border-radius: var(--radius-md);
 		padding: var(--space-4);
 		box-shadow: 2px 3px 0 rgba(0,0,0,0.15), 4px 6px 12px rgba(0,0,0,0.2);
 		transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-fast);
@@ -256,14 +256,14 @@
 	.action-btn.delete { background: var(--critical-softer); color: var(--critical); border-color: var(--critical); }
 
 	.post-images { display: flex; gap: 0.4rem; margin: 0.5rem 0; align-items: center; }
-	.post-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
-	.more-images { font-size: 0.75rem; color: var(--text-muted); background: var(--bg-elevated); padding: 0.2rem 0.5rem; border-radius: 4px; }
+	.post-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border); }
+	.more-images { font-size: 0.75rem; color: var(--text-muted); background: var(--bg-elevated); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); }
 
 	.edit-form { display: flex; flex-direction: column; gap: 0.5rem; }
-	.edit-form input, .edit-form textarea { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; color: var(--text); font-size: 0.9rem; font-family: inherit; width: 100%; box-sizing: border-box; }
+	.edit-form input, .edit-form textarea { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; color: var(--text); font-size: 0.9rem; width: 100%; box-sizing: border-box; }
 	.edit-images, .edit-image-previews { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 	.preview-item { position: relative; width: 64px; height: 64px; }
-	.preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); }
+	.preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); }
 	.remove-img { position: absolute; top: -6px; right: -6px; background: var(--critical); color: var(--text-on-critical); border-radius: 50%; width: 20px; height: 20px; font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; min-height: unset; min-width: unset; cursor: pointer; }
 	.edit-file-input { display: none; }
 	.add-img-btn { font-size: var(--text-xs); }

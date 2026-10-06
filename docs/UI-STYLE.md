@@ -20,10 +20,10 @@ Which rules govern the interface from 2026-10-06 onward, and how is each one det
 | Rule | Requirement | How a violation is detected |
 |---|---|---|
 | U1 | A colour comes from a token. No component declares a literal hex, rgb or hsl value. | `rg -n '#[0-9a-fA-F]{3,8}\b' web/src --glob '*.svelte'` returns a line, or `rg -c 'rgba?\(' web/src --glob '*.svelte'` increases |
-| U2 | A radius comes from a token. No component declares a literal length radius. | `rg -n 'border-radius:\s*[0-9]' web/src --glob '*.svelte'` returns a line |
+| U2 | A radius comes from a token. No component declares a literal length radius. | `rg -n 'border-radius:\s*[0-9]+(px\|rem\|em)' web/src --glob '*.svelte'` returns a line. A bare `50%` or `0` is not a scale radius and is not a violation |
 | U3 | Spacing comes from the scale. No component declares a px or rem margin, padding or gap absent from `tokens.css`. | the value does not appear in `rg -o '\-\-space-[0-9]+' web/src/lib/design/tokens.css` |
 | U4 | One display face and one body face, both declared once as tokens. | `rg -n "font-family" web/src --glob '*.svelte' --glob '*.css'` returns anything other than `var(--font-*)` |
-| U5 | Form controls inherit the body face from one base rule, never per component. | `rg -c 'font-family: inherit' web/src --glob '*.svelte'` is greater than one |
+| U5 | Form controls inherit the body face from one base rule in `app.css`, never per component. | `rg -c 'font-family: inherit' web/src` returns exactly one file, and it is `app.css` |
 | U6 | An icon is an inline SVG or a glyph in a font, never an emoji standing in for an icon. | `rg -n '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]' web/src --glob '*.svelte'` returns a line outside user content |
 | U7 | Every interactive element defines hover, focus-visible, disabled and busy states. | the component has a click handler and no `:focus-visible` rule |
 | U8 | One `h1` per page, and heading levels descend without skipping. | `rg -o '<h[1-6]' <page> \| sort \| uniq -c` shows two `h1`, or a level rises by more than one |

@@ -125,7 +125,7 @@
 		margin-left: auto;
 		font-size: 0.7rem;
 		padding: 0.1rem 0.4rem;
-		border-radius: 4px;
+		border-radius: var(--radius-sm);
 		text-transform: uppercase;
 		font-weight: 600;
 	}

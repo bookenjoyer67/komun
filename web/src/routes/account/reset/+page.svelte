@@ -150,10 +150,9 @@
 		padding: 0.7rem;
 		color: var(--text);
 		font-size: 1rem;
-		font-family: inherit;
 	}
 	input:focus, textarea:focus { outline: none; border-color: var(--accent); }
-	textarea { font-family: ui-monospace, monospace; font-size: 0.9rem; }
+	textarea { font-family: var(--font-mono); font-size: 0.9rem; }
 
 	.accept {
 		display: flex;
