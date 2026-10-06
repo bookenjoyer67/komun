@@ -67,10 +67,10 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(config.database.max_connections)
         .connect(&config.database.url)
         .await
-        .with_context(|| format!(
-            "Failed to connect to PostgreSQL at {}. Is PostgreSQL running? Check config.toml [database] url or DATABASE_URL env var.",
-            config.database.url
-        ))?;
+        .with_context(|| {
+            // Not logged: a database URL can carry the password.
+            "Failed to connect to PostgreSQL. Is PostgreSQL running? Check config.toml [database] url or DATABASE_URL env var."
+        })?;
 
     sqlx::migrate!("../../migrations")
         .run(&pool)
