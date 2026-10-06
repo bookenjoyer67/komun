@@ -38,6 +38,7 @@
 	// @ts-ignore
 	import * as L from 'leaflet';
 	import 'leaflet/dist/leaflet.css';
+	import { OSM_TILE_URL } from '../../../map-tiles.config.js';
 
 	interface Props {
 		lat: number;
@@ -58,8 +59,8 @@
 	let {
 		lat,
 		lon,
-		zoom = 13,
-		tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+		zoom = 11,
+		tileUrl = typeof __KOMUN_TILE_URL__ === 'string' ? __KOMUN_TILE_URL__ : OSM_TILE_URL,
 		attribution = '&copy; OpenStreetMap contributors',
 		markers = [],
 		pickable = false,

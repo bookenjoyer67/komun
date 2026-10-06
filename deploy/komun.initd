@@ -1,6 +1,6 @@
 #!/sbin/openrc-run
 name="komun"
-description="Komun mutual aid API server"
+description="Komun local listings API server"
 command="/opt/komun/komun-server"
 command_args=""
 pidfile="/var/run/komun.pid"

@@ -1,6 +1,6 @@
 # Komun — Repository Summary
 
-Marketplace and mutual aid hub: people post needs, offers and resources and match via encrypted conversations. Backend is Rust (Axum) + PostgreSQL; frontend is a SvelteKit 5 SPA; client-side crypto is compiled to WASM.
+Marketplace and local listings hub: people post needs, offers and resources and match via encrypted conversations. Backend is Rust (Axum) + PostgreSQL; frontend is a SvelteKit 5 SPA; client-side crypto is compiled to WASM.
 
 ## Repository structure
 

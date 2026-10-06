@@ -43,7 +43,7 @@ const BUSY: &str = "geocoding busy, try again shortly";
 const DEFAULT_USER_AGENT: &str = concat!(
     "Komun/",
     env!("CARGO_PKG_VERSION"),
-    " (nominatim proxy; mutual-aid app)"
+    " (nominatim proxy; local-listings app)"
 );
 
 #[derive(Deserialize)]
@@ -146,6 +146,19 @@ fn configured_contact() -> Option<String> {
     let path = std::env::var("KOMUN_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
     let contents = std::fs::read_to_string(path).ok()?;
     parse_contact(&contents)
+}
+
+/// Resolved through [`configured_contact`], as the `User-Agent` is: a check of the loaded `Config`
+/// alone would miss `KOMUN_GEOCODE_CONTACT` and disagree with the header actually sent.
+pub(crate) fn contact_is_missing() -> bool {
+    missing_contact(configured_contact().as_deref())
+}
+
+fn missing_contact(contact: Option<&str>) -> bool {
+    contact
+        .map(str::trim)
+        .filter(|contact| !contact.is_empty())
+        .is_none()
 }
 
 #[derive(Deserialize, Default)]
@@ -361,6 +374,16 @@ mod tests {
         assert_eq!(parse_contact("[geocode]\ncontact = \"   \"\n"), None);
         assert_eq!(parse_contact("[node]\nname = \"x\"\n"), None);
         assert!(build_user_agent(Some("   ")).contains("nominatim proxy"));
+    }
+
+    /// Blank counts as missing, as it does for the `User-Agent`: a warning that disagreed with the
+    /// header actually sent would mislead the operator.
+    #[test]
+    fn startup_warns_exactly_when_no_contact_is_resolved() {
+        assert!(missing_contact(None));
+        assert!(missing_contact(Some("")));
+        assert!(missing_contact(Some("   ")));
+        assert!(!missing_contact(Some("ops@komun.example")));
     }
 
     #[tokio::test]

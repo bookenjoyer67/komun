@@ -1,0 +1,61 @@
+{
+  "server": "browser",
+  "operations": [
+    "browser_open",
+    "browser_snapshot",
+    "browser_click",
+    "browser_type",
+    "browser_press",
+    "browser_diagnostics",
+    "browser_screenshot",
+    "browser_close"
+  ],
+  "comment": [
+    "File-based allow-list for the browser MCP server: one entry per role, naming exactly the browser tools that role may call.",
+    "The server reads this file at startup and checks it as the first statement of every tool. A (role, tool) pair that is not listed here is refused with an authorization_denied error naming the role, the tool and the roles that ARE allowed, and the refusal is journalled to the same audit log that records the successful calls.",
+    "A role that is absent from 'roles' is an unknown role and is refused, as is a missing or blank role; nothing is defaulted to an allowed role. An empty list means the role is known and holds nothing.",
+    "Derived from docs/routing-and-tool-grant-map.json: every 'mcp__browser__<tool>' string under 'grants.<role>' becomes a grant here, and nothing else does. The server refuses to start when this file and that map's projection disagree, once the map carries the browser server; while it does not, the server starts with a warning and this file governs.",
+    "The beta tester is the only role that holds the browser tools: it uses the running app instead of reading the repository, so the other roles have no reason to reach a page, and their absence here is the same statement their grants make in the routing map.",
+    "Written as valid JSON with no comments: the explanation lives in these string fields."
+  ],
+  "source_of_truth": "docs/routing-and-tool-grant-map.json",
+  "derivation": "grants[role] filtered to the operations this server exposes (mcp__browser__*); the eight tools are granted to beta-tester alone and every other role's list is empty",
+  "denial_note_by_role": {
+    "orchestrator": "refused every browser tool: it sequences roles and reads their returns, and drives no page itself",
+    "planner": "refused every browser tool: a plan is written from the ticket and the repository, and the running app is not its evidence",
+    "implementer": "refused every browser tool: it changes the code and runs the gates, and the browser evidence belongs to the role that tests the built app",
+    "tester": "refused every browser tool: it runs the configured gates over the tree, and a browser session is the beta tester's surface, not the gate's",
+    "reviewer": "refused every browser tool: it reviews the diff and the journal, and it reaches no page to form a verdict",
+    "project-manager": "refused every browser tool: it owns ticket state, not application behaviour",
+    "researcher": "refused every browser tool: its channel is the open web through its own search tool, and the app under test is not a research source"
+  },
+  "denial_note_by_tool": {
+    "browser_open": "refused to every role but beta-tester, so only the role whose evidence is the app's behaviour can reach a page, and its target stays inside the base origin",
+    "browser_snapshot": "refused to every role but beta-tester: the text-first page view exists to record what the app showed the tester",
+    "browser_click": "refused to every role but beta-tester: navigating the app is a testing act, never a build or review step",
+    "browser_type": "refused to every role but beta-tester: entering text into the app is part of exercising it",
+    "browser_press": "refused to every role but beta-tester: key events belong to the same interaction the tester drives",
+    "browser_diagnostics": "refused to every role but beta-tester: the console, page-error and request evidence is the tester's finding, drained as it reads it",
+    "browser_screenshot": "refused to every role but beta-tester: a PNG is the tester's evidence file under .memory",
+    "browser_close": "refused to every role but beta-tester: the session it opened is the one it closes"
+  },
+  "roles": {
+    "beta-tester": [
+      "browser_open",
+      "browser_snapshot",
+      "browser_click",
+      "browser_type",
+      "browser_press",
+      "browser_diagnostics",
+      "browser_screenshot",
+      "browser_close"
+    ],
+    "implementer": [],
+    "orchestrator": [],
+    "planner": [],
+    "project-manager": [],
+    "researcher": [],
+    "reviewer": [],
+    "tester": []
+  }
+}

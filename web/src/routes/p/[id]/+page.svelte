@@ -70,7 +70,7 @@
 	{:else if error}
 		<p class="status error">{error}</p>
 	{:else if post}
-		<a href="/aid" class="back">&larr; All aid</a>
+		<a href="/aid" class="back">&larr; All listings</a>
 
 		<article class="post-detail">
 			<div class="meta">

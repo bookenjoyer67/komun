@@ -69,7 +69,6 @@
 	{#if !hasLocation() && !$location.lat}
 		<section class="hero">
 			<h1>komun</h1>
-			<p class="tagline">Mutual aid, organized.</p>
 			<div class="location-prompt">
 				<LocationBar {onLocationSet} />
 			</div>
@@ -94,10 +93,10 @@
 		</div>
 
 		{#if loading}
-			<p class="status">Searching for aid nearby...</p>
+			<p class="status">Searching for listings nearby...</p>
 		{:else if servers.length === 0}
 			<div class="empty">
-				<p>No servers found nearby. Be the first to organize mutual aid.</p>
+				<p>No servers found nearby. Be the first to add local listings.</p>
 				<p class="sub"><a href="/connect">Browse available servers</a> to join one.</p>
 			</div>
 		{:else if filteredPosts.length === 0}
@@ -112,7 +111,7 @@
 				{/each}
 			</ul>
 			<p class="feed-footer">
-				Showing aid from {servers.length} nearby server{servers.length > 1 ? 's' : ''}
+				Showing listings from {servers.length} nearby server{servers.length > 1 ? 's' : ''}
 				&middot; <button class="link-btn" onclick={postFirst}>Post something</button>
 			</p>
 		{/if}
@@ -133,12 +132,6 @@
 		letter-spacing: -1.5px;
 		font-family: 'Space Grotesk', sans-serif;
 		margin-bottom: 0.25rem;
-	}
-
-	.tagline {
-		color: var(--text-muted);
-		font-size: var(--text-lg);
-		margin-bottom: var(--space-6);
 	}
 
 	.hero-divider {

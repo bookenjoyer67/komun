@@ -7,7 +7,7 @@ pub(crate) mod conversations;
 pub mod directory;
 mod endorsements;
 mod error;
-mod geocode;
+pub(crate) mod geocode;
 mod health;
 mod link_preview;
 mod node;

@@ -430,3 +430,60 @@ mod schema_contract {
         assert!(!json.contains("\"email\""), "email is hidden when absent");
     }
 }
+
+#[cfg(test)]
+mod location_grid {
+    use crate::models::{coarsen_coordinate, LOCATION_PRECISION_DEGREES};
+
+    #[test]
+    fn the_precision_is_a_tenth_of_a_degree() {
+        assert_eq!(LOCATION_PRECISION_DEGREES, 0.1);
+    }
+
+    /// `37.8`, not `37.800000000000004`: multiplying a step count by 0.1 lands off the grid.
+    #[test]
+    fn a_coordinate_snaps_to_the_grid_and_serialises_short() {
+        assert_eq!(coarsen_coordinate(37.80443), 37.8);
+        assert_eq!(
+            serde_json::to_string(&coarsen_coordinate(37.80443)).unwrap(),
+            "37.8"
+        );
+        assert_eq!(coarsen_coordinate(-122.27121), -122.3);
+        assert_eq!(
+            serde_json::to_string(&coarsen_coordinate(-122.27121)).unwrap(),
+            "-122.3"
+        );
+    }
+
+    #[test]
+    fn the_boundaries_are_already_on_the_grid() {
+        for edge in [90.0, -90.0, 180.0, -180.0] {
+            assert_eq!(coarsen_coordinate(edge), edge, "{edge}");
+        }
+    }
+
+    #[test]
+    fn coarsening_is_idempotent() {
+        for raw in [37.80443, -122.27121, 0.05, -0.04, 89.96, -179.95] {
+            let once = coarsen_coordinate(raw);
+            assert_eq!(coarsen_coordinate(once), once, "{raw}");
+        }
+    }
+
+    /// A served `-0.0` would tell a reader which side of the line the post sits on.
+    #[test]
+    fn a_value_rounding_to_zero_is_positive_zero() {
+        let zero = coarsen_coordinate(-0.04);
+        assert_eq!(zero, 0.0);
+        assert!(zero.is_sign_positive(), "got {zero:?}");
+        assert_eq!(serde_json::to_string(&zero).unwrap(), "0.0");
+    }
+
+    /// `122.25` is exact in binary, so this is a true tie. `web/src/tests/geo.test.ts` pins the same
+    /// two values for the browser's copy, so the runtimes cannot drift apart unnoticed.
+    #[test]
+    fn a_tie_rounds_away_from_zero() {
+        assert_eq!(coarsen_coordinate(122.25), 122.3);
+        assert_eq!(coarsen_coordinate(-122.25), -122.3);
+    }
+}

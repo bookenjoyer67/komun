@@ -7,8 +7,8 @@ disagree, fix one of them.
 
 What is Komun, what is it built from, and what has been deliberately left out of it?
 
-Komun is a **single-server** marketplace and mutual aid hub (`docs/ARCHITECTURE.md:5` `A single-server
-marketplace and mutual aid hub.`). People post needs, offers and resources, plus marketplace listings and wants
+Komun is a **single-server** marketplace and local listings hub (`docs/ARCHITECTURE.md:5` `A single-server
+marketplace and local listings hub.`). People post needs, offers and resources, plus marketplace listings and wants
 (`crates/core/src/models/post.rs:8-12` `Resource => "resource",` through `Want => "want",`). They
 search those posts (`crates/server/src/api/mod.rs:38` `.merge(search::router(state.clone()))`). They
 negotiate over conversations whose `messages` rows hold `ciphertext` and `nonce` only
@@ -205,6 +205,11 @@ warnings` → exit 0, no lints (the only line cargo prints is a future-incompat 
 `sqlx-postgres` dependency); `npm run check` → **0 errors, 0 warnings**; `npm run build` → green;
 `npx vitest run` → **82 tests in 7 files, all passing**. The frontend gates need
 `crates/wasm/pkg/` to exist first.
+Measured 2026-10-05 on this branch, with the same two commands: `cargo test --workspace` →
+**28 passed in `komun-core`, and 198 passed, 0 failed, 76 ignored in `komun-server`** (the ignored
+ones all need a live Postgres); `npx vitest run` → **121 tests in 16 files, all passing**. The
+2026-09-25 figures above are that commit's record rather than this branch's.
+
 
 Re-measured 2026-10-05 on the revision the CI work branches from (`22cee7d`), because the figures
 above are three weeks old and two of them have moved: `cargo test --workspace` → **184 passed, 0

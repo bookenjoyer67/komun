@@ -126,13 +126,15 @@
     "read_only_overlays": [
       "mcp/storage/allow-list.json",
       "mcp/retrieval/allow-list.json",
+      "mcp/browser/allow-list.json",
       "docs/routing-and-tool-grant-map.json",
       "docs/routing-and-tool-grant-map.md"
     ],
     "journals": [
       ".memory/storage-audit.log",
       ".memory/retrieval-audit.log",
-      ".memory/gate-audit.log"
+      ".memory/gate-audit.log",
+      ".memory/browser-audit.log"
     ],
     "cargo_target_cache": "cargo-target",
     "cargo_registry_cache": "cargo-registry"
@@ -145,7 +147,8 @@
       "tester",
       "reviewer",
       "project-manager",
-      "researcher"
+      "researcher",
+      "beta-tester"
     ],
     "mounts": {
       "orchestrator": {
@@ -182,6 +185,11 @@
         "workspace": "ro",
         "memory": "rw",
         "build_cache": "ro"
+      },
+      "beta-tester": {
+        "workspace": "ro",
+        "memory": "rw",
+        "build_cache": "ro"
       }
     }
   },
@@ -197,9 +205,11 @@
     "style_rules": "docs/DOC-STYLE.md",
     "storage_allow_list": "mcp/storage/allow-list.json",
     "retrieval_allow_list": "mcp/retrieval/allow-list.json",
+    "browser_allow_list": "mcp/browser/allow-list.json",
     "storage_server": "mcp/storage/server.py",
     "retrieval_server": "mcp/retrieval/server.py",
     "gate_server": "mcp/gate/server.py",
+    "browser_server": "mcp/browser/server.py",
     "policy_suite": "eval/test_policy.py",
     "launcher": "scripts/run-agent.sh",
     "pipeline": ".github/workflows/ci.yml",
@@ -273,7 +283,8 @@
         "docs/memory-architecture.md",
         "docs/orchestration-diagram.md",
         "mcp/gate/SCHEMA.md",
-        "docs/calibration-log.md"
+        "docs/calibration-log.md",
+        "docs/DEPLOY.md"
       ]
     }
   },
@@ -290,7 +301,7 @@
     "claude_command": "claude",
     "claude_flags": ["--agent", "orchestrator", "--permission-mode", "acceptEdits"],
     "role_container_prefix": "agent-rev-m4-",
-    "ports": {"gate": 8003, "storage": 8001, "retrieval": 8002},
+    "ports": {"gate": 8003, "storage": 8001, "retrieval": 8002, "browser": 8004},
     "evidence_dir": "~/komun-agent-exercise-4-3",
     "briefs_dir": "~/komun-agent-exercise-4-3/briefs",
     "checkpoint_fresh_minutes": 30,

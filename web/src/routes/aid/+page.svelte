@@ -86,7 +86,7 @@
 
 <div class="container">
 	<header class="page-header">
-		<h1>Mutual Aid</h1>
+		<h1>Local Listings</h1>
 		<a href="/aid/new" class="btn btn-primary">Post</a>
 	</header>
 

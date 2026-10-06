@@ -1,5 +1,5 @@
 {
-  "file_read": ["planner", "implementer", "tester", "reviewer", "orchestrator"],
+  "file_read": ["planner", "implementer", "tester", "reviewer", "orchestrator", "beta-tester"],
   "file_write": ["implementer", "orchestrator"],
   "codebase_search": ["planner", "implementer", "reviewer"],
   "shell": [],

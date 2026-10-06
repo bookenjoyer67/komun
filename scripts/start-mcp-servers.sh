@@ -3,6 +3,7 @@
 #
 #   storage    streamable HTTP, port 8001, mcp/storage/server.py
 #   retrieval  streamable HTTP, port 8002, mcp/retrieval/server.py
+#   browser    streamable HTTP, port 8004, mcp/browser/server.py  (only when BETA_BASE_URL is set)
 #
 # coursetools is NOT started here. It is a stdio server that Claude Code spawns itself from
 # .mcp.json (the course writes that entry with `claude mcp add coursetools python
@@ -10,13 +11,18 @@
 # same stdout stream the real one is using, so this script only checks that the file parses and
 # then prints the registration commands.
 #
+# The browser server is optional and starts only when BETA_BASE_URL names a beta target. Without it
+# the script starts the same two HTTP servers it always did, so no other role changes; the
+# `beta-tester` role is the only caller and it holds the browser grant.
+#
 # Run inside the container:  bash /workspace/scripts/start-mcp-servers.sh
 # Then register the HTTP servers once:
 #   claude mcp add --transport http storage   http://localhost:8001/mcp
 #   claude mcp add --transport http retrieval http://localhost:8002/mcp
+#   claude mcp add --transport http browser   http://localhost:8004/mcp   # only with BETA_BASE_URL
 #
 # Overridable: WORKSPACE, MEMORY, HOST, STORAGE_PORT, RETRIEVAL_PORT, CHUNKING, BOUNDARY_THRESHOLD,
-# RETRIEVAL_EMBEDDING_MODEL, RETRIEVAL_QUERY_PREFIX.
+# RETRIEVAL_EMBEDDING_MODEL, RETRIEVAL_QUERY_PREFIX, BROWSER_PORT, BETA_BASE_URL.
 set -euo pipefail
 
 WORKSPACE="${WORKSPACE:-/workspace}"
@@ -24,11 +30,14 @@ MEMORY="${MEMORY:-$WORKSPACE/.memory}"
 HOST="${HOST:-0.0.0.0}"
 STORAGE_PORT="${STORAGE_PORT:-8001}"
 RETRIEVAL_PORT="${RETRIEVAL_PORT:-8002}"
+BROWSER_PORT="${BROWSER_PORT:-8004}"
 CHUNKING="${CHUNKING:-paragraph}"
 BOUNDARY_THRESHOLD="${BOUNDARY_THRESHOLD:-0.75}"
 STORAGE_SERVER="$WORKSPACE/mcp/storage/server.py"
 RETRIEVAL_SERVER="$WORKSPACE/mcp/retrieval/server.py"
+BROWSER_SERVER="$WORKSPACE/mcp/browser/server.py"
 COURSETOOLS_SERVER="$WORKSPACE/mcp/coursetools_server.py"
+BROWSER_PID=""
 
 # --- fail loudly, before any half-started state ---------------------------------------------
 command -v python3 >/dev/null 2>&1 || {
@@ -50,6 +59,13 @@ for server in "$STORAGE_SERVER" "$RETRIEVAL_SERVER"; do
     exit 1
   }
 done
+
+# The browser server is optional, but a named beta target needs it, so refuse a half-configured run.
+if [ -n "${BETA_BASE_URL:-}" ] && [ ! -f "$BROWSER_SERVER" ]; then
+  echo "ERROR: BETA_BASE_URL is set but the browser server is missing: $BROWSER_SERVER" >&2
+  echo "       Start the beta-tester role without it, or build mcp/browser/server.py first." >&2
+  exit 1
+fi
 
 # The storage audit log and the reference corpus live here; both must survive the container.
 mkdir -p "$MEMORY" "$MEMORY/reference"
@@ -74,14 +90,28 @@ python3 "$RETRIEVAL_SERVER" \
   --boundary-threshold "$BOUNDARY_THRESHOLD" &
 RETRIEVAL_PID=$!
 
+# --- the optional browser server, only when a beta target is named ----------------------------
+if [ -n "${BETA_BASE_URL:-}" ]; then
+  python3 "$BROWSER_SERVER" --port "$BROWSER_PORT" --host "$HOST" &
+  BROWSER_PID=$!
+fi
+
 cleanup() {
-  kill "$STORAGE_PID" "$RETRIEVAL_PID" 2>/dev/null || true
+  local pids=("$STORAGE_PID" "$RETRIEVAL_PID")
+  if [ -n "$BROWSER_PID" ]; then
+    pids+=("$BROWSER_PID")
+  fi
+  kill "${pids[@]}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
 # A server that dies on a bad flag must not leave the script pretending everything started.
 sleep 1
-for pair in "storage:$STORAGE_PID:$STORAGE_PORT" "retrieval:$RETRIEVAL_PID:$RETRIEVAL_PORT"; do
+STARTED=("storage:$STORAGE_PID:$STORAGE_PORT" "retrieval:$RETRIEVAL_PID:$RETRIEVAL_PORT")
+if [ -n "$BROWSER_PID" ]; then
+  STARTED+=("browser:$BROWSER_PID:$BROWSER_PORT")
+fi
+for pair in "${STARTED[@]}"; do
   name="${pair%%:*}"; rest="${pair#*:}"; pid="${rest%%:*}"
   if ! kill -0 "$pid" 2>/dev/null; then
     echo "ERROR: the $name server exited immediately. Read its output above for the reason." >&2
@@ -91,12 +121,20 @@ done
 
 echo "started storage   pid $STORAGE_PID  port $STORAGE_PORT  http://localhost:$STORAGE_PORT/mcp"
 echo "started retrieval pid $RETRIEVAL_PID  port $RETRIEVAL_PORT  http://localhost:$RETRIEVAL_PORT/mcp  chunking=$CHUNKING boundary-threshold=$BOUNDARY_THRESHOLD"
-echo "memory            $MEMORY  (storage.db, storage-audit.log, reference/)"
+if [ -n "$BROWSER_PID" ]; then
+  echo "started browser   pid $BROWSER_PID  port $BROWSER_PORT  http://localhost:$BROWSER_PORT/mcp  base-url=$BETA_BASE_URL"
+else
+  echo "browser not started: set BETA_BASE_URL to a beta target to start the optional browser server."
+fi
+echo "memory            $MEMORY  (storage.db, storage-audit.log, browser-audit.log, reference/)"
 echo
 echo "coursetools is spawned by Claude Code from .mcp.json, not by this script. Registration:"
 echo "  claude mcp add coursetools python $COURSETOOLS_SERVER"
 echo "  claude mcp add --transport http storage   http://localhost:$STORAGE_PORT/mcp"
 echo "  claude mcp add --transport http retrieval http://localhost:$RETRIEVAL_PORT/mcp"
+if [ -n "$BROWSER_PID" ]; then
+  echo "  claude mcp add --transport http browser   http://localhost:$BROWSER_PORT/mcp"
+fi
 echo
-echo "Press Ctrl-C to stop both servers."
+echo "Press Ctrl-C to stop the servers."
 wait
