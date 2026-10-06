@@ -45,19 +45,22 @@ cleanup() { rm -rf "$tmp"; }
 trap cleanup EXIT INT TERM
 
 log "checking for a newer release"
-if ! curl -fsSL --max-time 120 "$BASE/komun-prod.tar.gz" -o "$tmp/app.tar.gz"; then
+if ! curl -fsSL --max-time 120 "$BASE/komun-prod.tar.gz" -o "$tmp/komun-prod.tar.gz"; then
     # A release without the production asset (or no release at all) is not an error for this host.
     log "no production asset at $BASE/komun-prod.tar.gz; nothing to do"
     exit 0
 fi
 curl -fsSL --max-time 60 "$BASE/SHA256SUMS" -o "$tmp/SHA256SUMS"
+# The download keeps the name SHA256SUMS lists, so `sha256sum -c` finds it. Measured before this was
+# fixed: saving it as anything else makes every run fail verification, which is fail-closed but never
+# deploys.
 if ! (cd "$tmp" && sha256sum -c SHA256SUMS >/dev/null); then
     log "FAILED checksum verification; leaving the running build alone"
     exit 1
 fi
 
 mkdir -p "$tmp/unpacked"
-tar -xzf "$tmp/app.tar.gz" -C "$tmp/unpacked"
+tar -xzf "$tmp/komun-prod.tar.gz" -C "$tmp/unpacked"
 version="$(cat "$tmp/unpacked/VERSION" 2>/dev/null || true)"
 [ -n "$version" ] || { log "FAILED the release carries no VERSION"; exit 1; }
 
