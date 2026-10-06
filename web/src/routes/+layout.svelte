@@ -97,7 +97,8 @@
 
 		<div class="nav-links" class:show={menuOpen}>
 			{#if $serverState.active}
-				<a href="/aid" onclick={closeMenu}>Listings</a>
+				<a href="/market" onclick={closeMenu}>Market</a>
+				<a href="/aid" onclick={closeMenu}>Aid</a>
 				{#if $auth.servers?.[$serverState.active]}
 					<a href="/messages" onclick={closeMenu}>Messages</a>
 					<a href="/notifications" class="notif-link" onclick={closeMenu}>
