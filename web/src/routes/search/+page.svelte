@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount, untrack } from 'svelte';
+    import EmptyState from '$lib/components/ui/EmptyState.svelte';
     import { goto } from '$app/navigation';
     import { getActiveServer, isConnected } from '$lib/stores/server';
 
@@ -86,7 +87,7 @@
     {:else}
         {#if tab === 'posts'}
             {#if posts.length === 0}
-                <div class="empty"><p>No posts found for "{q}".</p></div>
+                <EmptyState title={`No posts found for "${q}".`} />
             {:else}
                 <ul class="results-list">
                     {#each posts as post}
@@ -110,7 +111,7 @@
             {/if}
         {:else}
             {#if users.length === 0}
-                <div class="empty"><p>No users found for "{q}".</p></div>
+                <EmptyState title={`No users found for "${q}".`} />
             {:else}
                 <ul class="results-list">
                     {#each users as u}
@@ -243,12 +244,6 @@
         font-size: 0.75rem;
         color: var(--text-muted);
         margin-left: 0.5rem;
-    }
-
-    .empty {
-        text-align: center;
-        color: var(--text-muted);
-        padding: 3rem 0;
     }
 
     .status {

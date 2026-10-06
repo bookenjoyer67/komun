@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import { goto } from '$app/navigation';
 	import LocationBar from '$lib/components/LocationBar.svelte';
 	import AidCard from '$lib/components/AidCard.svelte';
@@ -95,15 +96,13 @@
 		{#if loading}
 			<p class="status">Searching for listings nearby...</p>
 		{:else if servers.length === 0}
-			<div class="empty">
-				<p>No servers found nearby. Be the first to add local listings.</p>
-				<p class="sub"><a href="/connect">Browse available servers</a> to join one.</p>
-			</div>
+			<EmptyState title="No servers found nearby. Be the first to add local listings.">
+				<a href="/connect">Browse available servers</a> to join one.
+			</EmptyState>
 		{:else if filteredPosts.length === 0}
-			<div class="empty">
-				<p>Found {servers.length} server{servers.length > 1 ? 's' : ''} nearby, but no posts yet.</p>
+			<EmptyState title="Found {servers.length} server{servers.length > 1 ? 's' : ''} nearby, but no posts yet.">
 				<button class="start-btn" onclick={postFirst}>Post the first one</button>
-			</div>
+			</EmptyState>
 		{:else}
 			<ul class="feed">
 				{#each filteredPosts as post}
@@ -229,14 +228,6 @@
 		color: var(--text-muted);
 		padding: 3rem 0;
 	}
-
-	.empty {
-		text-align: center;
-		padding: 3rem 0;
-	}
-
-	.empty p { color: var(--text-muted); }
-	.empty .sub { font-size: 0.85rem; margin-top: 0.5rem; }
 
 	.filters button {
 		background: var(--bg-surface);

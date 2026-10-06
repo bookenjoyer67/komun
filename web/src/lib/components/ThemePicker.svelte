@@ -125,7 +125,7 @@
 		border-radius: var(--radius);
 		padding: 0.6rem;
 		cursor: pointer;
-		transition: border-color 0.15s;
+		transition: border-color var(--transition-fast);
 		min-height: unset;
 	}
 

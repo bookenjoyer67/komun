@@ -200,7 +200,7 @@
 		height: 5px;
 		background: var(--text);
 		border-radius: var(--radius-sm);
-		transition: all 0.2s;
+		transition: all var(--transition-base);
 	}
 
 	.hamburger.open .h-square:nth-child(1) {

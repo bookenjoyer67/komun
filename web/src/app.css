@@ -202,3 +202,19 @@ a:focus-visible,
 		padding: 0 0.75rem;
 	}
 }
+
+/* ── Reduced motion ── */
+
+/* The interface animates on hover and state change; a reader who has asked the system for
+   less motion gets none of it. Durations collapse to effectively zero rather than the
+   properties being unset, so layout does not shift when a transition would have run. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}

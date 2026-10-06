@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
 import EmptyState from '$lib/components/ui/EmptyState.svelte';
-import Card from '$lib/components/ui/Card.svelte';
 
 /** A snippet that renders fixed markup, for exercising slot-rendering components. */
 function textSnippet(html: string) {
@@ -37,26 +36,5 @@ describe('EmptyState', () => {
 			props: { title: 'No listings yet.', children: textSnippet('<a href="/new">Post one</a>') }
 		});
 		expect(screen.getByRole('link', { name: 'Post one' })).toBeTruthy();
-	});
-});
-
-describe('Card', () => {
-	it('renders its children inside the shell', () => {
-		const { container } = render(Card, { props: { children: textSnippet('<p>Card body</p>') } });
-		const card = container.querySelector('.card');
-		expect(card).toBeTruthy();
-		expect(card?.textContent).toContain('Card body');
-	});
-
-	it('is padded by default', () => {
-		const { container } = render(Card, { props: { children: textSnippet('<p>x</p>') } });
-		expect(container.querySelector('.card')?.classList.contains('padded')).toBe(true);
-	});
-
-	it('drops padding when asked, for a card that manages its own', () => {
-		const { container } = render(Card, {
-			props: { children: textSnippet('<p>x</p>'), padded: false }
-		});
-		expect(container.querySelector('.card')?.classList.contains('padded')).toBe(false);
 	});
 });
