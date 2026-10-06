@@ -834,4 +834,28 @@ mod tests {
         refused_with_400(Some(37.8), None);
         refused_with_400(None, Some(-122.3));
     }
+
+    fn searching(q: String) -> PostFilters {
+        PostFilters {
+            q: Some(q),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_search_term_over_200_characters_is_refused_naming_q() {
+        let raw = searching("a".repeat(201));
+        let Err(why) = validate_filters(&raw) else {
+            panic!("a 201-character q must be refused");
+        };
+        assert!(why.starts_with("q "), "the error must name q: {why}");
+    }
+
+    /// Two-byte characters, so a cap counted in bytes would refuse this term.
+    #[test]
+    fn a_search_term_of_200_characters_is_accepted() {
+        let raw = searching("é".repeat(200));
+        let filter = validate_filters(&raw).expect("a 200-character q");
+        assert_eq!(filter.q.map(|q| q.chars().count()), Some(200));
+    }
 }
