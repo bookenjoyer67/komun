@@ -16,6 +16,7 @@ graph TD
     RV[Reviewer<br/>Reviews the change against the repository's standards]
     PM[Project Manager<br/>Updates the ticket status]
     RS[Researcher<br/>Optional stretch: answers external documentation questions]
+    BT[Beta Tester<br/>Optional pre-release: exercises the running app at BETA_BASE_URL]
 
     HU -->|Change request + repository path| OR
     OR -->|Change request, repository path, acceptance criteria| PL
@@ -37,13 +38,15 @@ graph TD
     OR -.->|One external documentation question| RS
     RS -.->|Findings document| OR
     OR -.->|Findings as added input| IM
+    OR -.->|Optional pre-release check, on request| BT
+    BT -.->|Findings with evidence| OR
 ```
 
 ## Alt text
 
 What does this diagram show to a reader who cannot see it?
 
-Boxes stacked top to bottom show the order of work, and the Orchestrator sits at the top. The Orchestrator calls every other role and writes orchestration documents only, never production code. The Planner returns an ordered plan and a file list, and a human approves them at Checkpoint 1 before any code is written. The Implementer returns modified files, the Tester returns gate results, and the Reviewer returns a review report. A solid arrow carries a passing change on to the Project Manager, and a dashed loop carries failing gate results or review findings back to the Implementer. A second human approves release at Checkpoint 2, and a dashed branch shows the optional Researcher invoked only on an external-documentation blocker.
+Boxes stacked top to bottom show the order of work, and the Orchestrator sits at the top. The Orchestrator calls every other role and writes orchestration documents only, never production code. The Planner returns an ordered plan and a file list, and a human approves them at Checkpoint 1 before any code is written. The Implementer returns modified files, the Tester returns gate results, and the Reviewer returns a review report. A solid arrow carries a passing change on to the Project Manager, and a dashed loop carries failing gate results or review findings back to the Implementer. A second human approves release at Checkpoint 2, and a dashed branch shows the optional Researcher invoked only on an external-documentation blocker. A further dashed branch shows the optional Beta Tester, which a human requests before release and which exercises the running application rather than the repository.
 
 ## Handoff summary
 
@@ -58,6 +61,7 @@ In what order does the Orchestrator hand work to the next role?
 7. The Orchestrator sends the assembled run summary to the `project-manager`.
 8. The Orchestrator sends the run summary, the gate evidence and the review report to the human for Checkpoint 2, release approval.
 9. In the optional stretch flow, the Orchestrator invokes the `researcher` only when another role raises an external-documentation blocker.
+10. In the optional pre-release flow, the Orchestrator invokes the `beta-tester` only when a human requests a pass against the running app.
 
 ## Which gates run before a merge?
 
@@ -70,6 +74,8 @@ Which commands must pass, and what does each one prove?
 - Run `npx vitest run` inside `web/` and require every suite green (`AGENTS.md:206` `npx vitest run` `→` `82 tests in 7 files, all passing`).
 
 The Tester reports each command with its exit status and its output, and the Orchestrator halts the loop when any gate stays red (`AGENTS.md:197` `must stay at zero warnings`).
+
+- Treat the beta-tester pass as an optional pre-release step rather than a gate, invoked on request (`docs/adr/ADR-007-beta-tester-and-browser-mcp.md`).
 
 ## Where do the gates run?
 

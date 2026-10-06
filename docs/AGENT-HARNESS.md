@@ -13,7 +13,7 @@ Which parts have to be standing before a role can run?
 - An image carrying the toolchain and the agent CLIs (`sandbox/Dockerfile.m3:11-12` `docker build -f sandbox/Dockerfile.m3 -t agent-sandbox:komun-m3 .`).
 - One internal docker network with no route off the host (`sandbox/run-agent-m3.sh:31` `docker network inspect agent-internal >/dev/null 2>&1 || { docker network create --internal agent-internal; }`).
 - A credential broker holding the provider keys, so no agent container holds one (`sandbox/run-agent.sh:91` `-e ANTHROPIC_AUTH_TOKEN=sandbox-dummy-token \`).
-- Four MCP servers: gate, storage, retrieval and coursetools (`agentic.config.json:200` `"storage_server": "mcp/storage/server.py",`).
+- Four MCP servers: gate, storage, retrieval and coursetools, plus an optional fifth, `browser`, when a beta target is set (`agentic.config.json:200` `"storage_server": "mcp/storage/server.py",`).
 - Seven role definitions under `.claude/agents/`, launched one container per role (`scripts/run-agent.sh:33` `VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher"`).
 
 ## What must be installed first?
@@ -103,6 +103,7 @@ Which document holds what?
 | How is the application itself built and provisioned? | `docs/DEVELOPMENT.md` |
 | Who may call which MCP tool? | `docs/routing-and-tool-grant-map.md` |
 | What does each role hold? | `docs/governance-policy.md` |
+| Which role drives the running app for a pre-release pass? | `docs/adr/ADR-007-beta-tester-and-browser-mcp.md` |
 
 ## What bounds a workflow's cost?
 
@@ -120,3 +121,15 @@ budget refused: researcher may not start a call. The workflow has spent $28.3700
 The refusal happens after the container is ensured and before the command runs, so a refused call costs a container start and nothing else. There are two deliberate ways out: delete the ledger, or raise the ceiling.
 
 The dollar figure is the CLI's own accounting, passed in as `BUDGET_CALL_USD`. A call that reports none still records its wall clock and its exit status, so the ledger stays a complete record of the workflow even when the spend is not attributable. `python3 scripts/budget.py show --ledger target/budget-ledger.json` prints it.
+
+## Is there a role that tests the running application?
+
+Which role exercises the app rather than the repository, and how is it started?
+
+The core roles read the repository and run named checks. The optional `beta-tester` role is the one role that drives the running application instead, and it is the only holder of the `browser` tools.
+
+- Add the role definition at `.claude/agents/beta-tester.md`, holding the eight `mcp__browser__*` tools (`docs/routing-and-tool-grant-map.md:7` `This map is the design decision of record for the gate.`).
+- Read the decision that adds the role and the server at `docs/adr/ADR-007-beta-tester-and-browser-mcp.md`.
+- Start the browser server only when a beta target is named (`scripts/start-mcp-servers.sh:94` `if [ -n "${BETA_BASE_URL:-}" ]; then`), so the other roles see the two HTTP servers they always did.
+- Treat the pass as a pre-release step a human requests, not a gate (`docs/orchestration-diagram.md:78` `Treat the beta-tester pass as an optional pre-release step rather than a gate`).
+- Expect one recorded `test-result` entry and no repository write, because the role holds no write tool (`docs/adr/ADR-007-beta-tester-and-browser-mcp.md`).

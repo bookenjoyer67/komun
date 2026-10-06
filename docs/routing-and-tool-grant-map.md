@@ -19,6 +19,7 @@ Which role receives what from the Orchestrator, produces what, and holds which t
 | `reviewer` | The modified files and the repository's review standards | A review report, each finding tied to a file and a rule | `mcp__coursetools__file_read`, `mcp__coursetools__codebase_search`; `mcp__storage__read_entry`, `mcp__storage__list_entries`, `mcp__storage__write_entry`; `mcp__retrieval__retrieve` at ceiling `internal`; `mcp__gate__list_gates`, `mcp__gate__read_audit_log` (the prose and citation conformance step this role ran by hand now runs as a script and holds no MCP access; see `## Converted steps` below) | `mcp__gate__run_gate`, `mcp__coursetools__file_write`, `mcp__coursetools__shell`, `mcp__coursetools__test_runner`, `mcp__coursetools__task_tracker`, `mcp__coursetools__web_search`, `mcp__storage__update_entry`, `mcp__storage__delete_entry` — a reviewer that held a writer would grade its own work, and a re-run would overwrite the recorded gate evidence | It reads the diff and the standards, and it writes only its own review entry | Low — it reports findings, the Orchestrator routes them, and the Implementer acts |
 | `project-manager` | The assembled run summary | A ticket update confirmation | `mcp__coursetools__task_tracker`; `mcp__storage__read_entry`, `mcp__storage__list_entries` | `mcp__coursetools__file_read`, `mcp__coursetools__file_write`, `mcp__coursetools__codebase_search`, `mcp__coursetools__shell`, `mcp__coursetools__test_runner`, `mcp__coursetools__web_search`, `mcp__retrieval__retrieve`, `mcp__storage__write_entry`, `mcp__storage__update_entry`, `mcp__storage__delete_entry` — it owns ticket state, not project memory or code | It receives a summary rather than a diff, a gate log or a corpus, so ticket state alone fills its context | Low — it updates the ticket and reports, and it owns no project memory |
 | `researcher` (stretch, optional) | One external-documentation question, forwarded when another role is blocked | A findings document with citations | `mcp__coursetools__web_search`, `mcp__storage__write_entry` | `mcp__coursetools__file_read`, `mcp__coursetools__file_write`, `mcp__coursetools__codebase_search`, `mcp__coursetools__shell`, `mcp__coursetools__task_tracker`, `mcp__coursetools__test_runner`, `mcp__retrieval__retrieve`, `mcp__storage__read_entry`, `mcp__storage__list_entries`, `mcp__storage__update_entry`, `mcp__storage__delete_entry` — isolating `web_search` here is the reason the role exists, so nothing rides along | It answers one question and returns, so open-web text never enters a coding role's context | Low — it answers on request only, and it decides nothing about the change |
+| `beta-tester` | The deployed app's base URL and the acceptance criteria. | One test-result entry with the observed behaviour, its diagnostics and screenshot paths. | Every `mcp__browser__browser_open`, `mcp__browser__browser_snapshot`, `mcp__browser__browser_click`, `mcp__browser__browser_type`, `mcp__browser__browser_press`, `mcp__browser__browser_diagnostics`, `mcp__browser__browser_screenshot` and `mcp__browser__browser_close`; `mcp__coursetools__file_read`; `mcp__storage__read_entry`, `mcp__storage__list_entries` and `mcp__storage__write_entry`. | `mcp__coursetools__file_write`, `mcp__coursetools__codebase_search`, `mcp__coursetools__shell`, `mcp__coursetools__test_runner`, `mcp__coursetools__task_tracker`, `mcp__coursetools__web_search`, `mcp__retrieval__retrieve`, `mcp__storage__update_entry`, `mcp__storage__delete_entry`, `mcp__gate__run_gate`, `mcp__gate__list_gates`, `mcp__gate__read_audit_log` and `mcp__gate__run_fix` — it uses the running app instead of reading the code under test, so it repairs nothing it finds. | It holds the app's behaviour and its own result, so the diff and the reference corpus never enter its context. | Low — it reports findings and decides nothing about a change. |
 
 ## Storage operation grants
 
@@ -35,6 +36,7 @@ All storage operations live on the `storage` MCP server and are written `mcp__st
 | `reviewer` | granted | granted | granted | denied | denied |
 | `project-manager` | granted | granted | denied | denied | denied |
 | `researcher` | denied | denied | granted | denied | denied |
+| `beta-tester` | granted | granted | granted | denied | denied |
 
 Denial reasons:
 
@@ -45,6 +47,7 @@ Denial reasons:
 - Deny `update_entry` and `delete_entry` to the Reviewer, because it stays read-only toward others' work and writes only its own review.
 - Deny `write_entry`, `update_entry` and `delete_entry` to the Project Manager, because it owns ticket state rather than persistent project memory.
 - Deny `read_entry` and `list_entries` to the Researcher, because it records findings and reads nothing back from project memory.
+- Deny `update_entry` and `delete_entry` to the Beta-tester, because it records one result and alters no earlier record.
 
 ## Retrieval operation grants
 
@@ -61,6 +64,7 @@ The retrieval server exposes one operation, `mcp__retrieval__retrieve`. A grant 
 | `reviewer` | `mcp__retrieval__retrieve` | `internal` | none |
 | `project-manager` | none | none | `mcp__retrieval__retrieve` — it owns the ticket tool and performs no reference lookup |
 | `researcher` | none | none | `mcp__retrieval__retrieve` — its channel is the open web, and the internal corpus would only widen its context |
+| `beta-tester` | none | none | `mcp__retrieval__retrieve` — its evidence is the app's behaviour, and it searches no corpus |
 
 ## Cross-role check
 
@@ -74,6 +78,8 @@ Which grants repeat across roles, and does any repeat breach least privilege?
 - Grant `mcp__retrieval__retrieve` to three roles, the Planner, the Implementer and the Reviewer, which is safe because the operation is read-only, project-scoped and citation-bearing.
 - Cap every retrieval grant at `internal`, and hold no role above that ceiling (`docs/memory-architecture.md:149` `**Confidential** — Sensitive business data. Do not store in agent memory.`; `docs/memory-architecture.md:151` `**Secret** — Credentials, tokens, API keys, PII. Must never appear in any memory file.`).
 - Hold `mcp__gate__run_fix` on the Implementer alone, and keep the check surface on the Tester, so the role that repairs a file never grades the repair (`.claude/agents/tester.md:25` `- mcp__gate__run_fix`).
+- Hold the eight `mcp__browser__*` tools on the Beta-tester alone, because it is the only role that exercises the running app instead of reading it (`.claude/agents/beta-tester.md:43` `the only role holding the browser tools`).
+- Grant `mcp__coursetools__file_read` to the Beta-tester beside the roles that already hold it, which is safe because the read is read-only.
 
 ## Alternatives considered
 
@@ -96,18 +102,18 @@ Which recorded step no longer holds an MCP grant, and what runs it now?
 - Run the prose and citation conformance check as `scripts/validate_doc_conformance_deterministic.py`, which holds no MCP operation and makes no model call.
 - Stop routing that step to a subagent, because the reviewer ran it by hand from the reads its own row grants (`docs/routing-and-tool-grant-map.md:19` `mcp__coursetools__codebase_search`) and the step now holds no tool of its own.
 - Read the decision of record in `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`, which fixes the contract the script holds.
-- Keep the marker machine-readable, so a check can read it: `docs/routing-and-tool-grant-map.json:72` `"mcp_access": []`.
-- Run that step inside the workflow through the `conformance` gate, which the server runs by name (`agentic.config.json:61` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
+- Keep the marker machine-readable, so a check can read it: `docs/routing-and-tool-grant-map.json:88` `"mcp_access": []`.
+- Run that step inside the workflow through the `conformance` gate, which the server runs by name (`agentic.config.json:79` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
 
 ## Operator tools
 
 Which tools does the operator hold outside the agent roles, and what can each one change?
 
 - Hold `scripts/chain_anchor.py` on the operator and grant it to no agent role. Record each chain's head outside the container that writes it (`scripts/chain_anchor.py:14` `No agent role is granted this command; the operator runs it on the host.`).
-- Print the sequence number, head and anchor for the four chained artifacts with `python3 scripts/chain_anchor.py head` (`scripts/chain_anchor.py:83` `commands.add_parser("head", help="print seq, head and anchor for every artifact")`).
-- Check one artifact against a recorded anchor with `python3 scripts/chain_anchor.py verify --artifact NAME --expected SEQ:HEAD` (`scripts/chain_anchor.py:84` `commands.add_parser("verify", help="verify one artifact against an anchor")`).
+- Print the sequence number, head and anchor for the five chained artifacts with `python3 scripts/chain_anchor.py head` (`scripts/chain_anchor.py:84` `commands.add_parser("head", help="print seq, head and anchor for every artifact")`).
+- Check one artifact against a recorded anchor with `python3 scripts/chain_anchor.py verify --artifact NAME --expected SEQ:HEAD` (`scripts/chain_anchor.py:85` `commands.add_parser("verify", help="verify one artifact against an anchor")`).
 - Keep the anchor string outside the container, so no agent can move the head that a later check measures it against (`scripts/chain_anchor.py:8` `Keep that string outside the container.`).
 - Read every artifact without altering it, because each journal is read as bytes and the store opens with SQLite read-only (`scripts/chain_anchor.py:12` `There is no write mode. Journals are read as bytes, and the store is opened with SQLite`).
-- Treat a non-zero `verify` exit as a hard failure and never as a warning, reading the three constants as intact, fail and error (`scripts/chain_anchor.py:38` `EXIT_INTACT, EXIT_FAIL, EXIT_ERROR = 0, 1, 2`).
-- Take the first anchor only once the three servers restart on the chained code and each makes one chained write (`python3 scripts/chain_anchor.py head` -> all four artifacts read `"seq": 0` today). An artifact predating the chain has no head to anchor.
+- Treat a non-zero `verify` exit as a hard failure and never as a warning, reading the three constants as intact, fail and error (`scripts/chain_anchor.py:39` `EXIT_INTACT, EXIT_FAIL, EXIT_ERROR = 0, 1, 2`).
+- Take the first anchor only once the four servers restart on the chained code and each makes one chained write (`python3 scripts/chain_anchor.py head` -> all five artifacts read `"seq": 0` today). An artifact predating the chain has no head to anchor.
 

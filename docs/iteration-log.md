@@ -1438,3 +1438,13 @@ Run `run-2026-10-03-gate-guard-per-command` replaced it on purpose. The key is n
 The thirteen off-by-four citations into `gate_vocabulary.py` came from `9db9679` and not from the
 commit under review (`git show 9db9679^:mcp/gate/gate_vocabulary.py` -> `286` lines, `AUDIT_PATH` at
 `101`; the same file at `9db9679` -> `290` lines, `AUDIT_PATH` at `105`).
+
+## Run `run-2026-10-05-beta-tester-role` — 2026-10-05 — the beta-tester role and its browser MCP server
+
+What does this change add, and what stays outside the gate?
+
+- Change under gate: ticket `KOMUN-beta-tester-role` — add the `beta-tester` role and the `browser` MCP server it drives (`docs/adr/ADR-007-beta-tester-and-browser-mcp.md`).
+- The operator authorisation is the human's answer `2` in the Komun room, quoted in the ADR's Authority section (`docs/adr/ADR-007-beta-tester-and-browser-mcp.md`).
+- The browser server starts only when `BETA_BASE_URL` names a target (`scripts/start-mcp-servers.sh:94` `if [ -n "${BETA_BASE_URL:-}" ]; then`), so the other roles see no change.
+- The pass is a pre-release step a human requests, not a gate, so no gate's verdict changes (`docs/orchestration-diagram.md:78` `Treat the beta-tester pass as an optional pre-release step rather than a gate`).
+- Append this entry rather than prepend it, so the run-008 citations above keep their line numbers (`docs/iteration-log.md:14` `- Change under gate: ticket`).
