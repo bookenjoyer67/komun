@@ -237,7 +237,7 @@
 
     .own-banner {
         background: var(--accent-soft, rgba(30, 255, 157, 0.1));
-        border: 1px solid var(--accent, #1eff9d);
+        border: 1px solid var(--accent);
         border-radius: var(--radius);
         padding: 0.5rem 1rem;
         text-align: center;
@@ -246,7 +246,7 @@
     }
 
     .own-banner a {
-        color: var(--accent, #1eff9d);
+        color: var(--accent);
         font-weight: 600;
     }
 
@@ -301,8 +301,8 @@
 
     .role-badge.admin {
         background: var(--accent-soft, rgba(30, 255, 157, 0.1));
-        color: var(--accent, #1eff9d);
-        border: 1px solid var(--accent, #1eff9d);
+        color: var(--accent);
+        border: 1px solid var(--accent);
     }
 
     .rating-badge {
@@ -315,7 +315,7 @@
     }
 
     .rating-stars {
-        color: var(--warning, #f5a623);
+        color: var(--warning);
         letter-spacing: 0.1em;
     }
 
@@ -390,13 +390,13 @@
     }
 
     .endorse-btn:hover:not(:disabled) {
-        border-color: var(--accent, #1eff9d);
+        border-color: var(--accent);
         background: var(--accent-soft, rgba(30, 255, 157, 0.1));
     }
 
     .endorse-btn.endorsed {
-        border-color: var(--success, #1eff9d);
-        color: var(--success, #1eff9d);
+        border-color: var(--success);
+        color: var(--success);
     }
 
     .endorse-btn:disabled {
@@ -454,7 +454,7 @@
     .endorser-name {
         font-weight: 600;
         font-size: 0.9rem;
-        color: var(--accent, #1eff9d);
+        color: var(--accent);
     }
 
     .endorsement-note {
@@ -511,7 +511,7 @@
 
     .profile-link {
         display: block;
-        color: var(--accent, #1eff9d);
+        color: var(--accent);
         padding: 0.3rem 0;
     }
 </style>

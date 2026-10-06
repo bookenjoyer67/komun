@@ -141,7 +141,7 @@
 		min-height: 320px;
 		border-radius: var(--radius);
 		overflow: hidden;
-		background: var(--bg-surface, #eee);
+		background: var(--bg-surface);
 	}
 
 	/* Leaflet builds these nodes itself, so the selector must be global. */
@@ -149,8 +149,8 @@
 		width: 14px;
 		height: 14px;
 		border-radius: 50%;
-		background: var(--accent, #d95d39);
-		border: 2px solid #fff;
+		background: var(--accent);
+		border: 2px solid var(--text);
 		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 	}
 </style>

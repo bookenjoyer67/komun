@@ -204,7 +204,7 @@
 	}
 
 	.star-icon {
-		color: var(--warning, #f5a623);
+		color: var(--warning);
 	}
 
 	.body-label {

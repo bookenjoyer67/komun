@@ -128,7 +128,7 @@
 	}
 
 	.note.error {
-		color: var(--critical, #c0392b);
+		color: var(--critical);
 	}
 
 	.map-layout {
