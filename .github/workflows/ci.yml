@@ -986,5 +986,20 @@ jobs:
           gh release create "$tag"             --title "production ${short}"             --latest             --notes "Built and published by the pipeline from ${SHA}, after every gating job passed. The production host pulls the newest release on a timer; see docs/DEPLOY.md.
 
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"             "$RUNNER_TEMP/komun-prod.tar.gz#komun-prod.tar.gz"             "$RUNNER_TEMP/SHA256SUMS#SHA256SUMS"
-          gh release view "$tag" --json tagName,isLatest,assets \
-            -q '{tag: .tagName, latest: .isLatest, assets: [.assets[].name]}'
+          gh release view "$tag" --json tagName,isDraft,assets \
+            -q '{tag: .tagName, draft: .isDraft, assets: [.assets[].name]}'
+
+          # `isLatest` is not a field this command accepts, and asking for it failed the job *after*
+          # the release had already been published -- which is how the first production runs reported
+          # failure while the host was pulling from them happily. Verify the two properties the host
+          # actually depends on instead: that the release is published (a draft is not served by
+          # releases/latest) and that it carries both assets.
+          draft="$(gh release view "$tag" --json isDraft -q .isDraft)"
+          assets="$(gh release view "$tag" --json assets -q '.assets[].name' | sort | tr '\n' ' ')"
+          [ "$draft" = "false" ] || { echo "::error::the release is still a draft, so the host cannot pull it"; exit 1; }
+          case "$assets" in
+            *komun-prod.tar.gz*SHA256SUMS*|*SHA256SUMS*komun-prod.tar.gz*)
+              echo "published, not a draft, carrying: $assets" ;;
+            *)
+              echo "::error::the release is missing an asset: $assets"; exit 1 ;;
+          esac
