@@ -139,7 +139,3 @@ front). `deploy/` holds starting-point assets.
 
 **AGPL-3.0-or-later** — [LICENSE](LICENSE)
 
-<div align="center">
-<br>
-<b>Solidarity, not charity.</b>
-</div>
