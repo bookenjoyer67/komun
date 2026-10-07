@@ -118,3 +118,9 @@ Which artifacts settle this decision?
 - The two enforcement layers behind one denial: `docs/iteration-log.md` (`docs/iteration-log.md:376` `the denial is enforced, and it is enforced twice over`).
 - Each role's granted and denied tool list in its definition: `.claude/agents/orchestrator.md` (`docs/governance-policy.md:35` `tools: Task, Read, Write, Edit`).
 - The role count and its naming: `scripts/run-agent.sh` (`scripts/run-agent.sh:33` `VALID_ROLES="orchestrator planner implementer tester reviewer project-manager researcher"`).
+
+## Open risks
+
+- Two fixes carry no rerun evidence yet, so their effect is unverified. NM-3's enumeration was recorded as a hypothesis (`docs/iteration-log.md:448`).
+- The map and the JSON twin must stay equal; nothing generates one from the other, so they can drift until a comparison catches it.
+- The scoping is measured against the roles that exist. A new role inherits the default rather than a reasoned list until one is written.

@@ -41,11 +41,11 @@ The workflow reduces what a reviewer must read; it does not remove review. Befor
 
 Failure modes: the ten near-miss patterns (`docs/calibration-log.md:14` `## Near-miss patterns for Module 4 governance`); a caught gate failure (`docs/calibration-log.md:166` `` `test` exit 101 (156 passed, 2 failed) ``); a gate red for a pre-existing reason (`docs/calibration-log.md:170` ``Keep `fmt` red in all four runs, unattributed to either change and pre-existing at `HEAD`.``); and a measurement gap (`docs/calibration-log.md:150` `cost is unmeasurable here and no estimate is offered.`).
 
-Demo requirements: a live, recorded gate run with journals measured before and after (`docs/capstone/video/demo-runbook.md:39` `Capture the journal baseline in check 10 because several segments assert that a journal did not grow.`), captured output dated (`docs/capstone/video/demo-runbook.md:13` `Commands were executed and their output captured on 2026-10-01 unless a step says otherwise.`), no synthetic input (`docs/capstone/video/demo-runbook.md:7` `no command in this runbook starts a graphical`), and rollback stated as unexercised (`docs/capstone/deck.md:202` `not yet exercised`).
+Demo requirements: a live, recorded gate run with journals measured before and after (`docs/capstone/video/demo-runbook.md:39` `Capture the journal baseline in check 10 because several segments assert that a journal did not grow.`), captured output dated (`docs/capstone/video/demo-runbook.md:13` `Commands were executed and their output captured on 2026-10-01 unless a step says otherwise.`), no synthetic input (`docs/capstone/video/demo-runbook.md:7` `no command in this runbook starts a graphical`), and rollback stated as exercised (`docs/capstone/deck.md:202` `exercised 2026-10-03`).
 
 ## Module 1 to 4 artifact gaps
 
-Recorded at the time: the Module 1 sandbox record is `setup.md` (`setup.md:3` `Agentic Engineer · Module 1 · Assignment 1.1, Exercise 2`). The two-agent scope contract is `session_tasks.md` (`session_tasks.md:3` `Scope contract for the two-agent session on the Komun repo.`). The capstone plan itself is tracked at `docs/capstone/plan-pipeline-validation.md`. The reshape plan and the Module 1 QC plan still sit under `.hermes/plans/`, which is gitignored (`.gitignore:14` `.hermes/`) and cannot travel in history (`.hermes/plans/2026-09-24_0913-agentic-engineer-mod1-qc-system.md:34` `this plan lives there and stays out of history`). The Module 1 lab gate keeps its own PRD, rubric and log under `docs/clippy-gate/`, and the repo-wide record is `docs/iteration-log.md`, whose per-workflow Run 001 entries begin 2026-09-24 (`docs/iteration-log.md:1332` `## Run 001`; `:1212` `19 / 20, PASS`).
+Recorded at the time: the Module 1 sandbox record is `setup.md` (`setup.md:3` `Agentic Engineer · Module 1 · Assignment 1.1, Exercise 2`). The two-agent scope contract is `session_tasks.md` (`session_tasks.md:3` `Scope contract for the two-agent session on the Komun repo.`). The capstone plan itself is tracked at `docs/capstone/plan-pipeline-validation.md`. The Module 1 QC plan is committed in this tree at `docs/capstone/mod1-pre-work-plan.md`, a verbatim copy carrying a provenance note, because `.hermes/plans/` is gitignored (`.gitignore:14` `.hermes/`) and a citation into it cannot travel (`docs/capstone/mod1-pre-work-plan.md:34` `this plan lives there and stays out of history`). The Module 1 lab gate keeps its own PRD, rubric and log under `docs/clippy-gate/`, and the repo-wide record is `docs/iteration-log.md`, whose per-workflow Run 001 entries begin 2026-09-24 (`docs/iteration-log.md:1332` `## Run 001`; `:1212` `19 / 20, PASS`).
 
 Missing or late at capstone start:
 
@@ -54,4 +54,35 @@ Missing or late at capstone start:
 - A cost model across the pipeline. Per-step figures exist; the four-run regression carries none (`docs/calibration-log.md:150` `cost is unmeasurable here and no estimate is offered.`).
 - A stakeholder-facing artifact at the start. The one-pager, deck, impact report and demo runbook are dated 2026-10-01 (`docs/capstone/impact-report.md:3` `Date: 2026-10-01.`), produced after the runs.
 
-Reconstructed rather than recorded at the time: this gap list is assembled from the artifacts' own dates and the gitignored plan directory. No Module 1 document enumerates the gaps, and the near-miss log was written for Module 4 governance, not at the time of the decisions it judges.
+Recorded at the time, in two parts. The pre-work state is the Module 1 QC plan's own verified-current-state section, checked 2026-09-24 09:13 CDT before any capstone work and committed here verbatim (`docs/capstone/mod1-pre-work-plan.md:18` `Verified current state`); the list above is assembled from that section and the artifacts' own dates. The near-miss log was written for Module 4 governance, not at the time of the decisions it judges.
+
+## Why not a prebuilt agent, or a simpler script?
+
+Measured on 2026-10-05, on the same task the pipeline's own checker performs: read the prose rules in
+`docs/DOC-STYLE.md` and report every violation in one file, with rule code and line number. The
+prebuilt agent is `claude -p` (v2.1.280) given one prompt, no allow-list, no routing map, no audit
+journal and no classifier deciding whether it may run.
+
+| | Prebuilt agent | Deterministic check |
+|:--|:--|:--|
+| Findings against the key | 48 and 53 unique, two runs | 20, both runs |
+| Agreement with the key | 18 of 20, both runs (90%) | by construction, the key is its output |
+| Extras beyond the key | 30 and 35 | 0 |
+| Same answer twice | No. The two runs differ by 5 findings on one file and 35 on another | Yes. Three runs over one input produced one SHA-256 digest |
+| Cost | $0.44-$0.68 per file, a 55% swing between identical runs | $0.00 |
+| Latency | 97-136s per file | 0.42-0.84s |
+| Audit trail | A prose list in the transcript | A JSON report plus a row in `.memory/gate-audit.log` |
+
+Three honest limits on those figures. The key is the checker's own output, so the 90% measures
+agreement with the checker rather than truth; whether the extras are real violations the regex rules
+miss or noise was not adjudicated, and one sample attempt could not settle it because R3 counts words
+per sentence, not per line. One run recorded here had a mis-specified task (prose rules against a file
+whose findings are all citations) and is excluded from the table above.
+
+What the table does settle is not accuracy. The prebuilt agent recovered 18 of 20 of the checker's
+findings, so a single pass is broadly right. What it cannot do is give the same answer twice, say
+what a call will cost, or let a reader see what was run: the two identical prompts differ by five
+findings, cost moved 55% between them, and the output is a transcript rather than a journal row. No
+gate can be built on that, because a gate needs a verdict that repeats and a figure that holds. The
+deterministic check is not chosen for finding more; it is chosen because its answer is the same
+answer, priced at zero, and recorded where a reviewer can reach it.
