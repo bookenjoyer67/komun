@@ -1,0 +1,41 @@
+I read the memory tree, verified its claims against the repo, and did not edit anything — per the Context Boundary Procedure in `CLAUDE.md`, the next phase needs boundary text from you before I touch a file.
+
+## Scope check: passes
+
+`.memory/SCOPE.md` names **Komun / `bookenjoyer67/rev`**; `.git/config:7` has `url = https://github.com/bookenjoyer67/rev.git`, and `Cargo.toml` + `README.md` confirm the Komun workspace. No mismatch — safe to proceed.
+
+## Two memory entries that need your ruling before I act on them
+
+**1. `decision-001.md` is past its review date, and the date is inconsistent across files.**
+The entry itself says `**Review by:** 2026-08-01` — nearly two months ago, and *earlier than its own `**Date:** 2026-09-28`*, which cannot be right. `MEMORY_INDEX.md` says "Review by 2026-12-27" for the same entry. The file's mtime (16:13) is later than the index's (15:52), so the entry was edited after it was registered and the two drifted.
+
+**2. `decision-001.md` asserts a retrieval index that does not exist.**
+It claims "The reference layer is backed by a sqlite-vec index at `.memory/reference/embeddings.db`, built 2026-07-12." That file exists nowhere on the filesystem (`find / -name embeddings.db` returns nothing); `.memory/reference/` contains only an empty `.gitkeep`. It also contradicts your own design doc, `docs/memory-architecture.md:157-162`, which says a vector store is **deferred, not rejected**, blocked on `python3` being absent from the sandbox image, and that "the reference layer is greppable markdown." The 2026-07-12 build date also predates the memory directory's creation (2026-09-28). I'd treat the sqlite-vec sentence as a defect to delete, not a fact to build on — but per the stale-memory policy that's your call, not mine.
+
+## Where things actually stand
+
+**Module 2.2 (context management) — done and logged.** `docs/iteration-log.md:8` records Run 001 of workflow 4, `komun-docs-stylist` v0.1.0, 2026-09-26, **11/12 PASS**. Artifacts are complete under `docs/context-management/run-001/` (messages, phase-A summary, answers). The headline finding: auto-compaction fired unplanned during phase C, 166,700 → 12,837 tokens, and the generated summary **dropped the unresolved-questions field entirely**.
+
+**Module 2.3 (memory system) — scaffolding done, contents not.** Built today: the three-layer design (`docs/memory-architecture.md`), the `.memory/` tree, the `CLAUDE.md` policy, and two hooks. The guard hook is the strongest piece here — its header documents that `444` permissions are meaningless because the agent runs as root (`touch` returned 0 as root, 1 as uid 1000), so enforcement moved into Claude Code's permission layer where uid is irrelevant. That's a correctly diagnosed guardrail.
+
+**What's missing is the memory itself:**
+- **Layer 1 holds one entry.** `docs/memory-architecture.md:24-40` says it should also carry the current phase, the date-stamped gate baselines, the environment quirks (no `python3`; container writes are root-owned on the host), the standing constraints, and the open questions. None of those are entries.
+- **The open questions live only in the design doc** (`:37-40`) — the Svelte 5 vs SvelteKit 2 term, and the `docs/DOC-STYLE.md:38`/`:68` worked example whose `rg -c 'fetch(' web/src -> 37` doesn't reproduce (47 across 18 files). That is precisely the category the 2.2 run proved compaction destroys, sitting in the one place the startup read doesn't load.
+- **Layer 3 is empty.** Nothing indexes the contract-audit reports, the architecture rationale, or the iteration-log entries the baselines cite.
+
+**One environment blocker:** every `git` command fails with `fatal: detected dubious ownership in repository at '/workspace'`, so I can't tell you whether `.memory/` is committed or still untracked. The fix is `git config --global --add safe.directory /workspace` — say the word and I'll run it.
+
+## What I'd work on next
+
+1. **Rule on `decision-001`** — strike the sqlite-vec sentence, set a review date consistent with the 90-day policy, and make the index agree. It's the only active decision entry, so a false claim in it poisons every session that reads it.
+2. **Write the Layer 1 entries the design already specifies**, open questions first. This is the direct remediation for the 2.2 failure, and it's the cheapest high-value work available.
+3. **Re-measure the gate before recording baselines** (158 tests / 0 clippy warnings / 82 vitest) — `coding-standards.md` dates them 2026-09-25, and a baseline is only useful if it was true when written.
+4. **Decide Layer 3's retrieval scheme** — a committed keyword index over `docs/` beats an empty directory, and it keeps the vector-store decision where the design put it: Module 3.
+
+I'd start with (1) and (2) together as one phase. Send me the boundary text and I'll begin.
+
+---
+
+Provenance: copied verbatim from `~/komun-agent-exercise-2-4/drill1-observe-run.txt` on 2026-10-07.
+Nothing above this note was changed; the original path is outside the repository, so this copy
+exists to keep the citation at `docs/iteration-log.md:542` reachable.

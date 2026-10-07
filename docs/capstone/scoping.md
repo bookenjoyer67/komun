@@ -25,7 +25,7 @@ A hook cannot see the whole surface. The repository does run a hard stop (`docs/
 
 The counterweight: work moved out of the agent where the task proved mechanical, stated as policy (`docs/capstone/plan-pipeline-validation.md:217` `a run that has produced the same shaped check twice becomes a script, then a gate, then a CI step`), and the conformance step is recorded as converted (`docs/step-classification.md:32` `agentic until this conversion, now deterministic`). The alternatives the record does consider are named: keep the agentic step, and extend the existing policy suite (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:75` `Keep the agentic step.`; `:87` ``Extend `eval/test_policy.py` instead of adding a script.``); for grants, letting the orchestrator run the gates (`docs/routing-and-tool-grant-map.md:86` ``Let the Orchestrator hold `mcp__gate__run_gate` and run the gates itself.``).
 
-Not established: the record holds no comparison against a prebuilt or off-the-shelf review agent, so that alternative is absent rather than rejected on the record.
+The record below measures the comparison against a prebuilt agent on the same task the checker performs (`docs/capstone/scoping.md:61` `Measured on 2026-10-05, on the same task the pipeline's own checker performs`). That section rejects the alternative on evidence rather than leaving it absent.
 
 ## Acceptance criteria, failure modes, demo requirements
 
