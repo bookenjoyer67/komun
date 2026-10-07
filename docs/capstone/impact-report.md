@@ -47,3 +47,25 @@ Projected gains, each with its assumption stated:
 - `fmt` is red at HEAD and unattributed: "Keep `fmt` red in all four runs, unattributed to either change and pre-existing at `HEAD`" (`docs/calibration-log.md:170` ``Keep `fmt` red in all four runs, unattributed to either change and pre-existing at `HEAD`.``).
 - The sandbox boundary has a stated ceiling: "The sandbox protects nothing if the host is compromised, because the broker runs as a normal user on that host." (`docs/capstone/one-pager.md:44` `The sandbox protects nothing if the host is compromised, because the broker runs as a normal user on that host.`).
 - The conformance validator reports pre-existing citation drift in documents the capstone did not touch. Measured with the repository's own validator against the HEAD revision of `docs/governance-policy.md`: 27 `CIT-LINE-DRIFT` citations, 133 of 160 citations resolved at the cited line, plus 1 rule finding. The working-tree copy, which carries an unrelated uncommitted seven-line change, shows the same 27 drifts across 161 checked and 134 resolved. The drift is pre-existing at HEAD and introduced by no capstone edit; it is reported so the conformance gate is not read as a clean bill of health.
+
+---
+
+## Review latency, measured (appended 2026-10-05)
+
+The table above marks review latency "Not directly measured" and offers a proxy. It can be measured
+directly for the part of the review the pipeline performs, from the audit rows the gate server already
+writes. The section is appended rather than edited into the table above because `docs/reflection-log.md:108`
+and `docs/capstone/scoping.md:55` cite lines 3 and 41 of this file, and editing the table would move them.
+
+Source: `.memory/gate-audit.log`, every row carrying `duration_seconds`; window 2026-09-28 to 2026-10-04.
+
+| What is measured | Rows | Median | p90 | Max |
+|:--|--:|--:|--:|--:|
+| The conformance + policy check, which replaces the manual prose-and-citation review | 49 | 2.22s | 3.63s | 4.75s |
+| All gated checks, every role | 254 | 2.62s | 7.44s | 37.62s |
+| `tester` calls, the role that runs the gates | 207 | 2.86s | 7.44s | 37.62s |
+
+Against the Module 1 baseline's `Review latency: ≈4m08s` (`docs/clippy-gate/iteration-log.md:49`), the
+manual portion of the same review now costs a median 2.22s. That is the machine share only: a human
+accept/reject decision is not covered by these rows, and no figure is offered for it. The defect-rate
+axis stays unmeasured for the reason given above, and no rate is invented here.
