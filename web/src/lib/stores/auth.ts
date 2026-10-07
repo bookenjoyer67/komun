@@ -377,9 +377,11 @@ export async function confirmPasswordReset(input: ResetInput): Promise<AuthResul
 		const code = input.recoveryCode ? normalizeRecoveryCode(input.recoveryCode) : '';
 
 		if (code) {
-			const res = await fetch(
-				`${server}/api/auth/password-reset/bundle?token=${encodeURIComponent(input.token)}`
-			);
+			const res = await fetch(`${server}/api/auth/password-reset/bundle`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ token: input.token }),
+			});
 			if (!res.ok) return { ok: false, error: await errorFrom(res) };
 			const stored = await res.json();
 			if (!stored.encrypted_recovery_bundle || !stored.recovery_bundle_salt) {

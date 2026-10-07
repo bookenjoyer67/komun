@@ -1,22 +1,34 @@
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     middleware,
     routing::{get, patch, post},
     Json, Router,
 };
 use base64::Engine;
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use uuid::Uuid;
 
 use komun_core::models::{MatchStatus, OfferKind, PostKind};
 
 use super::categories::bad_request;
-use super::StatusError;
+use super::posts::bounded;
+use super::{count_unavailable, hourly_count, Hourly, StatusError};
 use crate::auth::{require_auth, AuthUser};
 use crate::config::is_currency_code;
 use crate::db::conversations::{DealStep, OfferRow, RespondRefusal, RespondStep, Thread};
 use crate::AppState;
+
+const MAX_CIPHERTEXT_BYTES: usize = 64 * 1024;
+const MAX_NONCE_BYTES: usize = 64;
+
+const CONVERSATIONS_PAGE: i64 = 50;
+const CONVERSATIONS_PAGE_MAX: i64 = 200;
+const MESSAGES_PAGE: i64 = 100;
+const MESSAGES_PAGE_MAX: i64 = 500;
+const OFFERS_PAGE: i64 = 200;
+const OFFERS_PAGE_MAX: i64 = 500;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -35,7 +47,7 @@ pub fn router(state: AppState) -> Router {
 }
 
 /// What arrives is a sealed box: the server stores the bytes and never learns what they say, so
-/// the only checks are that they decode and are non-empty.
+/// the only checks are that they decode, are non-empty and are within their size caps.
 #[derive(Deserialize)]
 struct SealedMessage {
     ciphertext: String,
@@ -53,6 +65,9 @@ impl SealedMessage {
         if ciphertext.is_empty() {
             return Err(bad("ciphertext is empty"));
         }
+        if ciphertext.len() > MAX_CIPHERTEXT_BYTES {
+            return Err(bad("ciphertext is over 64 KiB"));
+        }
 
         let nonce = match self.nonce.as_deref() {
             None | Some("") => None,
@@ -62,9 +77,62 @@ impl SealedMessage {
                     .map_err(|_| bad("nonce is not valid base64"))?,
             ),
         };
+        if nonce.as_ref().is_some_and(|n| n.len() > MAX_NONCE_BYTES) {
+            return Err(bad("nonce is over 64 bytes"));
+        }
 
         Ok((ciphertext, nonce))
     }
+}
+
+/// Strings, as with post filters, so a malformed value is a 400 naming the parameter.
+#[derive(Deserialize, Default)]
+struct PageParams {
+    limit: Option<String>,
+    offset: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct MessagePageParams {
+    limit: Option<String>,
+    before: Option<String>,
+}
+
+fn bounded_param(
+    name: &str,
+    raw: Option<&str>,
+    default: i64,
+    min: i64,
+    max: i64,
+) -> Result<i64, StatusError> {
+    bounded(name, raw, default, min, max).map_err(bad_request)
+}
+
+fn page(params: &PageParams, default: i64, max: i64) -> Result<(i64, i64), StatusError> {
+    let limit = bounded_param("limit", params.limit.as_deref(), default, 1, max)?;
+    let offset = bounded_param("offset", params.offset.as_deref(), 0, 0, i64::MAX)?;
+    Ok((limit, offset))
+}
+
+fn message_page(params: &MessagePageParams) -> Result<(i64, Option<DateTime<Utc>>), StatusError> {
+    let limit = bounded_param(
+        "limit",
+        params.limit.as_deref(),
+        MESSAGES_PAGE,
+        1,
+        MESSAGES_PAGE_MAX,
+    )?;
+    let before = match params.before.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(raw) => Some(parse_before(raw).map_err(bad_request)?),
+    };
+    Ok((limit, before))
+}
+
+fn parse_before(raw: &str) -> Result<DateTime<Utc>, String> {
+    DateTime::parse_from_rfc3339(raw)
+        .map(|time| time.with_timezone(&Utc))
+        .map_err(|_| format!("before must be an RFC 3339 time (got {raw:?})"))
 }
 
 async fn respond_to_post(
@@ -73,14 +141,12 @@ async fn respond_to_post(
     Path(post_id): Path<Uuid>,
     Json(input): Json<SealedMessage>,
 ) -> Result<Json<serde_json::Value>, StatusError> {
-    let recent: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM matches WHERE responder_id = $1 AND created_at > now() - interval '1 hour'"
-    )
-    .bind(auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    let (ciphertext, nonce) = input.decode()?;
 
+    let mut tx = state.pool.begin().await?;
+    let recent = hourly_count(&mut tx, Hourly::Responses, auth.user_id)
+        .await
+        .map_err(|e| count_unavailable(Hourly::Responses, e))?;
     if recent >= state.config.security.max_matches_per_hour as i64 {
         return Err(StatusError::with_status(
             StatusCode::TOO_MANY_REQUESTS,
@@ -91,10 +157,8 @@ async fn respond_to_post(
         ));
     }
 
-    let (ciphertext, nonce) = input.decode()?;
-
     let step = crate::db::conversations::create_match(
-        &state.pool,
+        &mut tx,
         post_id,
         auth.user_id,
         &ciphertext,
@@ -114,6 +178,9 @@ async fn respond_to_post(
         RespondStep::Refused(RespondRefusal::Closed(why)) => return Err(conflict(why)),
     };
 
+    tx.commit().await?;
+    crate::db::conversations::notify_response(&state.pool, match_id).await?;
+
     Ok(Json(serde_json::json!({
         "match_id": match_id,
         "status": "proposed"
@@ -123,8 +190,12 @@ async fn respond_to_post(
 async fn list_conversations(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
+    Query(params): Query<PageParams>,
 ) -> Result<Json<Vec<crate::db::conversations::ConversationPreview>>, StatusError> {
-    let convos = crate::db::conversations::list_conversations(&state.pool, auth.user_id).await?;
+    let (limit, offset) = page(&params, CONVERSATIONS_PAGE, CONVERSATIONS_PAGE_MAX)?;
+    let convos =
+        crate::db::conversations::list_conversations(&state.pool, auth.user_id, limit, offset)
+            .await?;
     Ok(Json(convos))
 }
 
@@ -132,13 +203,22 @@ async fn get_conversation(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
     Path(match_id): Path<Uuid>,
+    Query(params): Query<MessagePageParams>,
 ) -> Result<Json<crate::db::conversations::Conversation>, StatusError> {
+    let (limit, before) = message_page(&params)?;
+
     // The 404/403 pair, decided the same way on every route on a thread so "may I see this?" does
     // not depend on the endpoint.
     participant_thread(&state, match_id, auth.user_id).await?;
 
-    let convo =
-        crate::db::conversations::get_conversation(&state.pool, match_id, auth.user_id).await?;
+    let convo = crate::db::conversations::get_conversation(
+        &state.pool,
+        match_id,
+        auth.user_id,
+        limit,
+        before,
+    )
+    .await?;
     Ok(Json(convo))
 }
 
@@ -148,14 +228,12 @@ async fn send_message(
     Path(match_id): Path<Uuid>,
     Json(input): Json<SealedMessage>,
 ) -> Result<Json<crate::db::conversations::MessageRow>, StatusError> {
-    let recent: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM messages WHERE sender_id = $1 AND created_at > now() - interval '1 hour'"
-    )
-    .bind(auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    let (ciphertext, nonce) = input.decode()?;
 
+    let mut tx = state.pool.begin().await?;
+    let recent = hourly_count(&mut tx, Hourly::Messages, auth.user_id)
+        .await
+        .map_err(|e| count_unavailable(Hourly::Messages, e))?;
     if recent >= state.config.security.max_messages_per_hour as i64 {
         return Err(StatusError::with_status(
             StatusCode::TOO_MANY_REQUESTS,
@@ -166,16 +244,17 @@ async fn send_message(
         ));
     }
 
-    let (ciphertext, nonce) = input.decode()?;
-
     let msg = crate::db::conversations::send_message(
-        &state.pool,
+        &mut tx,
         match_id,
         auth.user_id,
         &ciphertext,
         nonce.as_deref(),
     )
     .await?;
+    tx.commit().await?;
+    crate::db::conversations::notify_message(&state.pool, match_id, auth.user_id).await?;
+
     Ok(Json(msg))
 }
 
@@ -302,9 +381,12 @@ async fn list_offers(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
     Path(match_id): Path<Uuid>,
+    Query(params): Query<PageParams>,
 ) -> Result<Json<Vec<OfferRow>>, StatusError> {
+    let (limit, offset) = page(&params, OFFERS_PAGE, OFFERS_PAGE_MAX)?;
     participant_thread(&state, match_id, auth.user_id).await?;
-    let offers = crate::db::conversations::list_offers(&state.pool, match_id).await?;
+    let offers =
+        crate::db::conversations::list_offers(&state.pool, match_id, limit, offset).await?;
     Ok(Json(offers))
 }
 

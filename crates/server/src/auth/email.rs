@@ -128,9 +128,11 @@ pub fn verification_link(public_url: &str, token: &str) -> String {
     )
 }
 
+/// The token rides in the fragment, which a browser never sends: it reaches no server, proxy log
+/// or referrer, and the reset page reads it from there.
 pub fn password_reset_link(public_url: &str, token: &str) -> String {
     format!(
-        "{}/reset-password?token={}",
+        "{}/account/reset#token={}",
         public_url.trim_end_matches('/'),
         urlencode(token)
     )
@@ -305,7 +307,7 @@ mod tests {
         let wire = render(&msg);
         let body = decoded_body(&wire);
 
-        assert!(body.contains("/reset-password?token=reset-token"), "{body}");
+        assert!(body.contains("/account/reset#token=reset-token"), "{body}");
         assert!(body.contains("30 minutes"), "{body}");
         assert!(
             body.contains("signs out every other device"),

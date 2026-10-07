@@ -11,6 +11,8 @@ use super::StatusError;
 use crate::auth::{require_auth, require_superadmin, AuthUser};
 use crate::AppState;
 
+const MAX_REASON_CHARS: usize = 1000;
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/posts/{post_id}/report", post(report_post))
@@ -67,6 +69,13 @@ async fn report_post(
     Path(post_id): Path<Uuid>,
     Json(input): Json<ReportRequest>,
 ) -> Result<Json<crate::db::reports::Report>, StatusError> {
+    let length = input.reason.trim().chars().count();
+    if length == 0 || length > MAX_REASON_CHARS {
+        return Err(bad_request(format!(
+            "reason must be 1 to {MAX_REASON_CHARS} characters (got {length})"
+        )));
+    }
+
     let report =
         crate::db::reports::create_report(&state.pool, auth.user_id, post_id, &input.reason)
             .await?;

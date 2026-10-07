@@ -1,12 +1,35 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { confirmPasswordReset } from '$lib/stores/auth';
 	import RecoveryCode from '../RecoveryCode.svelte';
 
 	const MIN_PASSWORD = 12;
 
-	const token = $derived($page.url.searchParams.get('token') || '');
+	function tokenFrom(url: URL): string {
+		const fromFragment = new URLSearchParams(url.hash.slice(1)).get('token');
+		return fromFragment || url.searchParams.get('token') || '';
+	}
+
+	// Read once: the token leaves the address bar on first read, so it is not kept in history or
+	// sent as a referrer, and the page keeps its own copy to submit.
+	const token = tokenFrom($page.url);
+
+	onMount(() => {
+		if (!token) return;
+		const clean = new URL($page.url);
+		clean.hash = '';
+		clean.searchParams.delete('token');
+		const target = `${clean.pathname}${clean.search}`;
+		try {
+			replaceState(target, {});
+		} catch {
+			// SvelteKit refuses before its router has started; the token must leave the address
+			// bar either way.
+			history.replaceState(history.state, '', target);
+		}
+	});
 
 	let password = $state('');
 	let confirm = $state('');

@@ -98,8 +98,7 @@ async fn live_harness(config_toml: &str) -> Harness {
     let media = std::env::temp_dir().join(media_name);
     let mut config: Config = toml::from_str(config_toml).expect("parse test config");
     config.media.avatar_dir = media.join("avatars").to_string_lossy().into_owned();
-    std::fs::create_dir_all(&config.media.avatar_dir)
-        .expect("create the test avatar directory");
+    std::fs::create_dir_all(&config.media.avatar_dir).expect("create the test avatar directory");
     let mailer = Mailer::from_config(&config).expect("build the test mailer");
 
     let state = AppState {

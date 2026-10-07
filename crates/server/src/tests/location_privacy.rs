@@ -154,7 +154,8 @@ async fn vb06_a_new_post_is_stored_coarse() {
     let pool = live_pool().await;
     let author = seed_user(&pool).await;
 
-    let post = db::posts::create(&pool, author, new_post("r13-create"))
+    let mut conn = pool.acquire().await.expect("a test connection");
+    let post = db::posts::create(&mut conn, author, new_post("r13-create"))
         .await
         .expect("create post");
 
@@ -214,9 +215,14 @@ async fn a_legacy_exact_row_is_as_far_away_as_its_coarse_cell() {
     let pool = live_pool().await;
     let author = seed_user(&pool).await;
     let (legacy_id, legacy_title) = seed_exact_post(&pool, author).await;
-    let twin = db::posts::create(&pool, author, new_post(&format!("r13-twin-{legacy_id}")))
-        .await
-        .expect("create coarse twin");
+    let mut conn = pool.acquire().await.expect("a test connection");
+    let twin = db::posts::create(
+        &mut conn,
+        author,
+        new_post(&format!("r13-twin-{legacy_id}")),
+    )
+    .await
+    .expect("create coarse twin");
     let near = (coarsen_coordinate(38.3), coarsen_coordinate(-122.0));
 
     let legacy = listed_distance(&pool, legacy_id, &legacy_title, near).await;

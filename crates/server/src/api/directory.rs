@@ -18,6 +18,7 @@ use tokio::sync::Mutex as TokioMutex;
 use super::outbound;
 use super::StatusError;
 use crate::auth::{record_audit, require_auth, require_superadmin, AuthUser};
+use crate::db::posts::contains_pattern;
 use crate::rate_limit::RouteClass;
 use crate::AppState;
 
@@ -282,11 +283,13 @@ async fn list_servers(
 
         rows.into_iter().map(Into::into).collect()
     } else if let Some(ref q) = params.q {
-        let pattern = format!("%{}%", q);
+        let pattern = contains_pattern(q);
         let rows = sqlx::query_as::<_, DirectoryEntry>(&format!(
             r#"SELECT {ENTRY_COLUMNS}
                FROM directory_entries
-               WHERE name ILIKE $1 OR location_name ILIKE $1 OR description ILIKE $1
+               WHERE name ILIKE $1 ESCAPE '\'
+                  OR location_name ILIKE $1 ESCAPE '\'
+                  OR description ILIKE $1 ESCAPE '\'
                ORDER BY last_seen DESC
                LIMIT 20"#
         ))
