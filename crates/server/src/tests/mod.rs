@@ -7,7 +7,9 @@ mod location_privacy;
 /// The marketplace foundation: `[market]` config, category scopes, market filters.
 #[cfg(test)]
 mod market;
+mod ops_admin;
 mod outbound_routes;
+mod support;
 
 /// The server-side half of the password path.
 #[cfg(test)]
@@ -276,6 +278,30 @@ superadmin_public_keys = []
         let config: Config = toml::from_str(toml).expect("parse config");
         assert!(config.database.url.contains("localhost"));
         assert!(config.database.url.contains("postgres"));
+        assert_eq!(config.database.max_connections, 5);
+    }
+
+    // The messages never print the URL: a database URL can carry a password.
+    #[test]
+    fn the_default_config_carries_no_database_url() {
+        let config = Config::default();
+        assert!(
+            config.database.url.is_empty(),
+            "the default config must carry no database URL"
+        );
+    }
+
+    #[test]
+    fn a_database_section_without_a_url_leaves_it_empty() {
+        let toml = r#"
+[database]
+max_connections = 5
+"#;
+        let config: Config = toml::from_str(toml).expect("parse config");
+        assert!(
+            config.database.url.is_empty(),
+            "an unset [database] url must stay empty"
+        );
         assert_eq!(config.database.max_connections, 5);
     }
 

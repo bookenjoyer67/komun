@@ -44,3 +44,43 @@ impl IntoResponse for StatusError {
             .into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    async fn rendered(err: StatusError) -> (StatusCode, Value) {
+        let response = err.into_response();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .expect("read response body");
+        let body = serde_json::from_slice(&bytes).expect("a JSON error body");
+        (status, body)
+    }
+
+    #[tokio::test]
+    async fn a_server_error_body_is_generic() {
+        let err = StatusError::from(anyhow::anyhow!("relation marker-r14 detail"));
+
+        let (status, body) = rendered(err).await;
+
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(
+            !body.to_string().contains("marker-r14"),
+            "the body must not carry the error's text"
+        );
+        assert_eq!(body, json!({ "error": "internal error" }));
+    }
+
+    #[tokio::test]
+    async fn a_client_error_keeps_its_message() {
+        let err = StatusError::with_status(StatusCode::BAD_REQUEST, "bad input");
+
+        let (status, body) = rendered(err).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body, json!({ "error": "bad input" }));
+    }
+}
