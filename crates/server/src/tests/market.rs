@@ -1998,3 +1998,99 @@ mod refusal_scan_tests {
         }
     }
 }
+/// Wave 3: the feed's distance parameters and its order allow-list, pinned without a database.
+#[cfg(test)]
+mod radius_and_sort_tests {
+    use crate::api::posts::{validate_filters, PostFilters};
+    use crate::db::posts::FeedSort;
+
+    fn with(
+        near_lat: Option<&str>,
+        near_lon: Option<&str>,
+        radius_km: Option<&str>,
+        sort: Option<&str>,
+    ) -> PostFilters {
+        PostFilters {
+            near_lat: near_lat.map(str::to_string),
+            near_lon: near_lon.map(str::to_string),
+            radius_km: radius_km.map(str::to_string),
+            sort: sort.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    /// `validate_filters` errors become a 400 through `bad_request`; the message must name the
+    /// parameter so the caller can fix it.
+    fn refused(raw: PostFilters, names: &str) {
+        let Err(why) = validate_filters(&raw) else {
+            panic!("must be refused, naming {names}");
+        };
+        assert!(why.contains(names), "{why:?} must name {names}");
+    }
+
+    #[test]
+    fn radius_needs_both_coordinates() {
+        refused(with(Some("37.8"), None, None, None), "near_lon");
+        refused(with(None, Some("-122.3"), None, None), "near_lat");
+        refused(with(None, None, Some("25"), None), "radius_km");
+        refused(with(Some("90.04"), Some("0"), None, None), "near_lat");
+
+        let neither = validate_filters(&with(None, None, None, None)).expect("no centre is legal");
+        assert_eq!(neither.near, None);
+
+        let both = validate_filters(&with(
+            Some("37.80443"),
+            Some("-122.27121"),
+            Some("25"),
+            None,
+        ))
+        .expect("a whole centre is legal");
+        assert_eq!(both.near, Some((37.8, -122.3)), "the centre is coarsened");
+        assert_eq!(both.radius_km, Some(25.0));
+    }
+
+    #[test]
+    fn radius_is_positive_and_bounded() {
+        for bad in ["0", "-25", "500.5", "1000", "NaN", "inf", "far"] {
+            refused(
+                with(Some("37.8"), Some("-122.3"), Some(bad), None),
+                "radius_km",
+            );
+        }
+        for preset in ["15", "25", "50", "100"] {
+            let filter = validate_filters(&with(Some("37.8"), Some("-122.3"), Some(preset), None))
+                .unwrap_or_else(|why| panic!("{preset}: {why}"));
+            assert_eq!(filter.radius_km, Some(preset.parse::<f64>().unwrap()));
+        }
+        assert!(
+            validate_filters(&with(Some("37.8"), Some("-122.3"), Some("500"), None)).is_ok(),
+            "the limit itself is legal"
+        );
+    }
+
+    #[test]
+    fn sort_accepts_only_recency_and_distance() {
+        for engagement in ["popular", "relevance", "trending"] {
+            refused(
+                with(Some("37.8"), Some("-122.3"), None, Some(engagement)),
+                "sort",
+            );
+        }
+
+        let default = validate_filters(&with(None, None, None, None)).expect("legal");
+        assert_eq!(default.sort, FeedSort::Recency);
+        let recency = validate_filters(&with(None, None, None, Some("recency"))).expect("legal");
+        assert_eq!(recency.sort, FeedSort::Recency);
+        let distance =
+            validate_filters(&with(Some("37.8"), Some("-122.3"), None, Some("distance")))
+                .expect("legal");
+        assert_eq!(distance.sort, FeedSort::Distance);
+        refused(with(None, None, None, Some("distance")), "sort=distance");
+
+        assert_eq!(
+            FeedSort::ALL,
+            &[FeedSort::Recency, FeedSort::Distance],
+            "a new order is a decision, not an addition"
+        );
+    }
+}

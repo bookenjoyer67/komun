@@ -92,12 +92,11 @@ pub fn router(state: AppState) -> Router {
         .route("/verify", get(verify_email_link).post(verify_email))
         .route("/resend-verification", post(resend_verification))
         .route("/password-reset", post(request_password_reset))
-        .route("/password-reset/bundle", get(password_reset_bundle))
+        .route("/password-reset/bundle", post(password_reset_bundle))
         .route("/password-reset/confirm", post(confirm_password_reset));
 
     let protected = Router::new()
-        .route("/me", get(me).put(update_profile))
-        .route("/me/avatar", post(upload_avatar))
+        .route("/me", get(me))
         .route("/signout", post(signout))
         .route(
             "/sessions",
@@ -109,14 +108,28 @@ pub fn router(state: AppState) -> Router {
         // a stolen bearer token must not be enough to take the account over permanently.
         .route("/password/change", post(change_password))
         .route("/recovery/reissue", post(reissue_recovery))
-        // The /me routes deliberately use the plain session check rather than `require_auth`:
-        // an unverified user must be able to see who they are and ask for another mail.
+        // GET /me deliberately uses the plain session check rather than `require_auth`: an
+        // unverified user must be able to see who they are and ask for another mail. PUT /me and
+        // the avatar route moved to `require_auth` (VA18), so they need a verified address.
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session,
         ));
 
-    public.merge(protected).with_state(state)
+    // Changing what others see of an account needs a verified address. Sign-out, sessions,
+    // password change and recovery stay on `require_session`, so an unverified account can
+    // still secure itself.
+    let avatar_body_limit = (state.config.media.max_avatar_bytes as usize)
+        .saturating_add(crate::api::MULTIPART_OVERHEAD);
+    let verified = Router::new()
+        .route("/me", axum::routing::put(update_profile))
+        .route(
+            "/me/avatar",
+            post(upload_avatar).layer(axum::extract::DefaultBodyLimit::max(avatar_body_limit)),
+        )
+        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    public.merge(protected).merge(verified).with_state(state)
 }
 
 #[derive(Deserialize)]
@@ -436,9 +449,16 @@ async fn send_verification(state: &AppState, user_id: Uuid, email: &str, display
 
     match mailer.verification_message(email, display_name, &token.raw) {
         Ok(message) => {
-            if let Err(e) = mailer.send(message).await {
-                tracing::error!("verification mail to {user_id} failed: {e}");
-            }
+            // Delivery is detached so the response time does not depend on whether the
+            // address has an account.
+            let mailer = std::sync::Arc::clone(&state.mailer);
+            tokio::spawn(async move {
+                if let Some(mailer) = mailer.as_ref() {
+                    if let Err(e) = mailer.send(message).await {
+                        tracing::warn!("verification mail for {user_id} not delivered: {e}");
+                    }
+                }
+            });
         }
         Err(e) => tracing::error!("could not compose verification mail for {user_id}: {e}"),
     }
@@ -504,8 +524,13 @@ async fn signup(
         recovery_bundle_salt: recovery_salt.clone(),
     })?;
 
-    // Invite mode: claim a use before creating anything, so a failed claim cannot leave an
-    // account behind.
+    // The invite use and the account are created together or not at all: every return before
+    // the commit below drops `tx`, which rolls the claim back.
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| internal("signup transaction failed", e))?;
     if state.config.registration.mode == "invite" {
         let code = input
             .invite_code
@@ -526,7 +551,7 @@ async fn signup(
                AND (expires_at IS NULL OR expires_at > now())",
         )
         .bind(code)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| internal("invite claim failed", e))?;
 
@@ -558,7 +583,7 @@ async fn signup(
     .bind(&bundle_salt)
     .bind(&recovery_bundle)
     .bind(&recovery_salt)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await;
 
     if let Err(e) = insert {
@@ -574,6 +599,10 @@ async fn signup(
         }
         return Err(internal("signup insert failed", e));
     }
+
+    tx.commit()
+        .await
+        .map_err(|e| internal("signup commit failed", e))?;
 
     record_audit(
         &state.pool,
@@ -822,7 +851,11 @@ async fn resend_verification(
                 60,
             )
             .await
-            .unwrap_or(0);
+            .unwrap_or_else(|e| {
+                // Fails closed: no count, no mail; the reply stays the uniform one.
+                tracing::warn!("one-time token count failed: {e}");
+                i64::MAX
+            });
             if recent < 5 {
                 send_verification(&state, user_id, &email, &display_name).await;
             } else {
@@ -864,7 +897,11 @@ async fn request_password_reset(
             60,
         )
         .await
-        .unwrap_or(0);
+        .unwrap_or_else(|e| {
+            // Fails closed: no count, no mail; the reply stays the uniform one.
+            tracing::warn!("one-time token count failed: {e}");
+            i64::MAX
+        });
 
         if recent < 5 {
             if let Err(e) = session_db::invalidate_one_time_tokens(
@@ -891,9 +928,18 @@ async fn request_password_reset(
                     if let Some(mailer) = state.mailer.as_ref() {
                         match mailer.password_reset_message(&email, &display_name, &token.raw) {
                             Ok(message) => {
-                                if let Err(e) = mailer.send(message).await {
-                                    tracing::error!("reset mail to {user_id} failed: {e}");
-                                }
+                                // Delivery is detached so the response time does not depend on whether the
+                                // address has an account.
+                                let mailer = std::sync::Arc::clone(&state.mailer);
+                                tokio::spawn(async move {
+                                    if let Some(mailer) = mailer.as_ref() {
+                                        if let Err(e) = mailer.send(message).await {
+                                            tracing::warn!(
+                                                "reset mail for {user_id} not delivered: {e}"
+                                            );
+                                        }
+                                    }
+                                });
                             }
                             Err(e) => tracing::error!("could not compose reset mail: {e}"),
                         }
@@ -928,7 +974,7 @@ async fn password_reset_bundle(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
-    Query(q): Query<TokenQuery>,
+    Json(q): Json<TokenQuery>,
 ) -> Result<Json<RecoveryBundleResponse>, ApiError> {
     let ip = limit_key(&state, peer, &headers);
     enforce_limit(&state, RouteClass::PasswordReset, ip)?;
@@ -1486,76 +1532,92 @@ async fn upload_avatar(
     Extension(auth): Extension<AuthUser>,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user_id = auth.user_id;
-
-    let recent: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM avatar_uploads WHERE user_id = $1 AND uploaded_at > now() - interval '1 hour'",
-    )
-    .bind(user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    let quota_unavailable = |e: sqlx::Error| {
+        tracing::warn!("avatar quota check failed: {e}");
+        fail(
+            StatusCode::SERVICE_UNAVAILABLE,
+            crate::api::COUNT_UNAVAILABLE,
+        )
+    };
+    // The quota row is committed before anything is decoded, so a refused or failed upload spends
+    // it too and the hourly cap bounds decoding work, not only stored files.
+    let mut tx = state.pool.begin().await.map_err(quota_unavailable)?;
+    let recent = crate::api::hourly_count(&mut tx, crate::api::Hourly::Avatars, auth.user_id)
+        .await
+        .map_err(quota_unavailable)?;
     if recent >= 5 {
         return Err(fail(
             StatusCode::TOO_MANY_REQUESTS,
             "rate limited: 5 uploads per hour",
         ));
     }
+    sqlx::query("INSERT INTO avatar_uploads (user_id, uploaded_at) VALUES ($1, now())")
+        .bind(auth.user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| internal("avatar quota insert failed", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| internal("avatar quota insert failed", e))?;
 
     let field = multipart
         .next_field()
         .await
-        .map_err(|_| fail(StatusCode::BAD_REQUEST, "invalid multipart"))?
+        .map_err(|_| fail(StatusCode::BAD_REQUEST, "invalid upload"))?
         .ok_or_else(|| fail(StatusCode::BAD_REQUEST, "no file"))?;
 
     let content_type = field.content_type().unwrap_or("").to_string();
-    if !matches!(
-        content_type.as_str(),
-        "image/png" | "image/jpeg" | "image/webp"
-    ) {
+    if crate::media::claimed_format(&content_type).is_none() {
         return Err(fail(StatusCode::BAD_REQUEST, "only PNG, JPEG, WebP"));
     }
 
     let data = field
         .bytes()
         .await
-        .map_err(|_| fail(StatusCode::BAD_REQUEST, "read error"))?;
+        .map_err(|_| fail(StatusCode::BAD_REQUEST, "invalid upload"))?;
     if data.len() > state.config.media.max_avatar_bytes as usize {
         return Err(fail(StatusCode::BAD_REQUEST, "file too large (max 1MB)"));
     }
 
-    let img = image::load_from_memory(&data)
-        .map_err(|_| fail(StatusCode::BAD_REQUEST, "invalid image"))?;
-    let img = if img.width() > 512 || img.height() > 512 {
-        img.resize(512, 512, image::imageops::FilterType::Lanczos3)
-    } else {
-        img
-    };
+    let img = crate::media::decode_bounded(data.to_vec(), &content_type, 512)
+        .await
+        .map_err(|why| fail(StatusCode::BAD_REQUEST, why.reason()))?;
 
     let filename = format!("{}.webp", Uuid::now_v7());
     let dir = std::path::Path::new(&state.config.media.avatar_dir);
     std::fs::create_dir_all(dir).ok();
     img.save(dir.join(&filename))
-        .map_err(|_| fail(StatusCode::INTERNAL_SERVER_ERROR, "save failed"))?;
+        .map_err(|e| internal("avatar save failed", e))?;
 
-    sqlx::query("INSERT INTO avatar_uploads (user_id, uploaded_at) VALUES ($1, now())")
-        .bind(user_id)
-        .execute(&state.pool)
-        .await
-        .ok();
-
-    sqlx::query("UPDATE users SET avatar_path = $1 WHERE id = $2")
-        .bind(&filename)
-        .bind(user_id)
-        .execute(&state.pool)
-        .await
-        .map_err(|e| internal("avatar update failed", e))?;
+    // The replaced file is deleted only after the new path is committed, so a failed upload never
+    // removes the live avatar.
+    let previous: Option<String> = sqlx::query_scalar(
+        r#"WITH old AS (SELECT avatar_path FROM users WHERE id = $2 FOR UPDATE)
+           UPDATE users SET avatar_path = $1 FROM old WHERE users.id = $2
+           RETURNING old.avatar_path"#,
+    )
+    .bind(&filename)
+    .bind(auth.user_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| internal("avatar update failed", e))?;
+    // Only a bare name is joined to the avatar directory, so no stored value reaches outside it.
+    let replaced = previous.filter(|old| {
+        let bare = !old.is_empty() && old != "." && old != ".." && !old.contains(['/', '\\']);
+        bare && *old != filename
+    });
+    if let Some(old) = replaced {
+        if let Err(e) = std::fs::remove_file(dir.join(&old)) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!("could not remove a replaced avatar file: {e}");
+            }
+        }
+    }
 
     Ok(Json(
         serde_json::json!({ "avatar_url": format!("/avatars/{filename}") }),
     ))
 }
-
 async fn get_user_keys(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,

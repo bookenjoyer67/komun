@@ -1,8 +1,8 @@
 //! The deal and moderation guards on posts: an accept carries the terms on the table, an author
 //! cannot update a post under moderation or reopen a sold listing, a deal completes only on an open
 //! post, a single-post read shows only what the feed would show, a response opens only on a public,
-//! active, unsold post, the buyer is shown only to the two parties, and a completed want records
-//! its author as the buyer.
+//! active, unsold post, the buyer is shown only to the two parties, a completed want records its
+//! author as the buyer, and a hide always tells its author why and can be appealed once.
 //!
 //! Every test needs a live Postgres, so every test is `#[ignore]`d; run against a disposable
 //! database with `KOMUN_TEST_DATABASE_URL=postgres://... cargo test -p komun-server
@@ -1015,5 +1015,389 @@ async fn vb12_completed_listing_records_the_responder_as_buyer() {
         post.buyer_id,
         Some(deal.responder),
         "a completed listing must record the responder as the buyer"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// A hide always tells its author why, and that removal can be appealed once, inside the window.
+// These need `migrations/004_moderation_path.sql` in the test database.
+// ---------------------------------------------------------------------------------------------
+
+const HIDE_REASON: &str = "R6 synthetic reason: a duplicate of an earlier post";
+const APPEAL_BODY: &str = "R6 synthetic appeal: the earlier post was withdrawn";
+const DENY_NOTE: &str = "R6 synthetic note: the earlier post is still listed";
+
+const MODERATION_NOTICES: &str =
+    "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND kind = 'moderation'";
+const ACTIONS_ON_POST: &str = "SELECT COUNT(*) FROM moderation_actions WHERE post_id = $1";
+const APPEALS_ON_POST: &str = "SELECT COUNT(*) FROM appeals ap
+     JOIN moderation_actions a ON a.id = ap.action_id
+     WHERE a.post_id = $1";
+
+async fn hide(h: &Harness, admin: &TestUser, post: Uuid, body: &Value) -> (StatusCode, Value) {
+    let path = format!("/posts/{post}/hide");
+    send(&h.app, Method::POST, &path, Some(&admin.bearer), Some(body)).await
+}
+
+async fn appeal(h: &Harness, user: &TestUser, post: Uuid) -> (StatusCode, Value) {
+    let path = format!("/posts/{post}/appeal");
+    let body = json!({ "body": APPEAL_BODY });
+    send(&h.app, Method::POST, &path, Some(&user.bearer), Some(&body)).await
+}
+
+async fn decide(h: &Harness, admin: &TestUser, id: Uuid, body: &Value) -> (StatusCode, Value) {
+    let path = format!("/admin/appeals/{id}");
+    let bearer = Some(admin.bearer.as_str());
+    send(&h.app, Method::PATCH, &path, bearer, Some(body)).await
+}
+
+#[derive(sqlx::FromRow)]
+struct Notice {
+    title: String,
+    body: Option<String>,
+    link: Option<String>,
+}
+
+async fn moderation_notices(pool: &PgPool, user: Uuid) -> Vec<Notice> {
+    sqlx::query_as::<_, Notice>(
+        "SELECT title, body, link FROM notifications WHERE user_id = $1 AND kind = 'moderation'",
+    )
+    .bind(user)
+    .fetch_all(pool)
+    .await
+    .expect("read moderation notices")
+}
+
+#[derive(sqlx::FromRow)]
+struct AppealState {
+    status: String,
+    admin_notes: Option<String>,
+    resolved: bool,
+}
+
+async fn appeal_state(pool: &PgPool, id: Uuid) -> AppealState {
+    sqlx::query_as::<_, AppealState>(
+        "SELECT status, admin_notes, resolved_at IS NOT NULL AS resolved
+         FROM appeals WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .expect("read appeal state")
+}
+
+struct Removal {
+    h: Harness,
+    author: TestUser,
+    admin: TestUser,
+    post: Uuid,
+}
+
+/// Hidden through the route rather than seeded, so every appeal starts from a removal that
+/// carries its reason.
+async fn removed_post() -> Removal {
+    let h = live_harness().await;
+    let author = seed_user(&h.pool, "user").await;
+    let admin = seed_user(&h.pool, "superadmin").await;
+    let post = seed_post(&h.pool, author.id, PostSeed::public("need", "active")).await;
+
+    let (got, body) = hide(&h, &admin, post.id, &json!({ "reason": HIDE_REASON })).await;
+
+    assert_status(got, StatusCode::OK, &body, "hide with a reason");
+    Removal {
+        h,
+        author,
+        admin,
+        post: post.id,
+    }
+}
+
+async fn appealed(r: &Removal) -> Uuid {
+    let (got, body) = appeal(&r.h, &r.author, r.post).await;
+    assert_status(got, StatusCode::CREATED, &body, "the first appeal");
+    body["id"]
+        .as_str()
+        .and_then(|id| id.parse().ok())
+        .expect("the appeal carries its id")
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb13_a_hide_always_notifies_its_author_with_the_reason() {
+    let r = removed_post().await;
+
+    assert_eq!(post_state(&r.h.pool, r.post).await.status, "hidden");
+    assert_eq!(
+        count(&r.h.pool, ACTIONS_ON_POST, r.post).await,
+        1,
+        "a hide records one moderation action"
+    );
+    let notices = moderation_notices(&r.h.pool, r.author.id).await;
+    assert_eq!(notices.len(), 1, "a hide notifies its author exactly once");
+    assert!(!notices[0].title.is_empty(), "the notice has a title");
+    assert_eq!(
+        notices[0].body.as_deref(),
+        Some(HIDE_REASON),
+        "the notice names the reason"
+    );
+    let link = format!("/p/{}", r.post);
+    assert_eq!(notices[0].link.as_deref(), Some(link.as_str()));
+}
+
+async fn hide_is_refused(body: Value) {
+    let h = live_harness().await;
+    let author = seed_user(&h.pool, "user").await;
+    let admin = seed_user(&h.pool, "superadmin").await;
+    let post = seed_post(&h.pool, author.id, PostSeed::public("need", "active")).await;
+    let before = post_row(&h.pool, post.id).await;
+
+    let (got, reply) = hide(&h, &admin, post.id, &body).await;
+
+    assert_status(
+        got,
+        StatusCode::BAD_REQUEST,
+        &reply,
+        &format!("hide with {body}"),
+    );
+    assert!(
+        error_of(&reply).starts_with("reason "),
+        "the refusal names the field: {:?}",
+        error_of(&reply)
+    );
+    assert_eq!(
+        post_row(&h.pool, post.id).await,
+        before,
+        "a refused hide must leave the post unchanged"
+    );
+    assert_eq!(count(&h.pool, ACTIONS_ON_POST, post.id).await, 0);
+    assert_eq!(count(&h.pool, MODERATION_NOTICES, author.id).await, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb13_a_hide_with_an_empty_reason_is_refused() {
+    hide_is_refused(json!({ "reason": "" })).await;
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb13_a_hide_with_a_blank_reason_is_refused() {
+    hide_is_refused(json!({ "reason": "  \n\t " })).await;
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb13_a_hide_without_a_reason_is_refused() {
+    hide_is_refused(json!({})).await;
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_the_author_sees_the_reason_and_whether_an_appeal_is_open() {
+    let r = removed_post().await;
+    let stranger = seed_user(&r.h.pool, "user").await;
+    let find = |body: &Value| {
+        body.as_array()
+            .and_then(|items| items.iter().find(|item| item["post_id"] == json!(r.post)))
+            .cloned()
+    };
+
+    let mine = Some(r.author.bearer.as_str());
+    let (got, body) = send(&r.h.app, Method::GET, "/me/moderation", mine, None).await;
+    assert_status(got, StatusCode::OK, &body, "the author's notices");
+    let notice = find(&body).expect("the removal is listed for its author");
+    assert_eq!(notice["reason"], json!(HIDE_REASON));
+    assert_eq!(notice["appeal_open"], json!(true));
+
+    appealed(&r).await;
+    let (_, body) = send(&r.h.app, Method::GET, "/me/moderation", mine, None).await;
+    let notice = find(&body).expect("the removal is still listed after an appeal");
+    assert_eq!(notice["appeal_open"], json!(false), "one appeal each");
+
+    let theirs = Some(stranger.bearer.as_str());
+    let (got, body) = send(&r.h.app, Method::GET, "/me/moderation", theirs, None).await;
+    assert_status(got, StatusCode::OK, &body, "a stranger's notices");
+    assert!(
+        find(&body).is_none(),
+        "a removal is listed for its author only"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_a_second_appeal_on_the_same_removal_is_refused() {
+    let r = removed_post().await;
+    appealed(&r).await;
+
+    let (got, body) = appeal(&r.h, &r.author, r.post).await;
+
+    assert_status(got, StatusCode::CONFLICT, &body, "a second appeal");
+    assert_eq!(
+        count(&r.h.pool, APPEALS_ON_POST, r.post).await,
+        1,
+        "a refused appeal adds no row"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_only_the_author_may_appeal() {
+    let r = removed_post().await;
+    let stranger = seed_user(&r.h.pool, "user").await;
+
+    let (got, body) = appeal(&r.h, &stranger, r.post).await;
+
+    // The answer a missing post gets, so a hidden post is confirmed to nobody but its author.
+    assert_status(got, StatusCode::NOT_FOUND, &body, "a stranger's appeal");
+    assert_eq!(count(&r.h.pool, APPEALS_ON_POST, r.post).await, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_an_appeal_after_the_window_is_refused() {
+    let r = removed_post().await;
+    let window = chrono::Duration::days(db::reports::APPEAL_WINDOW_DAYS);
+    sqlx::query("UPDATE moderation_actions SET created_at = $2 WHERE post_id = $1")
+        .bind(r.post)
+        .bind(chrono::Utc::now() - window - chrono::Duration::days(1))
+        .execute(&r.h.pool)
+        .await
+        .expect("age the removal past the window");
+
+    let (got, body) = appeal(&r.h, &r.author, r.post).await;
+
+    assert_status(got, StatusCode::CONFLICT, &body, "a late appeal");
+    assert_eq!(count(&r.h.pool, APPEALS_ON_POST, r.post).await, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_granting_an_appeal_returns_the_post_to_active() {
+    let r = removed_post().await;
+    let appeal_id = appealed(&r).await;
+
+    let grant = json!({ "status": "granted" });
+    let (got, body) = decide(&r.h, &r.admin, appeal_id, &grant).await;
+
+    assert_status(got, StatusCode::OK, &body, "granting an appeal");
+    assert_eq!(post_state(&r.h.pool, r.post).await.status, "active");
+    let state = appeal_state(&r.h.pool, appeal_id).await;
+    assert_eq!(state.status, "granted");
+    assert!(state.resolved, "a decided appeal records when");
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_denying_an_appeal_records_the_note_and_keeps_the_post_hidden() {
+    let r = removed_post().await;
+    let appeal_id = appealed(&r).await;
+
+    let deny = json!({ "status": "denied", "admin_notes": DENY_NOTE });
+    let (got, body) = decide(&r.h, &r.admin, appeal_id, &deny).await;
+
+    assert_status(got, StatusCode::OK, &body, "denying an appeal");
+    let state = appeal_state(&r.h.pool, appeal_id).await;
+    assert_eq!(state.status, "denied");
+    assert_eq!(state.admin_notes.as_deref(), Some(DENY_NOTE));
+    assert!(state.resolved, "a decided appeal records when");
+    assert_eq!(post_state(&r.h.pool, r.post).await.status, "hidden");
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_a_denial_without_a_note_is_refused() {
+    let r = removed_post().await;
+    let appeal_id = appealed(&r).await;
+
+    let deny = json!({ "status": "denied" });
+    let (got, body) = decide(&r.h, &r.admin, appeal_id, &deny).await;
+
+    assert_status(got, StatusCode::BAD_REQUEST, &body, "a bare denial");
+    assert!(
+        error_of(&body).starts_with("admin_notes "),
+        "the refusal names the field: {:?}",
+        error_of(&body)
+    );
+    let state = appeal_state(&r.h.pool, appeal_id).await;
+    assert_eq!(state.status, "pending");
+    assert!(!state.resolved);
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_a_decided_appeal_cannot_be_decided_again() {
+    let r = removed_post().await;
+    let appeal_id = appealed(&r).await;
+    let deny = json!({ "status": "denied", "admin_notes": DENY_NOTE });
+    let (got, body) = decide(&r.h, &r.admin, appeal_id, &deny).await;
+    assert_status(got, StatusCode::OK, &body, "the first decision");
+
+    let grant = json!({ "status": "granted" });
+    let (got, body) = decide(&r.h, &r.admin, appeal_id, &grant).await;
+
+    assert_status(got, StatusCode::CONFLICT, &body, "a second decision");
+    assert_eq!(appeal_state(&r.h.pool, appeal_id).await.status, "denied");
+    assert_eq!(post_state(&r.h.pool, r.post).await.status, "hidden");
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_the_appeal_queue_is_superadmin_only() {
+    let r = removed_post().await;
+    let appeal_id = appealed(&r).await;
+
+    let author = Some(r.author.bearer.as_str());
+    let (got, body) = send(&r.h.app, Method::GET, "/admin/appeals", author, None).await;
+    assert_status(got, StatusCode::FORBIDDEN, &body, "a user's queue read");
+
+    let admin = Some(r.admin.bearer.as_str());
+    let (got, body) = send(&r.h.app, Method::GET, "/admin/appeals", admin, None).await;
+    assert_status(got, StatusCode::OK, &body, "a superadmin's queue read");
+    let listed = body
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["id"] == json!(appeal_id)))
+        .expect("the appeal is in the queue");
+    assert_eq!(listed["reason"], json!(HIDE_REASON));
+    assert_eq!(listed["body"], json!(APPEAL_BODY));
+}
+
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn vb14_a_grant_restores_the_status_the_post_had_before_the_hide() {
+    let h = live_harness().await;
+    let author = seed_user(&h.pool, "user").await;
+    let admin = seed_user(&h.pool, "superadmin").await;
+    // `matched` is the state a deal pauses a post into: the hide must record it, not flatten it to `active`.
+    let post = seed_post(&h.pool, author.id, PostSeed::public("need", "matched")).await;
+
+    let (got, body) = hide(&h, &admin, post.id, &json!({ "reason": HIDE_REASON })).await;
+    assert_status(got, StatusCode::OK, &body, "hide a paused post");
+    assert_eq!(post_state(&h.pool, post.id).await.status, "hidden");
+
+    let stored: String =
+        sqlx::query_scalar("SELECT prior_status FROM moderation_actions WHERE post_id = $1")
+            .bind(post.id)
+            .fetch_one(&h.pool)
+            .await
+            .expect("the hide records the status it removed the post from");
+    assert_eq!(
+        stored, "matched",
+        "the removal must record the status the post had before the hide"
+    );
+
+    let (got, body) = appeal(&h, &author, post.id).await;
+    assert_status(got, StatusCode::CREATED, &body, "the appeal");
+    let appeal_id = body["id"]
+        .as_str()
+        .and_then(|id| id.parse().ok())
+        .expect("the appeal carries its id");
+
+    let (got, body) = decide(&h, &admin, appeal_id, &json!({ "status": "granted" })).await;
+    assert_status(got, StatusCode::OK, &body, "a grant");
+
+    assert_eq!(
+        post_state(&h.pool, post.id).await.status,
+        "matched",
+        "a grant restores the status the post had before the hide, not `active`"
     );
 }

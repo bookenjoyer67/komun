@@ -8,6 +8,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 
+use super::conversations::MAX_NOTE_CHARS;
 use crate::auth::{require_auth, AuthUser};
 use crate::db::endorsements;
 use crate::AppState;
@@ -42,6 +43,17 @@ async fn endorse(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "cannot endorse yourself"})),
+        ));
+    }
+
+    // The same cap as an offer note: both are server-readable text shown beside a person.
+    let length = input.note.as_deref().map_or(0, |note| note.chars().count());
+    if length > MAX_NOTE_CHARS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!("note must be {MAX_NOTE_CHARS} characters or fewer (got {length})")
+            })),
         ));
     }
 

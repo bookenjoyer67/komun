@@ -11,7 +11,7 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use komun_core::models::{CreatePost, PostKind};
+use komun_core::models::{coarsen_coordinate, CreatePost, PostKind};
 
 use crate::{auth, db};
 
@@ -63,7 +63,7 @@ async fn seed_user(pool: &PgPool) -> Uuid {
 }
 
 /// Written past `db::posts::create`, as a row from before coarsening existed would be.
-async fn seed_exact_post(pool: &PgPool, author: Uuid) -> (Uuid, String) {
+async fn seed_legacy_post(pool: &PgPool, author: Uuid, lat: f64, lon: f64) -> (Uuid, String) {
     let id = Uuid::now_v7();
     let title = format!("r13-exact-{id}");
     sqlx::query(
@@ -74,12 +74,16 @@ async fn seed_exact_post(pool: &PgPool, author: Uuid) -> (Uuid, String) {
     .bind(id)
     .bind(author)
     .bind(&title)
-    .bind(EXACT_LAT)
-    .bind(EXACT_LON)
+    .bind(lat)
+    .bind(lon)
     .execute(pool)
     .await
     .expect("insert exact-location post");
     (id, title)
+}
+
+async fn seed_exact_post(pool: &PgPool, author: Uuid) -> (Uuid, String) {
+    seed_legacy_post(pool, author, EXACT_LAT, EXACT_LON).await
 }
 
 async fn stored_location(pool: &PgPool, id: Uuid) -> (Option<f64>, Option<f64>) {
@@ -99,6 +103,22 @@ async fn post_row(pool: &PgPool, id: Uuid) -> Value {
         .fetch_one(pool)
         .await
         .expect("read full post row")
+}
+
+/// The distance the public feed reports for one post, measured from `near`.
+async fn listed_distance(pool: &PgPool, id: Uuid, title: &str, near: (f64, f64)) -> Option<f64> {
+    let filter = db::posts::PostFilter {
+        q: Some(title.to_string()),
+        near: Some(near),
+        ..Default::default()
+    };
+    db::posts::list(pool, &filter)
+        .await
+        .expect("list posts")
+        .into_iter()
+        .find(|item| item.post.id == id)
+        .expect("the seeded post is in the public list")
+        .distance_km
 }
 
 fn bits(pair: (Option<f64>, Option<f64>)) -> (Option<u64>, Option<u64>) {
@@ -134,7 +154,8 @@ async fn vb06_a_new_post_is_stored_coarse() {
     let pool = live_pool().await;
     let author = seed_user(&pool).await;
 
-    let post = db::posts::create(&pool, author, new_post("r13-create"))
+    let mut conn = pool.acquire().await.expect("a test connection");
+    let post = db::posts::create(&mut conn, author, new_post("r13-create"))
         .await
         .expect("create post");
 
@@ -169,10 +190,10 @@ async fn vb06_an_exact_stored_post_is_served_coarse_and_left_unchanged() {
     let listed = db::posts::list(&pool, &filter).await.expect("list posts");
     let item = listed
         .iter()
-        .find(|post| post.id == id)
+        .find(|item| item.post.id == id)
         .expect("the seeded post is in the public list");
-    assert_eq!(item.location_lat, Some(COARSE_LAT), "list() lat");
-    assert_eq!(item.location_lon, Some(COARSE_LON), "list() lon");
+    assert_eq!(item.post.location_lat, Some(COARSE_LAT), "list() lat");
+    assert_eq!(item.post.location_lon, Some(COARSE_LON), "list() lon");
 
     assert_eq!(
         bits(stored_location(&pool, id).await),
@@ -184,4 +205,50 @@ async fn vb06_an_exact_stored_post_is_served_coarse_and_left_unchanged() {
         before,
         "serving a post must leave its row unchanged"
     );
+}
+
+/// A legacy row is measured from its cell, so it reports exactly the distance a post written
+/// coarse into the same cell reports.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn a_legacy_exact_row_is_as_far_away_as_its_coarse_cell() {
+    let pool = live_pool().await;
+    let author = seed_user(&pool).await;
+    let (legacy_id, legacy_title) = seed_exact_post(&pool, author).await;
+    let mut conn = pool.acquire().await.expect("a test connection");
+    let twin = db::posts::create(
+        &mut conn,
+        author,
+        new_post(&format!("r13-twin-{legacy_id}")),
+    )
+    .await
+    .expect("create coarse twin");
+    let near = (coarsen_coordinate(38.3), coarsen_coordinate(-122.0));
+
+    let legacy = listed_distance(&pool, legacy_id, &legacy_title, near).await;
+    let coarse = listed_distance(&pool, twin.id, &twin.title, near).await;
+    assert!(legacy.is_some(), "a located post has a distance");
+    assert_eq!(
+        legacy, coarse,
+        "the legacy row must be measured from its cell"
+    );
+}
+
+/// A centre on a tie's Rust-coarsened cell is 0 km from it only if SQL rounds the tie the same
+/// way; a different rule lands one cell over, about 8 to 11 km away.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn sql_coarsening_rounds_ties_as_coarsen_coordinate_does() {
+    let pool = live_pool().await;
+    let author = seed_user(&pool).await;
+
+    for (lat, lon) in [(37.85, -122.25), (-37.85, 122.25), (0.05, -0.05)] {
+        let (id, title) = seed_legacy_post(&pool, author, lat, lon).await;
+        let near = (coarsen_coordinate(lat), coarsen_coordinate(lon));
+        assert_eq!(
+            listed_distance(&pool, id, &title, near).await,
+            Some(0.0),
+            "tie {lat},{lon}"
+        );
+    }
 }

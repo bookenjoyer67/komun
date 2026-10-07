@@ -1,10 +1,12 @@
 use anyhow::Result;
 use chrono::Utc;
-use sqlx::{FromRow, PgPool};
+use serde::Serialize;
+use sqlx::{FromRow, PgExecutor, PgPool};
 use uuid::Uuid;
 
 use komun_core::models::{
     coarsen_coordinate, CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency, Visibility,
+    LOCATION_PRECISION_DEGREES,
 };
 
 /// Every column the `Post` model is built from, in one place so `list` and `get` cannot drift.
@@ -24,6 +26,38 @@ const CATEGORY_JOIN: &str = "LEFT JOIN categories c ON c.slug = p.category";
 pub const DEFAULT_LIMIT: i64 = 100;
 pub const MAX_LIMIT: i64 = 200;
 
+pub const MAX_RADIUS_KM: f64 = 500.0;
+
+const EARTH_RADIUS_KM: f64 = 6371.0088;
+
+/// Every order the feed offers. None ranks by engagement, and a value outside this list is a 400
+/// rather than a silent fallback, so an engagement order cannot arrive as a quiet addition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FeedSort {
+    #[default]
+    Recency,
+    Distance,
+}
+
+impl FeedSort {
+    pub const ALL: &'static [FeedSort] = &[FeedSort::Recency, FeedSort::Distance];
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "recency" => Some(FeedSort::Recency),
+            "distance" => Some(FeedSort::Distance),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FeedSort::Recency => "recency",
+            FeedSort::Distance => "distance",
+        }
+    }
+}
+
 /// The validated shape of a list request. Built by `api::posts::validate_filters`, which turns a
 /// malformed query string into a 400, so every field here is known-good and this layer only binds
 /// it.
@@ -37,6 +71,10 @@ pub struct PostFilter {
     pub max_price_cents: Option<i64>,
     pub currency: Option<String>,
     pub item_condition: Option<ItemCondition>,
+    /// `(lat, lon)`, already coarsened. One value, so half a centre cannot be represented.
+    pub near: Option<(f64, f64)>,
+    pub radius_km: Option<f64>,
+    pub sort: FeedSort,
     pub limit: i64,
     pub offset: i64,
 }
@@ -52,10 +90,38 @@ impl Default for PostFilter {
             max_price_cents: None,
             currency: None,
             item_condition: None,
+            near: None,
+            radius_km: None,
+            sort: FeedSort::Recency,
             limit: DEFAULT_LIMIT,
             offset: 0,
         }
     }
+}
+
+/// A feed item. `distance_km` sits beside the post rather than in `Post`, because only a request
+/// with a centre has one.
+#[derive(Debug, Clone, Serialize)]
+pub struct FeedPost {
+    #[serde(flatten)]
+    pub post: Post,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance_km: Option<f64>,
+}
+
+/// A `LIKE` pattern matching `term` anywhere, with `term` matched literally. The query must say
+/// `ESCAPE '\\'`: the escapes are written for that escape character.
+pub(crate) fn contains_pattern(term: &str) -> String {
+    let mut pattern = String::with_capacity(term.len() + 2);
+    pattern.push('%');
+    for c in term.chars() {
+        if matches!(c, '\\' | '%' | '_') {
+            pattern.push('\\');
+        }
+        pattern.push(c);
+    }
+    pattern.push('%');
+    pattern
 }
 
 /// Whether the public feed shows a post: the same rule `list` applies in SQL. Every status is
@@ -76,23 +142,50 @@ pub fn publicly_visible(status: PostStatus, visibility: Visibility) -> bool {
 /// `private` post against, and excludes the moderation statuses so a hidden post does not return
 /// to the feed. A price filter also drops aid posts: their `price_cents` is NULL, so `NULL >= $5`
 /// is NULL — asking for a price range asks for things that have a price.
-pub async fn list(pool: &PgPool, filter: &PostFilter) -> Result<Vec<Post>> {
-    let search = filter.q.as_deref().map(|s| format!("%{}%", s));
+///
+/// Distance is measured from the post's coarsened point, never its stored columns: rows written
+/// before coarsening keep exact values, and measuring from those would locate them more finely
+/// than the grid allows. The coarsening is `numeric` rounding because `float8` rounding breaks
+/// ties to even, where `coarsen_coordinate` breaks them away from zero. Both ends sit on the
+/// `LOCATION_PRECISION_DEGREES` grid, so a distance is only good to about ±13 km: town scale, not
+/// neighbourhood scale. It leaves the server rounded to whole kilometres for that reason.
+///
+/// A post with no location has no distance: a radius excludes it, and without a radius it stays
+/// in the feed and the distance order puts it last.
+pub async fn list(pool: &PgPool, filter: &PostFilter) -> Result<Vec<FeedPost>> {
+    let search = filter.q.as_deref().map(contains_pattern);
+    let steps_per_degree = (1.0 / LOCATION_PRECISION_DEGREES).round();
+    let (near_lat, near_lon) = filter.near.unzip();
     let rows = sqlx::query_as::<_, PostRow>(&format!(
-        r#"SELECT {POST_COLUMNS}, c.label AS category_label
+        r#"SELECT {POST_COLUMNS}, c.label AS category_label,
+                  round(distance.km::numeric)::float8 AS distance_km
            FROM posts p
            {CATEGORY_JOIN}
+           CROSS JOIN LATERAL (
+             SELECT (round(p.location_lat::numeric * $11::float8::numeric)
+                       / $11::float8::numeric)::float8 AS lat,
+                    (round(p.location_lon::numeric * $11::float8::numeric)
+                       / $11::float8::numeric)::float8 AS lon
+           ) AS coarse
+           CROSS JOIN LATERAL (
+             SELECT 2 * $14::float8 * asin(least(1.0::float8, sqrt(
+                      power(sin(radians(coarse.lat - $12::float8) / 2), 2)
+                      + cos(radians($12::float8)) * cos(radians(coarse.lat))
+                        * power(sin(radians(coarse.lon - $13::float8) / 2), 2)))) AS km
+           ) AS distance
            WHERE p.status NOT IN ('withdrawn', 'hidden', 'flagged')
              AND p.visibility = 'public'
              AND ($1::text IS NULL OR p.kind = $1)
              AND ($2::text IS NULL OR p.category = $2)
              AND ($3::text IS NULL OR p.status = $3)
-             AND ($4::text IS NULL OR p.title ILIKE $4 OR p.body ILIKE $4)
+             AND ($4::text IS NULL OR p.title ILIKE $4 ESCAPE '\' OR p.body ILIKE $4 ESCAPE '\')
              AND ($5::bigint IS NULL OR p.price_cents >= $5)
              AND ($6::bigint IS NULL OR p.price_cents <= $6)
              AND ($7::text IS NULL OR p.currency = $7)
              AND ($8::text IS NULL OR p.item_condition = $8)
+             AND ($15::float8 IS NULL OR distance.km <= $15::float8)
            ORDER BY
+             CASE WHEN $16::bool THEN distance.km END ASC NULLS LAST,
              CASE WHEN p.urgency = 'critical' THEN 0
                   WHEN p.urgency = 'high' THEN 1
                   WHEN p.urgency = 'medium' THEN 2
@@ -110,6 +203,12 @@ pub async fn list(pool: &PgPool, filter: &PostFilter) -> Result<Vec<Post>> {
     .bind(filter.item_condition.map(|c| c.as_str()))
     .bind(filter.limit)
     .bind(filter.offset)
+    .bind(steps_per_degree)
+    .bind(near_lat)
+    .bind(near_lon)
+    .bind(EARTH_RADIUS_KM)
+    .bind(filter.radius_km)
+    .bind(filter.sort == FeedSort::Distance)
     .fetch_all(pool)
     .await?;
 
@@ -118,6 +217,10 @@ pub async fn list(pool: &PgPool, filter: &PostFilter) -> Result<Vec<Post>> {
 
 /// `Ok(None)` rather than an error, so the caller can answer 404 instead of 500.
 pub async fn get(pool: &PgPool, id: Uuid) -> Result<Option<Post>> {
+    fetch(pool, id).await
+}
+
+async fn fetch(executor: impl PgExecutor<'_>, id: Uuid) -> Result<Option<Post>> {
     let row = sqlx::query_as::<_, PostRow>(&format!(
         "SELECT {POST_COLUMNS}, c.label AS category_label
          FROM posts p
@@ -125,15 +228,21 @@ pub async fn get(pool: &PgPool, id: Uuid) -> Result<Option<Post>> {
          WHERE p.id = $1"
     ))
     .bind(id)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await?;
 
     Ok(row.map(Into::into))
 }
 
 /// The caller validates the coordinates first: coarsening here would turn an out-of-range value
-/// into a legal one.
-pub async fn create(pool: &PgPool, author_id: Uuid, input: CreatePost) -> Result<Post> {
+/// into a legal one. Takes a connection, so a caller can make the insert part of the transaction
+/// that checked the hourly cap first — `&mut Transaction` derefs to this, as it does for
+/// `api::hourly_count`.
+pub async fn create(
+    conn: &mut sqlx::PgConnection,
+    author_id: Uuid,
+    input: CreatePost,
+) -> Result<Post> {
     let id = Uuid::now_v7();
     let now = Utc::now();
 
@@ -175,10 +284,10 @@ pub async fn create(pool: &PgPool, author_id: Uuid, input: CreatePost) -> Result
     .bind(input.price_negotiable)
     .bind(item_condition)
     .bind(now)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
 
-    get(pool, id)
+    fetch(&mut *conn, id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("post disappeared immediately after insert"))
 }
@@ -258,6 +367,19 @@ struct PostRow {
     buyer_id: Option<Uuid>,
     created_at: chrono::DateTime<Utc>,
     updated_at: chrono::DateTime<Utc>,
+    /// Selected by `list` only; `get` has no centre to measure from.
+    #[sqlx(default)]
+    distance_km: Option<f64>,
+}
+
+impl From<PostRow> for FeedPost {
+    fn from(r: PostRow) -> Self {
+        let distance_km = r.distance_km;
+        FeedPost {
+            post: r.into(),
+            distance_km,
+        }
+    }
 }
 
 impl From<PostRow> for Post {
@@ -337,6 +459,7 @@ mod tests {
             buyer_id: None,
             created_at: now,
             updated_at: now,
+            distance_km: None,
         }
     }
 
@@ -401,5 +524,29 @@ mod tests {
         let post: Post = row("need").into();
         assert_eq!(post.location_lat, None);
         assert_eq!(post.location_lon, None);
+    }
+
+    /// The flattened post keeps the wire shape every client already reads; the distance is an
+    /// extra key, absent rather than null when there is none.
+    #[test]
+    fn a_feed_item_serialises_as_the_post_plus_an_optional_distance() {
+        let mut r = row("listing");
+        r.distance_km = Some(24.0);
+        let with: FeedPost = r.into();
+        let json = serde_json::to_value(&with).expect("serialise");
+        assert_eq!(json["distance_km"], serde_json::json!(24.0));
+        assert_eq!(json["kind"], serde_json::json!("listing"));
+
+        let without: FeedPost = row("listing").into();
+        let json = serde_json::to_value(&without).expect("serialise");
+        assert!(json.get("distance_km").is_none());
+    }
+
+    #[test]
+    fn a_search_pattern_escapes_the_like_metacharacters() {
+        assert_eq!(contains_pattern("wool"), "%wool%");
+        assert_eq!(contains_pattern("100%"), r"%100\%%");
+        assert_eq!(contains_pattern("_a"), r"%\_a%");
+        assert_eq!(contains_pattern(r"a\b"), r"%a\\b%");
     }
 }

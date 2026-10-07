@@ -4,6 +4,7 @@ import MarketCard from '$lib/components/MarketCard.svelte';
 import {
 	filtersToQuery,
 	formatPrice,
+	marketListParams,
 	parsePriceToCents,
 	queryToFilters,
 	type MarketFilters,
@@ -123,6 +124,35 @@ describe('market filter query string', () => {
 
 	it('ignores filter values the server would reject', () => {
 		expect(queryToFilters('kind=buy&item_condition=mint&min_price_cents=-5')).toEqual({});
+	});
+});
+
+describe('market radius and sort in the query string', () => {
+	it('round-trips a preset radius, "any" and a distance order', () => {
+		const preset: MarketFilters = { kind: 'listing', radius_km: 50, sort: 'distance' };
+		expect(queryToFilters(filtersToQuery(preset))).toEqual(preset);
+		const any: MarketFilters = { radius_km: 'any' };
+		expect(queryToFilters(filtersToQuery(any))).toEqual(any);
+	});
+
+	it('ignores a radius outside the presets and an order outside the allow-list', () => {
+		expect(queryToFilters('radius_km=7&sort=popular')).toEqual({});
+		expect(queryToFilters('radius_km=-25&sort=trending')).toEqual({});
+	});
+
+	it('never puts a centre into the shareable query string', () => {
+		const withCentre = {
+			radius_km: 25,
+			near_lat: 37.8,
+			near_lon: -122.3
+		} as unknown as MarketFilters;
+		expect(filtersToQuery(withCentre)).toBe('radius_km=25');
+	});
+
+	it('sends no radius and no distance order without a centre', () => {
+		expect(marketListParams({ kind: 'want', radius_km: 100, sort: 'distance' })).toEqual({
+			kind: 'want'
+		});
 	});
 });
 

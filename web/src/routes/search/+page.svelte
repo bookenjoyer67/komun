@@ -3,6 +3,18 @@
     import EmptyState from '$lib/components/ui/EmptyState.svelte';
     import { goto } from '$app/navigation';
     import { getActiveServer, isConnected } from '$lib/stores/server';
+    import { location as savedLocation } from '$lib/stores/location';
+    import { api } from '$lib/api/client';
+    import {
+        DEFAULT_RADIUS_KM,
+        distanceLabel,
+        nextRadius,
+        parseRadiusChoice,
+        RADIUS_CHOICES,
+        radiusParams,
+        type Centre,
+        type RadiusChoice
+    } from '$lib/api/market';
 
     let { data } = $props();
     let q = $derived(data.q || '');
@@ -10,38 +22,107 @@
     let posts: any[] = $state([]);
     let users: any[] = $state([]);
     let tab = $state('posts');
-    let loading = $state(true);
+    let searchingPosts = $state(false);
     let error = $state('');
+
+    let radius = $state<RadiusChoice>(DEFAULT_RADIUS_KM);
+    let centre = $derived<Centre>({ lat: $savedLocation.lat, lon: $savedLocation.lon });
+    let hasCentre = $derived(centre.lat != null && centre.lon != null);
+    let centreKey = $derived(`${centre.lat},${centre.lon}`);
+    let wider = $derived(nextRadius(radius));
 
     // Editable copy seeded once from the URL's `q`; `untrack` keeps typing from being overwritten by the prop.
     let searchQuery = $state(untrack(() => data.q || ''));
+    // The submitted `q`, never the draft: unsubmitted text has had no search, so it has no result to report.
+    // `q=''` returns the unfiltered feed, so an empty query is never sent and never shows "Searching...".
+    let hasQuery = $derived(q.trim() !== '');
+    let loading = $state(untrack(() => hasQuery));
+
+    let connected = $state(false);
+    // Guards the effect from repeating the search onMount just ran.
+    let lastCentre = $state<string | null>(null);
+    // Guards the query effect from repeating the search onMount just ran.
+    let lastQ = $state<string | null>(null);
 
     onMount(async () => {
         if (!isConnected()) { goto('/connect'); return; }
-        if (!searchQuery) return;
-        await Promise.all([
-            searchPosts(),
-            searchUsers(),
-        ]);
-        loading = false;
+        lastCentre = centreKey;
+        lastQ = q;
+        connected = true;
+        if (!hasQuery) return;
+        await searchAll();
     });
 
+    $effect(() => {
+        // A moved location changes the results as much as a new radius does.
+        const key = centreKey;
+        if (!connected) return;
+        if (key === untrack(() => lastCentre)) return;
+        lastCentre = key;
+        untrack(() => {
+            if (hasQuery) void searchPosts();
+        });
+    });
+
+    // A `goto` to a new `?q=` reuses this component, so onMount never sees the new query.
+    // `pre`, so the new `q` is never rendered with `loading` still false, which would report the old results under it.
+    $effect.pre(() => {
+        const submitted = q;
+        if (!connected) return;
+        if (submitted === untrack(() => lastQ)) return;
+        lastQ = submitted;
+        untrack(() => {
+            loading = hasQuery;
+            if (hasQuery) void searchAll();
+        });
+    });
+
+    // `/api/posts`, not `/api/search`: only the feed carries coordinates, so only it can filter by distance.
     async function searchPosts() {
+        searchingPosts = true;
+        error = '';
         try {
-            posts = await fetch(`${getActiveServer()}/api/search?q=${encodeURIComponent(searchQuery)}`).then(r => r.json());
-        } catch (e) { }
+            posts = await api.posts.list({ q, ...radiusParams(centre, radius) });
+        } catch (e) {
+            // A refused search is a named error, not "no posts found".
+            error = e instanceof Error ? e.message : 'Search failed';
+            posts = [];
+        } finally {
+            searchingPosts = false;
+        }
     }
 
     async function searchUsers() {
         try {
-            users = await fetch(`${getActiveServer()}/api/search/users?q=${encodeURIComponent(searchQuery)}`).then(r => r.json());
+            users = await fetch(`${getActiveServer()}/api/search/users?q=${encodeURIComponent(q)}`).then(r => r.json());
         } catch (e) { }
+    }
+
+    // A superseded search that finishes first must not end the loading state of the query that replaced it.
+    async function searchAll() {
+        const searched = q;
+        await Promise.all([
+            searchPosts(),
+            searchUsers(),
+        ]);
+        if (q === searched) loading = false;
     }
 
     function handleSearch(e: Event) {
         e.preventDefault();
         if (!searchQuery.trim()) return;
         goto(`/search?q=${encodeURIComponent(searchQuery)}`);
+    }
+
+    function onRadius(e: Event) {
+        radius = parseRadiusChoice((e.currentTarget as HTMLSelectElement).value);
+        if (hasQuery) void searchPosts();
+    }
+
+    function widen() {
+        if (wider === null) return;
+        radius = wider;
+        if (hasQuery) void searchPosts();
     }
 
     function kindBadge(kind: string): string {
@@ -82,12 +163,46 @@
         </button>
     </div>
 
+    {#if tab === 'posts'}
+        <div class="radius">
+            <label>
+                <span>Distance</span>
+                <select value={String(radius)} onchange={onRadius} disabled={!hasCentre || searchingPosts}>
+                    {#each RADIUS_CHOICES as choice}
+                        <option value={String(choice.value)}>{choice.label}</option>
+                    {/each}
+                </select>
+            </label>
+            {#if hasCentre}
+                <button
+                    type="button"
+                    class="widen"
+                    disabled={wider === null || searchingPosts}
+                    aria-busy={searchingPosts}
+                    onclick={widen}
+                >
+                    Widen the area
+                </button>
+            {:else}
+                <p class="hint">Set your location to filter by distance.</p>
+            {/if}
+        </div>
+    {/if}
+
     {#if loading}
         <p class="status">Searching...</p>
+    {:else if !hasQuery}
+        <p class="status">Type a word to search posts and users.</p>
     {:else}
         {#if tab === 'posts'}
-            {#if posts.length === 0}
-                <EmptyState title={`No posts found for "${q}".`} />
+            {#if error}
+                <p class="status error" role="alert">{error}</p>
+            {:else if posts.length === 0}
+                <EmptyState
+                    title={hasCentre && radius !== 'any'
+                        ? `No posts found for "${q}" within ${radius} km.`
+                        : `No posts found for "${q}".`}
+                />
             {:else}
                 <ul class="results-list">
                     {#each posts as post}
@@ -102,8 +217,10 @@
                             {#if post.body}
                                 <p class="post-body">{post.body.slice(0, 200)}{post.body.length > 200 ? '...' : ''}</p>
                             {/if}
-                            {#if post.location_name}
-                                <span class="location">{post.location_name}</span>
+                            {#if post.location_name || distanceLabel(post.distance_km)}
+                                <span class="location">
+                                    {post.location_name ?? ''}{post.location_name && distanceLabel(post.distance_km) ? ' · ' : ''}{distanceLabel(post.distance_km)}
+                                </span>
                             {/if}
                         </li>
                     {/each}
@@ -179,6 +296,71 @@
         background: var(--bg-surface);
     }
 
+    .radius {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+        align-items: flex-end;
+        margin-bottom: var(--space-4);
+    }
+
+    .radius label {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+    }
+
+    .radius label span {
+        font-size: var(--text-xs);
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+
+    .radius select {
+        width: auto;
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--text-sm);
+    }
+
+    .radius select:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .widen {
+        background: var(--bg-elevated);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        transition: border-color var(--transition-fast);
+    }
+
+    .widen:hover:not(:disabled) {
+        border-color: var(--accent);
+    }
+
+    .widen:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    .widen:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .widen[aria-busy='true'] {
+        cursor: progress;
+    }
+
+    .hint {
+        color: var(--text-muted);
+        font-size: var(--text-sm);
+    }
+
     .results-list {
         list-style: none;
         display: flex;
@@ -249,5 +431,9 @@
         text-align: center;
         color: var(--text-muted);
         padding: 3rem 0;
+    }
+
+    .error {
+        color: var(--critical);
     }
 </style>

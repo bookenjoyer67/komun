@@ -7,6 +7,7 @@
  */
 import { api } from '$lib/api/client';
 import type { PostLike } from '$lib/api/types';
+import { coarsenCoordinate } from '$lib/geo';
 
 export type MarketKind = 'listing' | 'want';
 
@@ -62,6 +63,72 @@ export interface MarketPost extends PostLike {
 	currency?: string | null;
 	price_negotiable?: boolean;
 	item_condition?: ItemCondition | string | null;
+	/** Present only when the request carried a centre and the post has a location. */
+	distance_km?: number | null;
+}
+
+/**
+ * Both ends of a distance sit on the 0.1° grid, so a distance is good to about ±13 km. The presets
+ * start at town scale for that reason; a smaller one would promise a neighbourhood the data cannot
+ * resolve.
+ */
+export const RADIUS_PRESETS_KM = [15, 25, 50, 100] as const;
+export type RadiusPresetKm = (typeof RADIUS_PRESETS_KM)[number];
+export type RadiusChoice = RadiusPresetKm | 'any';
+export const DEFAULT_RADIUS_KM: RadiusPresetKm = 25;
+
+export const RADIUS_CHOICES: { value: RadiusChoice; label: string }[] = [
+	...RADIUS_PRESETS_KM.map((km) => ({ value: km, label: `Within ${km} km` })),
+	{ value: 'any', label: 'Any distance' }
+];
+
+function isRadiusPreset(value: number): value is RadiusPresetKm {
+	return (RADIUS_PRESETS_KM as readonly number[]).includes(value);
+}
+
+/** Reads a `<select>` value back into a choice; anything unrecognised is the default. */
+export function parseRadiusChoice(raw: string): RadiusChoice {
+	if (raw === 'any') return 'any';
+	const km = Number(raw);
+	return isRadiusPreset(km) ? km : DEFAULT_RADIUS_KM;
+}
+
+/** The next wider choice, ending at "any"; `null` once nothing is wider. */
+export function nextRadius(current: RadiusChoice): RadiusChoice | null {
+	if (current === 'any') return null;
+	const index = RADIUS_PRESETS_KM.indexOf(current);
+	return RADIUS_PRESETS_KM[index + 1] ?? 'any';
+}
+
+/** Always approximate: a precise figure would claim an accuracy the grid does not have. */
+export function distanceLabel(km: number | null | undefined): string {
+	if (km == null || !Number.isFinite(km)) return '';
+	return `~${Math.round(km)} km`;
+}
+
+export interface Centre {
+	lat: number | null;
+	lon: number | null;
+}
+
+/**
+ * The `near_lat`/`near_lon`/`radius_km` params for a centre. Without a whole centre there are no
+ * distance params at all, because the server refuses half a centre and a radius with none. The
+ * centre is coarsened before it leaves the browser: the server never needs the exact point.
+ */
+export function radiusParams(
+	centre: Centre | null | undefined,
+	radius: RadiusChoice = DEFAULT_RADIUS_KM
+): Record<string, string> {
+	const lat = centre?.lat;
+	const lon = centre?.lon;
+	if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) return {};
+	const params: Record<string, string> = {
+		near_lat: String(coarsenCoordinate(lat)),
+		near_lon: String(coarsenCoordinate(lon))
+	};
+	if (radius !== 'any') params.radius_km = String(radius);
+	return params;
 }
 
 /**
@@ -113,6 +180,12 @@ export function parsePriceToCents(raw: string | number | null | undefined): numb
 	return Math.round(value * 100);
 }
 
+export type FeedSort = 'recency' | 'distance';
+
+/**
+ * The URL-facing filters. The centre is deliberately not one of them: it comes from the saved
+ * location at request time, so a shared link never carries where its sender lives.
+ */
 export interface MarketFilters {
 	kind?: MarketKind;
 	category?: string;
@@ -121,6 +194,8 @@ export interface MarketFilters {
 	max_price_cents?: number;
 	currency?: string;
 	item_condition?: ItemCondition;
+	radius_km?: RadiusChoice;
+	sort?: FeedSort;
 	limit?: number;
 	offset?: number;
 }
@@ -133,6 +208,8 @@ const FILTER_KEYS = [
 	'max_price_cents',
 	'currency',
 	'item_condition',
+	'radius_km',
+	'sort',
 	'limit',
 	'offset'
 ] as const;
@@ -183,6 +260,17 @@ export function queryToFilters(query: string | URLSearchParams): MarketFilters {
 	const maxPrice = intParam(params, 'max_price_cents');
 	if (maxPrice !== undefined) filters.max_price_cents = maxPrice;
 
+	const radius = params.get('radius_km');
+	if (radius === 'any') {
+		filters.radius_km = 'any';
+	} else {
+		const km = intParam(params, 'radius_km');
+		if (km !== undefined && isRadiusPreset(km)) filters.radius_km = km;
+	}
+
+	const sort = params.get('sort');
+	if (sort === 'recency' || sort === 'distance') filters.sort = sort;
+
 	const limit = intParam(params, 'limit');
 	if (limit !== undefined) filters.limit = limit;
 
@@ -192,30 +280,54 @@ export function queryToFilters(query: string | URLSearchParams): MarketFilters {
 	return filters;
 }
 
-/** The exact string-valued params `GET /api/posts` accepts. */
-export function marketListParams(filters: MarketFilters): Record<string, string> {
+/**
+ * The exact string-valued params `GET /api/posts` accepts. A radius or a distance order without a
+ * centre is dropped rather than sent, because the server refuses both.
+ */
+export function marketListParams(
+	filters: MarketFilters,
+	centre?: Centre | null
+): Record<string, string> {
+	const { radius_km, sort, ...rest } = filters;
 	const params: Record<string, string> = {};
-	for (const [key, value] of new URLSearchParams(filtersToQuery(filters))) {
+	for (const [key, value] of new URLSearchParams(filtersToQuery(rest))) {
 		params[key] = value;
 	}
+	const distance = radiusParams(centre, radius_km ?? DEFAULT_RADIUS_KM);
+	Object.assign(params, distance);
+	if (sort === 'recency' || (sort === 'distance' && distance.near_lat)) params.sort = sort;
 	return params;
+}
+
+function byDistanceThenNewest(a: MarketPost, b: MarketPost): number {
+	const da = a.distance_km ?? Number.POSITIVE_INFINITY;
+	const db = b.distance_km ?? Number.POSITIVE_INFINITY;
+	if (da !== db) return da - db;
+	return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
 }
 
 /**
  * `GET /api/posts` constrained to the market kinds. With no `kind`, two requests (one per kind)
- * are merged newest-first, so an unfiltered request never returns aid posts.
+ * are merged, so an unfiltered request never returns aid posts. The merge keeps the requested
+ * order: nearest first under a distance order, with unlocated posts last, and newest first
+ * otherwise.
  */
-export async function listMarketPosts(filters: MarketFilters = {}): Promise<MarketPost[]> {
+export async function listMarketPosts(
+	filters: MarketFilters = {},
+	centre?: Centre | null
+): Promise<MarketPost[]> {
 	if (filters.kind) {
-		return api.posts.list(marketListParams(filters));
+		return api.posts.list(marketListParams(filters, centre));
 	}
 
 	const [listings, wants] = await Promise.all([
-		api.posts.list(marketListParams({ ...filters, kind: 'listing' })),
-		api.posts.list(marketListParams({ ...filters, kind: 'want' }))
+		api.posts.list(marketListParams({ ...filters, kind: 'listing' }, centre)),
+		api.posts.list(marketListParams({ ...filters, kind: 'want' }, centre))
 	]);
 
-	return [...listings, ...wants].sort(
+	const merged: MarketPost[] = [...listings, ...wants];
+	if (filters.sort === 'distance') return merged.sort(byDistanceThenNewest);
+	return merged.sort(
 		(a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
 	);
 }

@@ -1,5 +1,7 @@
 //! Passwords, timing, single-use tokens and session revocation.
 
+mod auth_hardening;
+mod badges;
 mod deal_and_moderation;
 mod key_change;
 mod key_coherence;
@@ -9,6 +11,7 @@ mod location_privacy;
 mod market;
 mod ops_admin;
 mod outbound_routes;
+mod resource_limits;
 mod support;
 
 /// The server-side half of the password path.

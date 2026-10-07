@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgConnection, PgPool};
 use uuid::Uuid;
 
 use komun_core::models::{MatchStatus, OfferKind, PostKind, PostStatus, Visibility};
@@ -41,7 +41,11 @@ pub struct Conversation {
     pub responder_name: String,
     pub author_name: String,
     pub status: String,
+    /// One page of the thread, oldest first.
     pub messages: Vec<MessageRow>,
+    /// Passed back as `before`, this fetches the page of older messages; `None` when this page
+    /// reaches the start of the thread.
+    pub older_before: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -156,15 +160,15 @@ struct RespondTarget {
     sold: bool,
 }
 
+/// Runs inside the caller's transaction, which commits only an `Opened` step; the caller sends
+/// the notification after that commit with [`notify_response`].
 pub async fn create_match(
-    pool: &PgPool,
+    tx: &mut PgConnection,
     post_id: Uuid,
     responder_id: Uuid,
     ciphertext: &[u8],
     nonce: Option<&[u8]>,
 ) -> Result<RespondStep> {
-    let mut tx = pool.begin().await?;
-
     // `FOR SHARE` holds the post as checked until the thread commits, so a withdrawal, a
     // moderation action or a sale cannot land between the check and the insert.
     let target = sqlx::query_as::<_, RespondTarget>(
@@ -225,34 +229,42 @@ pub async fn create_match(
     .execute(&mut *tx)
     .await?;
 
-    tx.commit().await?;
-
-    let responder_name =
-        sqlx::query_scalar::<_, String>("SELECT display_name FROM users WHERE id = $1")
-            .bind(responder_id)
-            .fetch_optional(pool)
-            .await?
-            .unwrap_or_default();
-    let post_title = sqlx::query_scalar::<_, String>("SELECT title FROM posts WHERE id = $1")
-        .bind(post_id)
-        .fetch_optional(pool)
-        .await?
-        .unwrap_or_default();
-    super::notifications::create(
-        pool,
-        target.author_id,
-        "response",
-        &format!("{} responded to: {}", responder_name, post_title),
-        None,
-        Some(&format!("/messages/{}", match_id)),
-    )
-    .await
-    .ok();
-
     Ok(RespondStep::Opened(match_id))
 }
 
-pub async fn list_conversations(pool: &PgPool, user_id: Uuid) -> Result<Vec<ConversationPreview>> {
+pub async fn notify_response(pool: &PgPool, match_id: Uuid) -> Result<()> {
+    let row: Option<(Uuid, String, String)> = sqlx::query_as(
+        r#"SELECT p.author_id, p.title, u.display_name
+           FROM matches m
+           JOIN posts p ON p.id = m.post_id
+           JOIN users u ON u.id = m.responder_id
+           WHERE m.id = $1"#,
+    )
+    .bind(match_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((author_id, post_title, responder_name)) = row {
+        super::notifications::create(
+            pool,
+            author_id,
+            "response",
+            &format!("{} responded to: {}", responder_name, post_title),
+            None,
+            Some(&format!("/messages/{}", match_id)),
+        )
+        .await
+        .ok();
+    }
+    Ok(())
+}
+
+pub async fn list_conversations(
+    pool: &PgPool,
+    user_id: Uuid,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ConversationPreview>> {
     let rows = sqlx::query_as::<_, ConversationPreviewRow>(
         r#"SELECT
             m.id AS match_id,
@@ -276,19 +288,26 @@ pub async fn list_conversations(pool: &PgPool, user_id: Uuid) -> Result<Vec<Conv
             ORDER BY created_at DESC LIMIT 1
         ) last ON true
         WHERE m.responder_id = $1 OR p.author_id = $1
-        ORDER BY COALESCE(last.created_at, m.created_at) DESC"#
+        ORDER BY COALESCE(last.created_at, m.created_at) DESC, m.id DESC
+        LIMIT $2 OFFSET $3"#
     )
     .bind(user_id)
+    .bind(limit)
+    .bind(offset)
     .fetch_all(pool)
     .await?;
 
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
+/// The thread with its newest `limit` messages strictly before `before` (or the newest overall),
+/// returned oldest first.
 pub async fn get_conversation(
     pool: &PgPool,
     match_id: Uuid,
     user_id: Uuid,
+    limit: i64,
+    before: Option<DateTime<Utc>>,
 ) -> Result<Conversation> {
     let row = sqlx::query_as::<_, MatchDetailRow>(
         r#"SELECT
@@ -308,12 +327,30 @@ pub async fn get_conversation(
     .await?
     .ok_or_else(|| anyhow!("conversation not found"))?;
 
-    let messages = sqlx::query_as::<_, MessageDbRow>(
-        "SELECT id, match_id, sender_id, ciphertext, nonce, created_at FROM messages WHERE match_id = $1 ORDER BY created_at ASC"
+    // One row past the page says whether an older page exists without a second query.
+    let mut messages = sqlx::query_as::<_, MessageDbRow>(
+        r#"SELECT id, match_id, sender_id, ciphertext, nonce, created_at
+           FROM (
+             SELECT id, match_id, sender_id, ciphertext, nonce, created_at
+             FROM messages
+             WHERE match_id = $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+             ORDER BY created_at DESC, id DESC
+             LIMIT $3
+           ) newest
+           ORDER BY created_at ASC, id ASC"#,
     )
     .bind(match_id)
+    .bind(before)
+    .bind(limit.saturating_add(1))
     .fetch_all(pool)
     .await?;
+
+    let older_before = if messages.len() as i64 > limit {
+        messages.remove(0);
+        messages.first().map(|oldest| oldest.created_at)
+    } else {
+        None
+    };
 
     Ok(Conversation {
         match_id: row.match_id,
@@ -326,12 +363,15 @@ pub async fn get_conversation(
         author_name: row.author_name,
         status: row.status,
         messages: messages.into_iter().map(Into::into).collect(),
+        older_before,
         created_at: row.created_at,
     })
 }
 
+/// Runs inside the caller's transaction; the caller sends the notification after its commit with
+/// [`notify_message`].
 pub async fn send_message(
-    pool: &PgPool,
+    tx: &mut PgConnection,
     match_id: Uuid,
     sender_id: Uuid,
     ciphertext: &[u8],
@@ -342,7 +382,7 @@ pub async fn send_message(
     )
     .bind(match_id)
     .bind(sender_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
 
     if !participant {
@@ -361,9 +401,20 @@ pub async fn send_message(
     .bind(ciphertext)
     .bind(nonce)
     .bind(now)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    Ok(MessageRow {
+        id,
+        match_id,
+        sender_id,
+        ciphertext: b64(ciphertext),
+        nonce: nonce.map(b64),
+        created_at: now,
+    })
+}
+
+pub async fn notify_message(pool: &PgPool, match_id: Uuid, sender_id: Uuid) -> Result<()> {
     let other_party = sqlx::query_scalar::<_, Uuid>(
         r#"SELECT CASE WHEN p.author_id = $2 THEN m.responder_id ELSE p.author_id END
            FROM matches m JOIN posts p ON p.id = m.post_id WHERE m.id = $1"#,
@@ -392,15 +443,7 @@ pub async fn send_message(
         .await
         .ok();
     }
-
-    Ok(MessageRow {
-        id,
-        match_id,
-        sender_id,
-        ciphertext: b64(ciphertext),
-        nonce: nonce.map(b64),
-        created_at: now,
-    })
+    Ok(())
 }
 
 #[derive(FromRow)]
@@ -709,17 +752,25 @@ pub async fn append_offer(
     Ok(DealStep::Done(row))
 }
 
-/// The whole negotiation, oldest first. `id` breaks the tie: `created_at` is microsecond-resolution
-/// and Postgres may reorder rows written in the same microsecond, which an append-only trail must
-/// not allow. UUIDv7 sorts by time, so the tie-break agrees with the clock.
-pub async fn list_offers(pool: &PgPool, match_id: Uuid) -> Result<Vec<OfferRow>> {
+/// One page of the negotiation, oldest first. `id` breaks the tie: `created_at` is
+/// microsecond-resolution and Postgres may reorder rows written in the same microsecond, which an
+/// append-only trail must not allow. UUIDv7 sorts by time, so the tie-break agrees with the clock.
+pub async fn list_offers(
+    pool: &PgPool,
+    match_id: Uuid,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<OfferRow>> {
     let rows = sqlx::query_as::<_, OfferDbRow>(
         r#"SELECT id, match_id, actor_id, kind, amount_cents, currency, note, created_at
            FROM match_offers
            WHERE match_id = $1
-           ORDER BY created_at ASC, id ASC"#,
+           ORDER BY created_at ASC, id ASC
+           LIMIT $2 OFFSET $3"#,
     )
     .bind(match_id)
+    .bind(limit)
+    .bind(offset)
     .fetch_all(pool)
     .await?;
 
