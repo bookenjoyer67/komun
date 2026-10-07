@@ -56,6 +56,27 @@
 	let sessions = $state<SessionSummary[]>([]);
 	let sessionsError = $state('');
 
+	/**
+	 * One removal of one of the author's posts. `appeal_status` is the stored word and is never
+	 * rendered; the sentences below stand in for it.
+	 */
+	interface ModerationNotice {
+		post_id: string;
+		post_title: string;
+		reason: string;
+		hidden_at: string;
+		appeal_deadline: string;
+		appeal_open: boolean;
+		appeal_status: string | null;
+		appeal_admin_notes: string | null;
+	}
+
+	let notices = $state<ModerationNotice[]>([]);
+	let noticesState = $state<'loading' | 'ready' | 'error'>('loading');
+	let appealDrafts = $state<Record<string, string>>({});
+	let appealErrors = $state<Record<string, string>>({});
+	let appealBusy = $state<string | null>(null);
+
 	const publicKey = $derived(getEncryptionPublicKey() || '');
 	const keyUnlocked = $derived(!!$auth.keypair?.secretKey);
 
@@ -83,7 +104,7 @@
 				// leave the form blank rather than blocking the page
 			}
 		}
-		await loadSessions();
+		await Promise.all([loadSessions(), loadNotices()]);
 	});
 
 	async function loadSessions() {
@@ -93,6 +114,50 @@
 		} catch {
 			sessionsError = 'Could not load your sessions.';
 		}
+	}
+
+	async function loadNotices() {
+		try {
+			const res = await fetch(`${getActiveServer()}/api/me/moderation`, {
+				headers: { Authorization: `Bearer ${getToken()}` },
+			});
+			if (!res.ok) throw new Error(res.statusText);
+			notices = await res.json();
+			noticesState = 'ready';
+		} catch {
+			noticesState = 'error';
+		}
+	}
+
+	function setAppealError(postId: string, message: string) {
+		appealErrors = { ...appealErrors, [postId]: message };
+	}
+
+	async function sendAppeal(notice: ModerationNotice) {
+		const body = (appealDrafts[notice.post_id] ?? '').trim();
+		if (!body) {
+			setAppealError(notice.post_id, 'Say why the post should come back before sending.');
+			return;
+		}
+		appealBusy = notice.post_id;
+		setAppealError(notice.post_id, '');
+		try {
+			const res = await fetch(`${getActiveServer()}/api/posts/${notice.post_id}/appeal`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+				body: JSON.stringify({ body }),
+			});
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				throw new Error(data.error || 'Could not send the appeal.');
+			}
+			notices = notices.map((n) =>
+				n.post_id === notice.post_id ? { ...n, appeal_open: false, appeal_status: 'pending' } : n
+			);
+		} catch (e) {
+			setAppealError(notice.post_id, e instanceof Error ? e.message : 'Could not send the appeal.');
+		}
+		appealBusy = null;
 	}
 
 	async function handleResend() {
@@ -255,6 +320,69 @@
 			</button>
 		</div>
 	{/if}
+
+	<section class="section" aria-labelledby="removed-posts-heading">
+		<h2 id="removed-posts-heading">Removed posts</h2>
+		{#if noticesState === 'loading'}
+			<p class="hint">Checking for removed posts…</p>
+		{:else if noticesState === 'error'}
+			<p class="error" role="alert">Could not check for removed posts. Reload the page to try again.</p>
+		{:else if notices.length === 0}
+			<p class="hint">None of your posts has been removed from public view.</p>
+		{:else}
+			<ul class="notice-list">
+				{#each notices as notice (notice.post_id)}
+					<li class="notice">
+						<h3 class="notice-title">{notice.post_title}</h3>
+						<p class="notice-meta">Removed from public view on {when(notice.hidden_at)}</p>
+						<p class="notice-text">
+							<span class="notice-label">Reason given</span>
+							{notice.reason}
+						</p>
+						{#if notice.appeal_status === 'pending'}
+							<p class="notice-outcome" role="status">Your appeal is with a moderator.</p>
+						{:else if notice.appeal_status === 'denied'}
+							<p class="notice-outcome">Your appeal was declined.</p>
+							{#if notice.appeal_admin_notes}
+								<p class="notice-text">
+									<span class="notice-label">Moderator's note</span>
+									{notice.appeal_admin_notes}
+								</p>
+							{/if}
+						{:else if notice.appeal_open}
+							<form
+								class="appeal-form"
+								onsubmit={(e) => { e.preventDefault(); sendAppeal(notice); }}
+							>
+								<label class="notice-label" for="appeal-{notice.post_id}">Your appeal</label>
+								<textarea
+									id="appeal-{notice.post_id}"
+									rows="3"
+									bind:value={appealDrafts[notice.post_id]}
+								></textarea>
+								<p class="hint">You can appeal once, until {when(notice.appeal_deadline)}.</p>
+								{#if appealErrors[notice.post_id]}
+									<p class="error" role="alert">{appealErrors[notice.post_id]}</p>
+								{/if}
+								<button
+									type="submit"
+									class="btn-primary"
+									disabled={appealBusy === notice.post_id}
+									aria-busy={appealBusy === notice.post_id}
+								>
+									{appealBusy === notice.post_id ? 'Sending…' : 'Send appeal'}
+								</button>
+							</form>
+						{:else}
+							<p class="notice-outcome">
+								The window to appeal this closed on {when(notice.appeal_deadline)}.
+							</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
 
 	<section class="section">
 		<h2>Profile Picture</h2>
@@ -466,6 +594,20 @@
 
 	.save-btn { background: var(--accent); color: var(--text-on-accent); padding: 0.6rem; border-radius: var(--radius); font-weight: 600; }
 	.save-btn:disabled { opacity: 0.6; }
+
+	.notice-list { list-style: none; display: flex; flex-direction: column; gap: var(--space-3); }
+	.notice {
+		background: var(--bg-surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: var(--space-3) var(--space-4);
+	}
+	.notice-title { font-size: var(--text-base); margin-bottom: var(--space-1); }
+	.notice-meta { color: var(--text-muted); font-size: var(--text-xs); margin-bottom: var(--space-2); }
+	.notice-text { font-size: var(--text-sm); margin-bottom: var(--space-2); white-space: pre-wrap; }
+	.notice-label { display: block; color: var(--text-muted); font-size: var(--text-xs); font-weight: 600; }
+	.notice-outcome { font-size: var(--text-sm); font-weight: 600; }
+	.appeal-form { margin-top: var(--space-2); }
 
 	.avatar-section {
 		display: flex;

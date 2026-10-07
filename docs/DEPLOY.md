@@ -234,3 +234,54 @@ The pipeline refuses a bundle that carries a hostname of its own
 
 Name the deployment's canonical host in `[node] public_url` instead
 (`config.example.toml:21` `# public_url = "https://komun.example.org"`).
+
+## 10. Moderation, appeals and migration 004
+
+Which moderation routes does the server expose, who may call each, and what does the operator apply?
+
+Every route below is mounted under `/api` (`crates/server/src/main.rs:125` `.nest("/api", api::router(state.clone()))`).
+
+| Route | Who may call it | Authority |
+|:--|:--|:--|
+| `POST /api/posts/{post_id}/hide` | a superadmin | (`crates/server/src/api/reports.rs:18` `.route("/posts/{post_id}/hide", post(hide_post))`; `:21` `require_superadmin,`) |
+| `POST /api/posts/{post_id}/appeal` | the post's author | (`crates/server/src/api/reports.rs:42` `.route("/posts/{post_id}/appeal", post(file_appeal))`; `:44` `.layer(middleware::from_fn_with_state(state.clone(), require_auth))`; `crates/server/src/db/reports.rs:299` `if owner != author_id {`) |
+| `GET /api/me/moderation` | a signed-in user, about their own hidden posts | (`crates/server/src/api/reports.rs:43` `.route("/me/moderation", get(my_moderation))`; `crates/server/src/db/reports.rs:389` `WHERE p.author_id = $1 AND p.status = 'hidden'`) |
+| `GET /api/admin/appeals` | a superadmin | (`crates/server/src/api/reports.rs:50` `.route("/admin/appeals", get(list_appeals))`; `:54` `require_superadmin,`) |
+| `PATCH /api/admin/appeals/{appeal_id}` | a superadmin | (`crates/server/src/api/reports.rs:51` `.route("/admin/appeals/{appeal_id}", patch(resolve_appeal))`; `:54` `require_superadmin,`) |
+
+- Send a non-empty `reason` with every hide, because a missing or blank one is refused with 400
+  (`crates/server/src/api/reports.rs:123` `let reason = required_text("reason", input.reason.as_deref()).map_err(bad_request)?;`;
+  `crates/server/src/api/categories.rs:319` `StatusError::with_status(StatusCode::BAD_REQUEST, message)`).
+- Expect every hide to notify the post's author with the reason as the notice body
+  (`crates/server/src/db/reports.rs:259` `Some(reason),`).
+- Expect an appeal to be accepted for 14 days from the removal
+  (`crates/server/src/db/reports.rs:99` `pub const APPEAL_WINDOW_DAYS: i64 = 14;`).
+- Expect a second appeal on the same removal to get 409
+  (`crates/server/src/db/reports.rs:104` `pub const ALREADY_APPEALED: &str = "this removal has already been appealed";`;
+  `crates/server/src/api/reports.rs:227` `StatusError::with_status(axum::http::StatusCode::CONFLICT, message)`).
+- Expect anyone but the post's author to get 404 from the appeal route
+  (`crates/server/src/db/reports.rs:299` `if owner != author_id {`).
+- Send `admin_notes` with every denial; a grant needs none
+  (`crates/server/src/api/reports.rs:213` `AppealDecision::Denied => Ok((decision, Some(required_text("admin_notes", note)?))),`).
+- Expect a grant to restore the status the post had before the hide
+  (`crates/server/src/db/reports.rs:178` `Some(prior) => prior,`).
+- Expect a grant to set `active` instead when that earlier status was itself hidden or flagged
+  (`crates/server/src/db/reports.rs:177` `Some(PostStatus::Hidden | PostStatus::Flagged) | None => PostStatus::Active,`).
+
+### Apply migration 004
+
+Who applies `004`, when does it run, and what must never happen to it afterwards?
+
+- Apply `migrations/004_moderation_path.sql` as the operator's own step: the server runs every pending
+  migration on boot (`crates/server/src/main.rs:76` `sqlx::migrate!("../../migrations")`).
+- Expect it to create two tables (`migrations/004_moderation_path.sql:2` `CREATE TABLE moderation_actions (`;
+  `:16` `CREATE TABLE appeals (`).
+- Expect every removal row to record the status the hide replaced
+  (`migrations/004_moderation_path.sql:10` `prior_status TEXT NOT NULL,`).
+- Expect that column to accept exactly the post statuses of `001`
+  (`migrations/004_moderation_path.sql:12` `CONSTRAINT chk_moderation_actions_prior_status CHECK`;
+  `migrations/001_schema.sql:162` `CONSTRAINT chk_posts_status CHECK`).
+- Expect a post hidden before `004` to have no removal its author can appeal
+  (`crates/server/src/db/reports.rs:103` `"this post was hidden before removals recorded a reason, so there is no removal to appeal";`).
+- Leave `004` unedited once it has run, because each applied migration is stored with its checksum
+  (`docs/DEVELOPMENT.md:71` `checksum       BYTEA NOT NULL,`; `docs/DEVELOPMENT.md:117` `Never edit an applied`).
