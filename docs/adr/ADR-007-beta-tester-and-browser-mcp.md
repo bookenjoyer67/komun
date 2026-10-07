@@ -83,3 +83,9 @@ Which artifacts settle this decision?
 - The diagram branch: `docs/orchestration-diagram.md:64` `In the optional pre-release flow`.
 - The classification row: `docs/step-classification.md:42` `Beta-test pass against the running app`.
 - The run entry: `docs/iteration-log.md:1442` `run-2026-10-05-beta-tester-role`.
+
+## Open risks
+
+- The `CLAUDE.md` role list still reads seven roles. The human authorized the edit, and this session's scope did not carry it (`docs/adr/ADR-007-beta-tester-and-browser-mcp.md`).
+- No gate's verdict depends on the beta pass, so a release can proceed with it never having run.
+- The browser server widens the tool surface. It is granted only to this role, and the grant is a list rather than a proof.

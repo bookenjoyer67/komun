@@ -120,3 +120,8 @@ Which artifacts settle this decision?
 - Read-only inputs: (`agentic.config.json:129` `"docs/routing-and-tool-grant-map.json",`).
 - Classification levels that bound the ceilings: (`docs/memory-architecture.md:149` `Do not store in agent memory.`; `docs/memory-architecture.md:151` `Must never appear in any memory file.`).
 - Grant alternatives of record: (`docs/routing-and-tool-grant-map.md:78` `## Alternatives considered`).
+
+## Open risks
+
+- One path executes commands, so its correctness is a single point of failure for the whole boundary. The refusals are measured against four probes (`mcp/gate/SCHEMA.md:128`), not proved exhaustive.
+- The boundary is enforced in the server and in the allow-lists. A fork that edits either without the other has no test that fails, only a policy that disagrees.

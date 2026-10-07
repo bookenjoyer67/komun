@@ -119,3 +119,9 @@ Which artifacts settle this decision?
 - Gate journal that records the local runs rather than a CI run: `.memory/gate-audit.log:165` `"gate": "conformance"`.
 - Gate journal showing the CI-role gate runs: `.memory/gate-audit.log:26` `"calling_role": "ci"`.
 - CI history gap: `gh run list` -> `no runs listed`, checked on 2026-10-01.
+
+## Open risks
+
+- The policy is only as complete as the near-misses enumerated so far: ten, one control each. An unobserved failure has no owner until it is observed.
+- Each comparison asserts equality between this document and its artifacts, so a policy edit that misses one artifact fails the suite. That protects agreement and does not prove the policy itself is right.
+- The classifier decides which changes are governed, so a misclassified change is ungoverned rather than refused.
