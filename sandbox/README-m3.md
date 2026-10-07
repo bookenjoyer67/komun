@@ -130,3 +130,19 @@ Keep run output out of version control, and keep the curated corpus in it
 - Ignore `.memory/` run output — `storage.db`, `storage-audit.log` — while keeping the curated corpus: `.memory/` is currently untracked but not ignored (`git check-ignore -v .memory` prints nothing and exits 1).
 - Add `.memory/reference/` deliberately, because the retrieval ground truth is measured against that exact corpus (the Module 3.2 lesson: "Reference corpus | `.memory/reference/`").
 - Never widen the allow-list to make a denial pass: the denial is the evidence (`mcp/roles.allowlist.json` keeps `"task_tracker": ["project-manager"]`).
+
+## What must already be true before I start?
+
+Check the three prerequisites in one command each:
+
+```bash
+docker image ls agent-sandbox:komun-m3 --format '{{.Repository}}:{{.Tag}}'
+docker network ls --filter name=agent-internal --format '{{.Name}}'
+docker version --format '{{.Server.Version}}'
+```
+
+The image must be present, the `agent-internal` network must exist, and the Docker daemon must answer. A missing image comes from the step under "How do I build the Module 3 image?". A missing network comes from the step under "How do I create the internal network?".
+
+## What if it does not work?
+
+Two failures account for most attempts. If `curl https://example.com` succeeds inside the container, the container has egress and the lesson is not satisfied: check that it is attached to `agent-internal` alone. If a published port is unreachable from the host, the container is on an internal network, which is expected here. Attaching the bridge as a second network restores publishing, and it also restores egress, so it is not a fix for this exercise.
