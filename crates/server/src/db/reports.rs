@@ -169,8 +169,9 @@ pub fn check_appeal_resolution(
     }
 }
 
-/// A grant reverses moderation, so it never restores a moderation status: a post hidden while it
-/// was already hidden or flagged comes back `Active`, as does a status this build cannot read.
+/// A grant reverses moderation, so it never restores a moderation status: a removal that recorded
+/// `Hidden` (a re-hide with no earlier removal on record) or `Flagged` comes back `Active`, as does
+/// a status this build cannot read.
 /// Restoring `Hidden` would leave the post removed by the very grant that overturned its removal.
 pub fn status_after_grant(prior_status: &str) -> PostStatus {
     match PostStatus::parse(prior_status) {
