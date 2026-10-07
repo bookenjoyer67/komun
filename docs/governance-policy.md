@@ -434,3 +434,11 @@ The gating can be inspected rather than assumed. `.memory/gate-audit.log` holds 
 call. Each row carries the calling role, the gate, the exit code and the duration. There are 254
 rows, covering 2026-09-28 to 2026-10-04. `scripts/build-audit-trail.py` assembles those rows into the
 run's audit trail.
+
+## What did the gate refuse most recently?
+
+On 2026-10-05 the conformance gate refused a change to `docs/orchestration-diagram.md`. The change added a section naming the trigger for each human checkpoint. The gate returned two findings against it before it could land.
+
+The first was R1-NOT-QUESTION. The line after the heading was not the question the section answers. The second was CIT-LITERAL-MISSING. A citation of `docs/governance-policy.md:390` `Escalation and rollback` carried a quoted literal absent from that line.
+
+The author repaired the prose until the same gate returned pass. Only then was the change committed, as `68ec5e4`. The refusal is the point. The gate decided when the change could land, and the history carries the commit that followed it.
