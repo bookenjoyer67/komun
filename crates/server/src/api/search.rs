@@ -9,6 +9,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use super::StatusError;
+use crate::db::posts::contains_pattern;
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
@@ -93,12 +94,12 @@ async fn search_users(
         return Ok(Json(vec![]));
     }
 
-    let pattern = format!("%{}%", query);
+    let pattern = contains_pattern(query);
     let results = sqlx::query_as::<_, UserSearchResult>(
         r#"SELECT u.id, u.display_name, u.role,
            (SELECT COUNT(*) FROM endorsements WHERE endorsee_id = u.id) AS endorsement_count
            FROM users u
-           WHERE u.display_name ILIKE $1
+           WHERE u.display_name ILIKE $1 ESCAPE '\'
            ORDER BY u.display_name
            LIMIT 20"#,
     )

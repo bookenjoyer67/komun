@@ -96,8 +96,9 @@ pub fn validate_verifier_shape(verifier: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The password-length policy, applied to the plaintext length the client reports it derived from.
-/// Kept server-side so the rule is enforced even by a client that skips its own check.
+/// The password-length policy, applied to the length the client reports for the password it
+/// derived the verifier from. The server never sees the password, so it cannot check that report:
+/// this stops a buggy client, not a hostile one.
 pub fn validate_password_length(len: usize, minimum: usize) -> Result<(), String> {
     if len < minimum {
         return Err(format!(

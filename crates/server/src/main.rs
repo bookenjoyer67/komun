@@ -3,6 +3,7 @@ pub mod auth;
 mod badges;
 pub mod config;
 mod db;
+mod media;
 mod rate_limit;
 mod repl;
 mod security_headers;
