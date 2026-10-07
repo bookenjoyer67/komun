@@ -69,3 +69,38 @@ Against the Module 1 baseline's `Review latency: ≈4m08s` (`docs/clippy-gate/it
 manual portion of the same review now costs a median 2.22s. That is the machine share only: a human
 accept/reject decision is not covered by these rows, and no figure is offered for it. The defect-rate
 axis stays unmeasured for the reason given above, and no rate is invented here.
+
+---
+
+## Defect rate, counted from the record (appended 2026-10-05)
+
+The table above marks this axis "No. A rate needs a denominator the record does not carry." The record
+does carry one population, and it can be counted. The section is appended rather than edited into the
+table for the reason given above: two documents cite lines 3 and 41 of this file.
+
+Defects caught per gated check, from `.memory/gate-audit.log`, 254 rows covering 2026-09-28 to 2026-10-04:
+
+| Population | Caught | Checks | Rate |
+|:--|--:|--:|--:|
+| Every gated check | 65 | 254 | 25.6% |
+| Excluding `fmt` | 10 | 186 | 5.4% |
+
+The second row is the honest one for a comparison. The `fmt` gate is red for a pre-existing reason that
+neither change under review caused (`docs/calibration-log.md:170`), and it accounts for 55 of those 65
+caught failures, so counting it measures the repository's standing state rather than the pipeline's
+ability to catch a defect.
+
+Defects named per recorded run, from the run headings in `docs/iteration-log.md`: 12 named across 16
+runs, 0.75 per run. That is a floor and not a rate. Only the headings were counted, so a run that found
+a defect without naming it there is not counted here.
+
+## Is that comparable to the Module 1 baseline?
+
+No, and saying so is the finding. The baseline's record carries one run (`docs/clippy-gate/iteration-log.md:12`),
+a clippy pass over one workflow. It found no lint violations and left the workspace tests passing at exit
+0 with 158 passed and 0 failed (`docs/clippy-gate/iteration-log.md:76`), scoring 19 / 20 at 2m26s and
+$0.68125 (`docs/clippy-gate/iteration-log.md:88`).
+
+That is one sample of a different kind of check. Setting 1 run against 254 gated checks would measure
+the denominators rather than the defect rates. The axis is now counted on the capstone side, one
+recorded run stands on the baseline side, and no rate-to-rate comparison is supported by the record.
