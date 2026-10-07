@@ -408,10 +408,29 @@ Rollback is one commit and one command, and a threshold decides it in the same w
 
 ## Eval-gated change control, in the commit history
 
-A change reaches `main` through a pull request whose gates have run, so the history records the gate's decision rather than the author's intention. `.github/workflows/ci.yml` triggers on `pull_request` and on a push to the default branch, and it defines nine jobs: the change classifier, the policy suite, the web gate, the console gate, the database suite, the evaluation harness, the advisory review, the audit trail and the release build. The evaluation harness is the job named `eval-gate`, and it does not run unconditionally: it needs the classifier and the policy suite first and is guarded by `needs.change-type-check.outputs.requires-governed-check == 'true'`, so whether a change faces the harness is itself a classified decision.
+Where does a change meet the evaluation gate, and how is that visible in the history?
 
-The practice is recent and measurable rather than uniform across the repository's life. The last twelve first-parent commits on `main` are all merge commits, from `#25` to `#37`. Across the whole history the first-parent chain is 191 commits of which 35 are merges, so earlier work landed directly: the gate controls the recent history, and this section does not claim more than that.
+A change reaches `main` through a pull request whose gates have run. The history records the gate's
+decision, not the author's intention. `.github/workflows/ci.yml` triggers on `pull_request` and on a
+push to the default branch. It defines nine jobs. One of them is the evaluation harness, and its job
+name is `eval-gate`.
 
-The rule is legible in a single commit. `767058f` carries the verdicts it landed under in its own message — `conformance: pass, 207 findings at base, 207 at HEAD, no rule rose`, and `policy, run in the designed container (agent-sandbox:komun-m3): 134 passed, 3 failed`, with the three named as environmental because the same three fail at pristine `origin/main`. `a000bb0` records an exercised control the same way: a call killed by the per-call wall clock (exit 124) retried once and then settled, and a call that exited 7 never retried at all.
+The harness does not run unconditionally. It needs the change classifier and the policy suite first.
+A guard decides whether it runs at all:
+`needs.change-type-check.outputs.requires-governed-check == 'true'`. Whether a change faces the
+harness is itself a classified decision.
 
-Where the gating is inspected rather than assumed: `.memory/gate-audit.log` holds one row per gated call carrying the calling role, the gate, the exit code and the duration — 254 rows covering 2026-09-28 to 2026-10-04 — and `scripts/build-audit-trail.py` assembles those rows into the run's audit trail.
+The practice is recent, and the counts say so. The last twelve first-parent commits on `main` are all
+merges, from `#25` to `#37`. Across the whole history the first-parent chain is 191 commits, of which
+35 are merges. Earlier work landed directly, so this section claims recent control and no more.
+
+The rule is legible in one commit. `767058f` carries its own verdicts in its message. That message
+reads `conformance: pass, 207 findings at base, 207 at HEAD, no rule rose`. It also records `policy,
+run in the designed container: 134 passed, 3 failed`, naming the three as environmental. The same
+three fail at pristine `origin/main`. `a000bb0` records an exercised control the same way. A call
+killed by the per-call wall clock retried once and then settled. A call that exited 7 never retried.
+
+The gating can be inspected rather than assumed. `.memory/gate-audit.log` holds one row per gated
+call. Each row carries the calling role, the gate, the exit code and the duration. There are 254
+rows, covering 2026-09-28 to 2026-10-04. `scripts/build-audit-trail.py` assembles those rows into the
+run's audit trail.
