@@ -437,6 +437,8 @@ run's audit trail.
 
 ## What did the gate refuse most recently?
 
+Which change did the gate refuse, and what did the refusal say?
+
 On 2026-10-05 the conformance gate refused a change to `docs/orchestration-diagram.md`. The change added a section naming the trigger for each human checkpoint. The gate returned two findings against it before it could land.
 
 The first was R1-NOT-QUESTION. The line after the heading was not the question the section answers. The second was CIT-LITERAL-MISSING. A citation of `docs/governance-policy.md:390` `Escalation and rollback` carried a quoted literal absent from that line.
