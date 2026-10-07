@@ -45,19 +45,22 @@ written down.
 ### G1a. Policy suite, inside the container
 
 INSIDE CONTAINER. The suite lives in the container's Python, not the host's, so this is run through
-`docker exec`. It takes about one second.
+`docker exec`. It takes about ten seconds.
 
 ```
 docker exec -w /workspace agent-rev-m3 python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q
 ```
 
-Observed output on 2026-10-01 (95 since the cost-control tests):
+Re-verified on 2026-10-07, in the container bound to this checkout:
 
 ```
-........................................................................ [ 80%]
-..................                                                       [100%]
-90 passed in 1.00s
+........................................................................ [ 52%]
+.................................................................        [100%]
+137 passed in 9.54s
 ```
+
+Read the number on screen rather than this one: the count follows the tree, and the suite has grown
+since this runbook was written.
 
 For the per-test names, and to show the split precisely, run the permission suite named:
 
@@ -65,11 +68,11 @@ For the per-test names, and to show the split precisely, run the permission suit
 docker exec -w /workspace agent-rev-m3 python3 -m pytest eval/test_policy.py -v
 ```
 
-Observed output ends with:
+Re-verified output ends with:
 
 ```
-eval/test_policy.py::test_every_role_is_defined_in_a_definition PASSED   [100%]
-============================== 75 passed in 0.18s ==============================
+eval/test_policy.py::test_budget_treats_an_unreadable_ledger_as_nothing_spent PASSED [100%]
+============================== 98 passed in 0.30s ==============================
 ```
 
 Troubleshooting. `No module named pytest` on the host is expected. Every pytest invocation in this
@@ -91,7 +94,7 @@ when no rule's finding count rose against `HEAD`.
 python3 scripts/run-conformance-gate.py
 ```
 
-Observed on 2026-10-01: a JSON report on stdout. The summary keys read:
+Re-verified on 2026-10-07: a JSON report on stdout. The summary keys read:
 
 ```
 {
@@ -101,9 +104,9 @@ Observed on 2026-10-01: a JSON report on stdout. The summary keys read:
   "gate": "conformance",
   "reason": "no rule's finding count rose against HEAD",
   "totals": {
-    "base": 181,
-    "current": 181,
-    "files_checked": 12,
+    "base": 223,
+    "current": 223,
+    "files_checked": 13,
     "files_without_a_baseline": 0
   },
   "verdict": "pass"
@@ -244,19 +247,22 @@ between the two roles' workspace modes is visible.
 docker inspect agent-rev-m4-implementer --format '{{range .Mounts}}{{.Destination}} RW={{.RW}}{{"\n"}}{{end}}'
 ```
 
-Observed on 2026-10-01:
+Re-verified on 2026-10-07:
 
 ```
 /workspace RW=true
 /workspace/.memory RW=true
+/workspace/agentic.config.json RW=false
 /workspace/target RW=false
+/workspace/.memory/browser-audit.log RW=false
 /workspace/.memory/gate-audit.log RW=false
+/workspace/.memory/reference RW=false
 /workspace/.memory/retrieval-audit.log RW=false
-/workspace/.memory/storage-audit.log RW=false
 /workspace/docs/routing-and-tool-grant-map.json RW=false
 /workspace/mcp/roles.allowlist.json RW=false
 /root/.config/opencode/opencode.json RW=false
 /usr/local/cargo/registry RW=false
+/workspace/mcp/browser/allow-list.json RW=false
 /workspace/mcp/retrieval/allow-list.json RW=false
 /workspace/mcp/storage/allow-list.json RW=false
 ```
@@ -278,17 +284,18 @@ md5sum mcp/storage/allow-list.json mcp/retrieval/allow-list.json mcp/roles.allow
 wc -l .memory/gate-audit.log .memory/storage-audit.log .memory/retrieval-audit.log
 ```
 
-Observed on 2026-10-01:
+Re-verified on 2026-10-07:
 
 ```
-84cef8e58fad35220563d5ebcfac5168  mcp/storage/allow-list.json
-42bbc0c4ee4c05bcadcc96b0fad6e934  mcp/retrieval/allow-list.json
-5a343b17b70672b5691e63deec817861  mcp/roles.allowlist.json
-dcb60d7147baef45e661ef08ba87529f  docs/routing-and-tool-grant-map.json
+56c1ea1849f03249dc7e357789686cdf  mcp/storage/allow-list.json
+28b87f8c2eeac2b39e81fc79544a26dd  mcp/retrieval/allow-list.json
+c39de4c0726a5b31e709e470281164e1  mcp/roles.allowlist.json
+3d4f73efeb56ceda0ce0d2b540b9734b  docs/routing-and-tool-grant-map.json
 ```
 
-The first checksum is the one `eval/red-team-results.md` records as the value that must not move:
-`mcp/storage/allow-list.json` stays `84cef8e58fad35220563d5ebcfac5168`.
+The invariant is that the four values and the journal counts do not move between the two runs, not
+that they equal a fixed figure. `1e8a671`, which added the beta-tester role, changed the storage
+allow-list, so `84cef8e58fad35220563d5ebcfac5168` is no longer that file's value.
 
 Troubleshooting for the whole money-shot segment.
 
@@ -412,9 +419,9 @@ time python3 scripts/validate_doc_conformance_deterministic.py \
   --output "$S/run1.json"
 ```
 
-Observed on 2026-10-01: about 0.4 to 0.9 seconds, and a summary line reading
-`totals: 177 violation(s) {'R1': 68, 'R2': 0, 'R3': 55, 'R4': 1, 'CIT': 53}; verdict FAIL`. Exit
-code 1.
+Re-verified on 2026-10-07: about one second, and a summary line reading
+`totals: 175 violation(s) {'R1': 68, 'R2': 0, 'R3': 55, 'R4': 1, 'CIT': 51}; verdict FAIL`. Exit
+code 1. Read the totals off the screen rather than from here, because they follow the ten files.
 
 That exit code needs one sentence of care on camera. The raw script reports every finding, including
 the ones that were already in the tree, so its own verdict is FAIL. The `conformance` gate wraps it
@@ -434,14 +441,14 @@ diff -q "$S/run1.json" "$S/run2.json" ; echo "diff exit=$?"
 sha256sum "$S/run1.json" "$S/run2.json"
 ```
 
-Observed on 2026-10-01: `diff -q` prints nothing and exits 0, and both digests are identical:
+Re-verified on 2026-10-07: `diff -q` prints nothing and exits 0, and both digests are identical:
 
 ```
-edbfb01ecd93e91fbc64d1bb96887c1ffa9b9db7bb8a3886caafc009999c2bd2  .../run1.json
-edbfb01ecd93e91fbc64d1bb96887c1ffa9b9db7bb8a3886caafc009999c2bd2  .../run2.json
+252bfc53d2d7c430cbb00960e5ad5db1f5229a809dfbfe5eb0fd7e86bae835c3  .../run1.json
+252bfc53d2d7c430cbb00960e5ad5db1f5229a809dfbfe5eb0fd7e86bae835c3  .../run2.json
 ```
 
-That digest is the value for this tree on 2026-10-01. It is not the digest recorded in the ADR. The
+That digest is the value for this tree on 2026-10-07. It is not the digest recorded in the ADR. The
 ADR records `15f1c690dbfdb0e1c19f78237836ce1669b47de47c176a98dfe56a943cc61af5` for the ten files as
 they stood when it was written, and `e832693c0c7845f2cdca08cd97062e36dd0d4cc1c79649593ebf1d02f0a5a111`
 for the isolation run before that. Read the ADR's digest as the ADR's record, and read the on-screen
@@ -453,7 +460,7 @@ A single file is the cleaner demo if the ten-file run is slow to narrate:
 python3 scripts/validate_doc_conformance_deterministic.py --input docs/orchestration-diagram.md --output "$S/one.json"
 ```
 
-Observed on 2026-10-01: `docs/orchestration-diagram.md: 0 violation(s), 12 citation(s) checked, 12
+Re-verified on 2026-10-07: `docs/orchestration-diagram.md: 0 violation(s), 12 citation(s) checked, 12
 resolved at the cited line`, then `verdict PASS`, exit code 0.
 
 Troubleshooting. The `--input` flag is repeatable, which is why it appears ten times in one command.
@@ -472,9 +479,9 @@ and cannot hold the terminal open:
 ./console/target/release/agentic-console --repo /home/computing/komun --dump
 ```
 
-Observed on 2026-10-01: a plain-text report that opens with the repository, config and container
+Re-verified on 2026-10-07: a plain-text report that opens with the repository, config and container
 lines, then the four sections `== FLOW: the map with live lights ==`, `== LIVE: what is happening
-right now ==`, `== INSPECT: the machinery ==` and `== ACTIONS`. Exit 0.
+right now ==`, `== INSPECT: the machinery ==` and `== ACTIONS (commands this console would run; see --dry-run-actions) ==`. Exit 0.
 
 The interactive console, launched properly:
 
@@ -520,7 +527,7 @@ re-executed on 2026-10-01, so each is marked with what would settle it.
 | clippy exit 0 with warnings as errors | `cargo clippy --release -- -D warnings` | [UNVERIFIED] today. Settle it by running it in the container. Note the gate also requires its cache-hit guard to be satisfied, so the gate's verdict is exit 0 plus the marker line `Checking komun-server`. |
 | 0 errors, 0 warnings | `npm run check` inside `web/` | [UNVERIFIED] today. Settle it with `docker exec -w /workspace agent-rev-m3 npm --prefix web run check`. |
 | 82 tests in 7 files, all passing | `npx vitest run` inside `web/` | [UNVERIFIED] today. Settle it with `docker exec -w /workspace agent-rev-m3 npm --prefix web run test`. |
-| policy gate 95 tests | `docker exec -w /workspace agent-rev-m3 python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q` | Verified on 2026-10-01: `90 passed in 1.00s`; `95 passed` since the cost-control tests. The split was verified separately with `-v`. |
+| policy gate 137 tests | `docker exec -w /workspace agent-rev-m3 python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q` | Re-verified on 2026-10-07: 137 passed in 9.54s, and 98 passed for `eval/test_policy.py` alone with `-v`. Read the count on screen, because it follows the tree. |
 
 Run every one of these in the container rather than on the host. The container is the toolchain the
 baseline was measured with, and the host's own Python has no pytest at all.
