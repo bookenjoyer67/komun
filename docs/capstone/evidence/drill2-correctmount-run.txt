@@ -1,0 +1,48 @@
+## Scope check: passed (with one caveat)
+
+`.memory/SCOPE.md:3` declares **Project: Komun**, and this workspace is Komun — `README.md:3`, the `crates/core`/`crates/server`/`crates/wasm` workspace in `Cargo.toml:2`, and the `komun-server` binary all agree. No halt required.
+
+Caveat: `SCOPE.md:4` also names `Repo: bookenjoyer67/rev`, which I could **not** verify — every `git` call fails with `fatal: detected dubious ownership in repository at '/workspace'`. Fixing that needs `git config --global --add safe.directory /workspace`, which I haven't run since it changes your global config. Say the word and I will.
+
+## Stale-entry check: clean
+
+| Entry | Date | Status |
+|---|---|---|
+| `decisions/decision-001.md` | Review by 2026-12-27 | Current (90 days out) |
+| `../knowledge/coding-standards.md` | Last reviewed 2026-09-28 | Reviewed today |
+
+Nothing has passed its review date, so no confirmation is needed before acting on either.
+
+## What memory actually contains
+
+The whole store is five files: `SCOPE.md`, `project/MEMORY_INDEX.md`, `project/decisions/decision-001.md`, `knowledge/coding-standards.md`, and three `.gitkeep` placeholders. **`.memory/reference/` is empty** — the reference layer exists structurally but has no content to query yet. Archived entries: none.
+
+### Key decision on record — exactly one
+
+**Decision 001: file-based memory inside the repo** (`decisions/decision-001.md`, recorded 2026-09-28, Active). Agent memory is plain files under `.memory/`, committed alongside the code — not a database, not a vector store, not an external mount.
+
+The reasoning, and what it rules out:
+
+- **Why files:** memory that lives next to the code can be diffed against it and cited by commit SHA. The three layers keep the startup read small by separating hot index state from human-maintained rule text from bulky searchable reference material.
+- **The evidence behind it:** a Module 2.2 run on 2026-09-26 in this repository compacted one context document from **166,700 → 12,837 tokens**, and the generated summary dropped the unresolved-questions field entirely. That loss is the argument.
+- **Vector/embedded DB — deferred, not rejected.** Module 3 needs an MCP-backed retrieval tool with its own evaluation, and the sandbox image has no `python3`, so a Python MCP server requires an image rebuild first.
+- **External mounted volume — rejected outright.** Can't be versioned with the code, and a misconfigured mount is the exact scope-leak failure being drilled.
+- **Everything in `CLAUDE.md` — rejected.** That file loads every session whether or not it's relevant.
+
+### Standing constraints (human-maintained, read-only)
+
+`knowledge/coding-standards.md` holds eight rules I must never edit: zero clippy warnings under `-D warnings` (touch a source file first — a silent rerun is a cache hit); `cargo test --workspace` green against the 2026-09-25 baseline of 158 backend tests and 82 frontend tests in 7 files; migrations append-only with `001_schema.sql` never edited; Svelte 5 runes only (no `export let`, no `on:click`, no `$:`); no secret material in logs, memory files, or commits; wasm and frontend rebuilt together in the order wasm-pack → npm → cargo; every documentation claim carries a `path:line`; and no local state or build output committed.
+
+## The honest gap
+
+Memory records **how memory works** and **how to write code here** — it does not record project state in the sense of what's built, what's in flight, or what's next. There's no roadmap entry, no open-questions entry, no workflow-scoped entry. For current state, the live sources are `AGENTS.md` (the cold-start guide per `CLAUDE.md`) and `docs/`, neither of which is memory.
+
+If there are in-flight decisions from prior sessions that should have been captured, now is the moment to write them as `decision-002` onward — the index at `MEMORY_INDEX.md:5` is structured for it.
+
+One procedural note: `CLAUDE.md` requires you to supply boundary text before I edit anything. This read was analysis of memory only, so no boundary was consumed — but the next phase that touches a file will need one.
+
+---
+
+Provenance: copied verbatim from `~/komun-agent-exercise-2-4/drill2-correctmount-run.txt` on 2026-10-07.
+Nothing above this note was changed; the original path is outside the repository, so this copy
+exists to keep the citation at `docs/iteration-log.md:542` reachable.

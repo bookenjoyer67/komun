@@ -11,16 +11,17 @@ number appears, it is reproduced from the record with a `path:line` citation in 
 
 | File | What it is | Criterion |
 |:--|:--|:--|
-| `one-pager.md` | 751 words. The problem, the workflow, the result, for a reader who will give it two minutes | Stakeholder communication |
-| `deck.md` | Marp Markdown source, 20 slides, 1,339 words. Renders to HTML and PDF with one command | Deck clarity and flow; deck design |
-| `deck.html` | Rendered deck, 130,718 bytes | Same, in a browser |
-| `deck.pdf` | Rendered deck, 156,417 bytes, 20 pages at 960x540 | Same, as a file |
-| `impact-report.md` | 1,302 words. Before and after across five axes, two confirmed improvement cycles, measured separated from projected | Iteration narrative and impact |
-| `scoping.md` | 1,289 words. Chosen workflow, quantified baseline pain, why a pipeline rather than simpler automation, Module 1 to 4 artifact gaps | Workflow scoping |
-| `plan-pipeline-validation.md` | 307 lines. The capstone plan of record, copied verbatim from the gitignored `.hermes/plans/` so that it travels with the repository. The provenance note at its end records what was and was not edited | Workflow scoping |
+| `one-pager.md` | 795 words. The problem, the workflow, the result, for a reader who will give it two minutes | Stakeholder communication |
+| `deck.md` | Marp Markdown source, 20 slides, 1,378 words. Renders to HTML and PDF with one command | Deck clarity and flow; deck design |
+| `deck.html` | Rendered deck, 130,945 bytes | Same, in a browser |
+| `deck.pdf` | Rendered deck, 157,054 bytes, 20 pages at 960x540 | Same, as a file |
+| `impact-report.md` | 1,849 words. Before and after across five axes, two confirmed improvement cycles, measured separated from projected | Iteration narrative and impact |
+| `scoping.md` | 1,751 words. Chosen workflow, quantified baseline pain, why a pipeline rather than simpler automation, Module 1 to 4 artifact gaps | Workflow scoping |
+| `plan-pipeline-validation.md` | 311 lines. The capstone plan of record, copied verbatim from the gitignored `.hermes/plans/` so that it travels with the repository. The provenance note at its end records what was and was not edited | Workflow scoping |
 | `video/script.md` | 3,115 words. Shot-by-shot script for a 5 to 10 minute walkthrough | Stakeholder communication |
-| `video/demo-runbook.md` | 3,691 words. Every command the demo runs, with expected output and the checks between segments | Evidence for the demo |
+| `video/demo-runbook.md` | 3,880 words. Every command the demo runs, with expected output and the checks between segments | Evidence for the demo |
 | `video/capture.md` | 2,474 words. The captured output each segment displays | Evidence for the demo |
+| `evidence/` | The four Module 2.3 drill files, copied verbatim from outside the repository so the citation in `iteration-log.md` resolves for a reader | Production integration and tool-evolution drill |
 | `assets/architecture.svg` | The seven roles, the gates, and where each sits | Deck design |
 | `assets/governance-matrix.svg` | Role against tool grant, as the policy states it | Deck design |
 | `assets/before-after.svg` | The measured cost and latency change, on a real axis | Deck design |
@@ -39,6 +40,7 @@ the repository itself, and these are the files a reader should open.
 | Evaluation and calibration | `eval/`, `docs/calibration-log.md`, `eval/red-team-results.md` and `eval/red-team/` |
 | Governance, security and CI-CD | `docs/governance-policy.md`, `.github/workflows/ci.yml`, `eval/test_policy.py` |
 | Right-tool decisions | `docs/adr/`, `docs/step-classification.md` |
+| Production integration and tool-evolution drill | `docs/iteration-log.md` Run 003, `docs/capstone/evidence/`, `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md` |
 
 ## Rendering the deck
 
@@ -48,7 +50,7 @@ Verified on this host, Marp CLI 4.5.1, about 7 seconds:
     npx -y @marp-team/marp-cli@4.5.1 --allow-local-files docs/capstone/deck.md -o docs/capstone/deck.html
 
 The Markdown is the source of truth and is diffable in the repository. The PDF is reproducible: a
-regenerated copy holds the same 20 pages and the same 156,417 bytes, and the extracted text is
+regenerated copy holds the same 20 pages and the same 157,054 bytes, and the extracted text is
 identical. The bytes differ only in the embedded creation timestamp, so no digest is claimed for it.
 
 ## Reproducing the gate results
@@ -64,33 +66,35 @@ The citation checker runs on the host and takes one input and one output path:
 
 ## Citation integrity of the ADR set
 
-Measured by running the repository's own checker over each file. The five ADRs added for this
-submission are `ADR-002` to `ADR-006`, all under `docs/adr/`.
+Measured by running the repository's own checker over each file. All eight ADRs sit under `docs/adr/`;
+`ADR-002` to `ADR-006` were added for this submission, and `ADR-007` and `ADR-008` came after it.
 
 | File | Lines | Citations | Resolved at the cited line |
 |:--|--:|--:|--:|
-| `ADR-001-doc-conformance-deterministic-conversion.md` | 172 | 35 | 26 |
-| `ADR-002-rubric-design.md` | 172 | 67 | 67 |
-| `ADR-003-memory-layout.md` | 147 | 65 | 65 |
-| `ADR-004-mcp-tool-boundaries.md` | 122 | 112 | 112 |
-| `ADR-005-subagent-scoping-and-routing.md` | 120 | 85 | 85 |
-| `ADR-006-governance-policy.md` | 121 | 91 | 91 |
+| `ADR-001-doc-conformance-deterministic-conversion.md` | 211 | 39 | 30 |
+| `ADR-002-rubric-design.md` | 178 | 68 | 68 |
+| `ADR-003-memory-layout.md` | 153 | 66 | 66 |
+| `ADR-004-mcp-tool-boundaries.md` | 127 | 112 | 78 |
+| `ADR-005-subagent-scoping-and-routing.md` | 126 | 85 | 42 |
+| `ADR-006-governance-policy.md` | 127 | 91 | 62 |
+| `ADR-007-beta-tester-and-browser-mcp.md` | 91 | 23 | 23 |
+| `ADR-008-marketplace-parity-non-goals.md` | 88 | 13 | 2 |
 
-The five ADRs added for this submission resolve 420 of 420 citations. `ADR-001`, which predates this
-submission, resolves 26 of 35: nine of its citations point at lines that moved after it was written.
-That drift is pre-existing and is left as found rather than silently repaired, because an accepted ADR
-is a record of a decision at a point in time.
+The five ADRs added for this submission resolve 316 of 422 citations; `ADR-001`, which predates it,
+resolves 30 of 39. The unresolved remainder is line drift, and it is left as found rather than
+silently repaired, because an accepted ADR records a decision at a point in time. The same counts
+appear at `0457339`, the revision before the last merge, so the drift predates it.
 
 ## Limits of this package
 
-* Review latency and defect rate are not directly measured. The record carries no denominator over
-  time, so no defect rate is computed, and the proxies used instead are named where they appear.
+* Review latency and defect rate are measured only in the two appended sections of `impact-report.md`,
+  from the audit rows. The human accept-or-reject share of review is not covered, and no rate is offered for it.
 * The four-run end-to-end regression carries no cost figure, because the credential broker reports no
   usage.
 * `fmt` is red at `HEAD` and is unattributed to either change; it is pre-existing.
 * The conformance checker has a known false positive: a quoted literal that wraps to the next line can
   pair with a neighbouring literal, so a correct citation can read as drift.
 * Rollback is documented in `ADR-001` and exercised on 2026-10-03. It stops on 4 conflicts; the conformance gate then exits 2, against exit 0 at HEAD.
-* The Module 1 plans under `.hermes/plans/` are gitignored and do not travel with the repository, so
-  the citations to them in `scoping.md` resolve only on the machine that holds the directory. The
-  capstone plan is not affected: it is tracked here as `plan-pipeline-validation.md`.
+* Both Module 1 plans travel with the repository as verbatim copies, `plan-pipeline-validation.md` and
+  `mod1-pre-work-plan.md`. The gitignored `.hermes/plans/` originals are named only in each copy's
+  provenance note, so no citation in the package depends on that directory.

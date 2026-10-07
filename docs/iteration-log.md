@@ -539,9 +539,9 @@ Run metadata:
   configuration v0.2.0, the `SessionStart` and `PreToolUse` hooks.
 - Invocation: headless runs inside the sandbox (`agent-rev` and a purpose-built `agent-rev-badmount`),
   `claude -p` with `--permission-mode acceptEdits` where a write was the expected action.
-- Evidence kept outside the repo: `~/komun-agent-exercise-2-4/drill1-observe-run.txt` (full session
-  output), `drill2-wrongmount-run.txt`, `drill2-correctmount-run.txt`, `run-badmount.sh` (the
-  launcher that reproduces the bad mount), and `~/project-b/.memory/` (the second project's memory).
+- Evidence copied into this tree so a reader can open it: `docs/capstone/evidence/drill1-observe-run.txt`
+  (full session output), `drill2-wrongmount-run.txt`, `drill2-correctmount-run.txt` and `run-badmount.sh`,
+  each copied verbatim from `~/komun-agent-exercise-2-4/` (`docs/capstone/evidence/run-badmount.sh:47` `copied verbatim from`).
 
 Note on line numbers: this entry and the one below it were prepended to the top of the log, which
 shifted every citation into `docs/iteration-log.md` by +103 lines. The docker-build record that the
