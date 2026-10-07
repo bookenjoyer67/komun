@@ -9,7 +9,6 @@ function getBase(): string {
 
 async function request<T>(path: string, options?: RequestInit & { auth?: boolean }): Promise<T> {
 	const base = getBase();
-	console.log('[api]', options?.method || 'GET', path);
 	return requestOn<T>(base, path, options);
 }
 
@@ -32,7 +31,6 @@ async function requestOn<T>(base: string, path: string, options?: RequestInit & 
 
 	if (!res.ok) {
 		const err = await res.json().catch(() => ({ error: res.statusText }));
-		console.error('[api] error:', res.status, path, err.error || res.statusText);
 		throw new Error(err.error || 'Request failed');
 	}
 
@@ -48,7 +46,6 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
 	const res = await fetch(`${getBase()}${path}`, { method: 'POST', body: form, headers });
 	if (!res.ok) {
 		const err = await res.json().catch(() => ({ error: res.statusText }));
-		console.error('[api] error:', res.status, path, err.error || res.statusText);
 		throw new Error(err.error || 'Upload failed');
 	}
 	return res.json();
@@ -86,7 +83,7 @@ export const api = {
 			request<any>(`/posts/${id}`, {
 				method: 'DELETE',
 				auth: true,
-			}).catch((e: Error) => { console.error('[delete] withdraw failed:', e.message); throw e; }),
+			}),
 		addImages: (id: string, files: File[]) => {
 			const form = new FormData();
 			for (const file of files) form.append('images', file);

@@ -23,7 +23,7 @@ transaction, with the row locked —`). A rating is one to five stars
 5),`).
 
 The backend is Rust with Axum (`crates/server/Cargo.toml:9` `axum = { version = "0.8", features =
-["ws", "multipart"] }`). Queries go through sqlx (`crates/server/Cargo.toml:21` `sqlx = { version =
+["multipart"] }`). Queries go through sqlx (`crates/server/Cargo.toml:21` `sqlx = { version =
 "0.8"`). The database is PostgreSQL 16 (`docker-compose.yml:3` `image: postgres:16-alpine`). The
 frontend is a SvelteKit 5 SPA built by the static adapter **[UNVERIFIED]** (`web/package.json:20`
 `"svelte": "^5.0.0",`; `web/package.json:13` `"@sveltejs/kit": "^2.0.0",`; `web/package.json:12`

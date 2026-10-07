@@ -34,14 +34,14 @@ impl StatusError {
 impl IntoResponse for StatusError {
     fn into_response(self) -> Response {
         // Only the 500s are logged: a 404 or a 400 is the client's problem, not an incident.
-        if self.status == StatusCode::INTERNAL_SERVER_ERROR {
+        let message = if self.status == StatusCode::INTERNAL_SERVER_ERROR {
             tracing::error!("request error: {:?}", self.inner);
-        }
-        (
-            self.status,
-            Json(serde_json::json!({"error": self.inner.to_string()})),
-        )
-            .into_response()
+            // A 500 body never carries the error's text; the log does.
+            "internal error".to_owned()
+        } else {
+            self.inner.to_string()
+        };
+        (self.status, Json(serde_json::json!({"error": message}))).into_response()
     }
 }
 

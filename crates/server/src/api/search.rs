@@ -48,7 +48,6 @@ struct SearchResult {
 struct UserSearchResult {
     id: Uuid,
     display_name: String,
-    role: String,
     endorsement_count: Option<i64>,
 }
 
@@ -95,7 +94,7 @@ async fn search_users(
 
     let pattern = format!("%{}%", query);
     let results = sqlx::query_as::<_, UserSearchResult>(
-        r#"SELECT u.id, u.display_name, u.role,
+        r#"SELECT u.id, u.display_name,
            (SELECT COUNT(*) FROM endorsements WHERE endorsee_id = u.id) AS endorsement_count
            FROM users u
            WHERE u.display_name ILIKE $1
