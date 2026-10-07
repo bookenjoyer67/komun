@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { isConnected, getActiveServer } from '$lib/stores/server';
 	import { isAuthenticated, getToken } from '$lib/stores/auth';
+	import { safeAppPath } from '$lib/safeUrl';
 
 	interface Notification {
 		id: string;
@@ -57,7 +58,10 @@
 				});
 			}
 		}
-		if (notif.link) goto(notif.link);
+		// The SPA's origin, not the active server's: the link is a route in this app, and the API
+		// server may live elsewhere.
+		const path = safeAppPath(notif.link, window.location.origin);
+		if (path) goto(path);
 	}
 
 	function timeAgo(dateStr: string): string {
