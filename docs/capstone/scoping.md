@@ -55,3 +55,34 @@ Missing or late at capstone start:
 - A stakeholder-facing artifact at the start. The one-pager, deck, impact report and demo runbook are dated 2026-10-01 (`docs/capstone/impact-report.md:3` `Date: 2026-10-01.`), produced after the runs.
 
 Recorded at the time, in two parts. The pre-work state is the Module 1 QC plan's own verified-current-state section, checked 2026-09-24 09:13 CDT before any capstone work and committed here verbatim (`docs/capstone/mod1-pre-work-plan.md:18` `Verified current state`); the list above is assembled from that section and the artifacts' own dates. The near-miss log was written for Module 4 governance, not at the time of the decisions it judges.
+
+## Why not a prebuilt agent, or a simpler script?
+
+Measured on 2026-10-05, on the same task the pipeline's own checker performs: read the prose rules in
+`docs/DOC-STYLE.md` and report every violation in one file, with rule code and line number. The
+prebuilt agent is `claude -p` (v2.1.280) given one prompt, no allow-list, no routing map, no audit
+journal and no classifier deciding whether it may run.
+
+| | Prebuilt agent | Deterministic check |
+|:--|:--|:--|
+| Findings against the key | 48 and 53 unique, two runs | 20, both runs |
+| Agreement with the key | 18 of 20, both runs (90%) | by construction, the key is its output |
+| Extras beyond the key | 30 and 35 | 0 |
+| Same answer twice | No. The two runs differ by 5 findings on one file and 35 on another | Yes. Three runs over one input produced one SHA-256 digest |
+| Cost | $0.44-$0.68 per file, a 55% swing between identical runs | $0.00 |
+| Latency | 97-136s per file | 0.42-0.84s |
+| Audit trail | A prose list in the transcript | A JSON report plus a row in `.memory/gate-audit.log` |
+
+Three honest limits on those figures. The key is the checker's own output, so the 90% measures
+agreement with the checker rather than truth; whether the extras are real violations the regex rules
+miss or noise was not adjudicated, and one sample attempt could not settle it because R3 counts words
+per sentence, not per line. One run recorded here had a mis-specified task (prose rules against a file
+whose findings are all citations) and is excluded from the table above.
+
+What the table does settle is not accuracy. The prebuilt agent recovered 18 of 20 of the checker's
+findings, so a single pass is broadly right. What it cannot do is give the same answer twice, say
+what a call will cost, or let a reader see what was run: the two identical prompts differ by five
+findings, cost moved 55% between them, and the output is a transcript rather than a journal row. No
+gate can be built on that, because a gate needs a verdict that repeats and a figure that holds. The
+deterministic check is not chosen for finding more; it is chosen because its answer is the same
+answer, priced at zero, and recorded where a reviewer can reach it.
