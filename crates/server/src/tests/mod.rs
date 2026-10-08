@@ -9,6 +9,7 @@ mod location_privacy;
 #[cfg(test)]
 mod market;
 mod outbound_routes;
+mod saved_searches;
 
 /// The server-side half of the password path.
 #[cfg(test)]
