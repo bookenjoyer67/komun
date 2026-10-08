@@ -114,7 +114,8 @@ every existing server refuse to boot (`docs/DEVELOPMENT.md:116` `changing one by
 refuse to boot with a checksum mismatch.`). The migrator runs the whole directory at boot
 (`crates/server/src/main.rs:78` `sqlx::migrate!("../../migrations")`). Schema changes are additive
 files (`Glob {.sqlx/**,migrations/*.sql,docker/*}` -> `001_schema.sql`,
-`002_directory_open_registration.sql`, `003_drop_matches_message.sql`). See `docs/DEVELOPMENT.md`.
+`002_directory_open_registration.sql`, `003_drop_matches_message.sql`, `004_moderation_path.sql`,
+`005_saved_searches.sql`). See `docs/DEVELOPMENT.md`.
 
 ### Crypto boundaries
 Which boundaries does client-side encryption rest on, and where is each one written down?
