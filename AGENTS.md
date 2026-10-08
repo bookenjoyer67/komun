@@ -149,7 +149,7 @@ Which boundaries does client-side encryption rest on, and where is each one writ
 | `migrations/` | `001_schema.sql` (frozen) + additive migrations | Never edit `001`; add `002+` |
 | `docs/` | ARCHITECTURE, CONVENTIONS, CRYPTO, DATABASE, DEVELOPMENT, DEPLOY | Plus the quality-control artifacts — `docs/prd.md`, `docs/rubric.md`, `docs/agent-rubric.md`, `docs/iteration-log.md`, `docs/clippy-report.md`, `docs/contract-audit/` — and the Module 1 lab's own copies under `docs/clippy-gate/` (`prd.md`, `rubric.md`, `iteration-log.md`). Keep the prose docs in sync with the code |
 | `deploy/` | nginx/OpenRC/setup/seed starting points | Docs only; no relay/WebSocket proxy |
-| `config.example.toml` | Documented config template | Keep in sync with `config.rs` defaults **except** two deliberate differences: `require_email_verification = false` here vs `true` in `config.rs` (the example must boot without SMTP — a `true` with no `[email]` refuses to start), and a placeholder `[database] url` here vs an empty default in `config.rs` (a compiled-in URL would ship a credential) |
+| `config.example.toml` | Documented config template | Keep in sync with `config.rs` defaults, except two deliberate differences. `require_email_verification = false` here vs `true` in `config.rs`: the example must boot without SMTP. A `true` with no `[email]` refuses to start. And `[database] url` is a placeholder here vs empty in `config.rs`: a compiled-in URL would ship a credential |
 | `scripts/` | Utility scripts | |
 
 ## Quickstart (local dev)
