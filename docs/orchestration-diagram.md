@@ -90,7 +90,7 @@ Where does the Tester run the gate commands, and against which mount?
 Which repository rule does the rework loop enforce?
 
 - Follow the append-only migration rule: never edit `migrations/001_schema.sql`, and add `002+` for any schema change (`AGENTS.md:115-116` `Schema changes are additive files`).
-- Expect exactly three migration files in `migrations/` (`migrations/` → `001_schema.sql`, `002_directory_open_registration.sql`, `003_drop_matches_message.sql`).
+- Expect every migration file present in `migrations/` — the frozen `001_schema.sql` first, then one additive file per schema change (`002_directory_open_registration.sql`, `003_drop_matches_message.sql`, `004_moderation_path.sql`), so a count written here only goes stale.
 - Keep the prose standard in step with any doc change, because `docs/DOC-STYLE.md` governs it (`AGENTS.md:149` `Keep the prose docs in sync with the code`).
 
 ## Human checkpoints
