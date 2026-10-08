@@ -11,6 +11,7 @@ mod location_privacy;
 mod market;
 mod outbound_routes;
 mod resource_limits;
+mod saved_searches;
 
 /// The server-side half of the password path.
 #[cfg(test)]

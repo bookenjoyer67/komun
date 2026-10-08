@@ -15,6 +15,7 @@ mod notifications;
 pub(crate) mod outbound;
 pub(crate) mod posts;
 pub(crate) mod reviews;
+pub(crate) mod saved_searches;
 mod search;
 mod users;
 
@@ -58,6 +59,7 @@ pub fn router(state: AppState) -> Router {
         .merge(node::router(state.clone()))
         .merge(conversations::router(state.clone()))
         .merge(notifications::router(state.clone()))
+        .merge(saved_searches::router(state.clone()))
         .merge(admin::router(state.clone()))
         // Mounted flat, not nested: the two halves sit under different path prefixes and guards.
         .merge(categories::router(state.clone()))

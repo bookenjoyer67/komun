@@ -77,6 +77,23 @@
 	let appealErrors = $state<Record<string, string>>({});
 	let appealBusy = $state<string | null>(null);
 
+	interface SavedSearch {
+		id: string;
+		label?: string | null;
+		q: string | null;
+		kind: string | null;
+		category: string | null;
+		near_lat: number | null;
+		near_lon: number | null;
+		radius_km: number | null;
+		created_at: string;
+	}
+
+	let savedSearches = $state<SavedSearch[]>([]);
+	let savedSearchesState = $state<'loading' | 'ready' | 'error'>('loading');
+	let savedSearchDeleting = $state<string | null>(null);
+	let savedSearchError = $state('');
+
 	const publicKey = $derived(getEncryptionPublicKey() || '');
 	const keyUnlocked = $derived(!!$auth.keypair?.secretKey);
 
@@ -104,7 +121,7 @@
 				// leave the form blank rather than blocking the page
 			}
 		}
-		await Promise.all([loadSessions(), loadNotices()]);
+		await Promise.all([loadSessions(), loadNotices(), loadSavedSearches()]);
 	});
 
 	async function loadSessions() {
@@ -127,6 +144,46 @@
 		} catch {
 			noticesState = 'error';
 		}
+	}
+
+	async function loadSavedSearches() {
+		try {
+			const res = await fetch(`${getActiveServer()}/api/me/saved-searches`, {
+				headers: { Authorization: `Bearer ${getToken()}` },
+			});
+			if (!res.ok) throw new Error(res.statusText);
+			savedSearches = await res.json();
+			savedSearchesState = 'ready';
+		} catch {
+			savedSearchesState = 'error';
+		}
+	}
+
+	async function deleteSavedSearch(search: SavedSearch) {
+		savedSearchDeleting = search.id;
+		savedSearchError = '';
+		try {
+			const res = await fetch(`${getActiveServer()}/api/me/saved-searches/${search.id}`, {
+				method: 'DELETE',
+				headers: { Authorization: `Bearer ${getToken()}` },
+			});
+			// A 404 means it is already gone, so the row is stale either way.
+			if (!res.ok && res.status !== 404) throw new Error(res.statusText);
+			savedSearches = savedSearches.filter((s) => s.id !== search.id);
+		} catch {
+			savedSearchError = `Could not delete "${searchWords(search)}". Try again.`;
+		}
+		savedSearchDeleting = null;
+	}
+
+	function searchWords(search: SavedSearch): string {
+		return search.label || search.q || 'Saved search';
+	}
+
+	function searchArea(search: SavedSearch): string {
+		if (search.near_lat == null || search.near_lon == null) return 'Anywhere';
+		if (search.radius_km == null) return 'Any distance from your area';
+		return `Within ${search.radius_km} km`;
 	}
 
 	function setAppealError(postId: string, message: string) {
@@ -378,6 +435,43 @@
 								The window to appeal this closed on {when(notice.appeal_deadline)}.
 							</p>
 						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
+
+	<section class="section" aria-labelledby="saved-searches-heading">
+		<h2 id="saved-searches-heading">Saved searches</h2>
+		{#if savedSearchesState === 'loading'}
+			<p class="hint">Loading your saved searches…</p>
+		{:else if savedSearchesState === 'error'}
+			<p class="error" role="alert">Could not load your saved searches. Reload the page to try again.</p>
+		{:else if savedSearches.length === 0}
+			<p class="hint">You have no saved searches yet. Search for something, then choose "Save this search".</p>
+		{:else}
+			<p class="hint">New matches for each search arrive as at most one digest a day.</p>
+			{#if savedSearchError}
+				<p class="error" role="alert">{savedSearchError}</p>
+			{/if}
+			<ul class="saved-search-list">
+				{#each savedSearches as search (search.id)}
+					<li>
+						<div>
+							<a class="saved-search-words" href="/search?q={encodeURIComponent(search.q ?? '')}">{searchWords(search)}</a>
+							<span class="saved-search-meta">
+								{searchArea(search)}{search.kind ? ` · ${search.kind}` : ''}{search.category ? ` · ${search.category}` : ''}
+							</span>
+						</div>
+						<button
+							class="remove-btn"
+							disabled={savedSearchDeleting === search.id}
+							aria-busy={savedSearchDeleting === search.id}
+							aria-label={`Delete saved search "${searchWords(search)}"`}
+							onclick={() => deleteSavedSearch(search)}
+						>
+							{savedSearchDeleting === search.id ? 'Deleting…' : 'Delete'}
+						</button>
 					</li>
 				{/each}
 			</ul>
@@ -664,23 +758,30 @@
 	code { font-size: 0.85rem; color: var(--text-muted); flex: 1; word-break: break-all; }
 	.copy-btn { background: var(--bg-elevated); color: var(--text); padding: 0.3rem 0.6rem; border-radius: var(--radius); font-size: 0.8rem; border: 1px solid var(--border); }
 
-	.session-list, .server-list { list-style: none; max-width: 500px; }
-	.session-list li, .server-list li {
+	.session-list, .server-list, .saved-search-list { list-style: none; max-width: 500px; }
+	.session-list li, .server-list li, .saved-search-list li {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		gap: 0.75rem;
-		padding: 0.6rem 0.8rem;
+		padding: var(--space-2) var(--space-3);
 		background: var(--bg-surface);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
-		margin-bottom: 0.4rem;
+		margin-bottom: var(--space-2);
 	}
 
 	.session-meta { display: block; color: var(--text-muted); font-size: 0.75rem; }
 	.server-url { display: block; color: var(--text-muted); font-size: 0.75rem; }
+	.saved-search-words { color: var(--accent); font-weight: 600; }
+	.saved-search-words:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	.saved-search-meta { display: block; color: var(--text-muted); font-size: var(--text-xs); }
 	.active-badge { font-size: 0.65rem; color: var(--success); background: var(--success-softer); padding: 0.1rem 0.4rem; border-radius: var(--radius-sm); margin-left: 0.4rem; }
 	.remove-btn { background: none; color: var(--critical); font-size: 0.8rem; padding: 0.2rem 0.5rem; border: 1px solid var(--critical); border-radius: var(--radius); white-space: nowrap; }
+	.remove-btn:hover:not(:disabled) { background: var(--critical-soft); }
+	.remove-btn:focus-visible { outline: 2px solid var(--critical); outline-offset: 2px; }
+	.remove-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+	.remove-btn[aria-busy='true'] { cursor: progress; }
 	.remove-btn.wide { margin-top: 0.5rem; padding: 0.4rem 0.8rem; }
 
 	.error { color: var(--critical); font-size: 0.85rem; }
