@@ -6,7 +6,7 @@
 	import { auth } from '$lib/stores/auth';
 	import LinkPreview from '$lib/components/LinkPreview.svelte';
 	import RespondModal from '$lib/components/RespondModal.svelte';
-	import { formatPrice, isMarketKind } from '$lib/api/market';
+	import { closedLabel, formatPrice, isMarketKind } from '$lib/api/market';
 	import type { PostLike } from '$lib/api/types';
 
 	/** The marketplace facet a listing/want carries; `PostLike` deliberately omits it. */
@@ -15,6 +15,7 @@
 		price_cents?: number | null;
 		currency?: string | null;
 		price_negotiable?: boolean;
+		sold_at?: string | null;
 	}
 
 	/** Posts are flat and server-wide, so the id alone addresses one. */
@@ -29,6 +30,8 @@
 	 */
 	const PAUSED_STATUS = 'matched';
 	const PAUSED_LABEL = 'Paused — not taking responses';
+	const SOLD_LABEL = 'Sold — no longer available';
+	const FULFILLED_LABEL = 'Fulfilled — no longer taking responses';
 
 	let pauseBusy = $state(false);
 	let pauseError = $state('');
@@ -49,6 +52,14 @@
 
 	let isAuthor = $derived(!!myUserId && post?.author_id === myUserId);
 	let paused = $derived(post?.status === PAUSED_STATUS);
+
+	let statusLabel = $derived.by(() => {
+		if (paused) return PAUSED_LABEL;
+		const closed = post ? closedLabel(post) : '';
+		if (closed === 'Sold') return SOLD_LABEL;
+		if (closed === 'Fulfilled') return FULFILLED_LABEL;
+		return '';
+	});
 
 	/** A market post belongs to the market; the aid feed is not where a sale returns to. */
 	let backHref = $derived(isMarketKind(post?.kind) ? '/market' : '/aid');
@@ -142,8 +153,8 @@
 				</div>
 			{/if}
 
-			{#if paused}
-				<p class="paused-note" role="status">{PAUSED_LABEL}</p>
+			{#if statusLabel}
+				<p class="status-note" role="status">{statusLabel}</p>
 			{/if}
 
 			{#if isAuthor && (post.status === 'active' || paused)}
@@ -198,7 +209,7 @@
 	.contact { color: var(--text-muted); font-size: var(--text-sm); margin-bottom: var(--space-2); }
 	.images { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: var(--space-3); }
 	.images img { max-width: 100%; max-height: 400px; border-radius: var(--radius-md); border: 1px solid var(--border); }
-	.paused-note { margin-top: var(--space-4); color: var(--text-muted); font-size: var(--text-sm); font-weight: 600; }
+	.status-note { margin-top: var(--space-4); color: var(--text-muted); font-size: var(--text-sm); font-weight: 600; }
 	.pause-control { margin-top: var(--space-4); display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 	.pause-btn:disabled { color: var(--text-muted); cursor: not-allowed; }
 	.pause-error { font-size: var(--text-sm); }

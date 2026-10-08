@@ -5,6 +5,7 @@
 	import { auth, getToken } from '$lib/stores/auth';
 	import { getActiveServer } from '$lib/stores/server';
 	import { coarsenCoordinate } from '$lib/geo';
+	import { closedLabel } from '$lib/api/market';
 	import type { PostLike } from '$lib/api/types';
 
 	interface Props {
@@ -151,11 +152,11 @@
 				<a class="map-btn permalink" href="/p/{post.id}" title="Open this post">🔗</a>
 				{#if post.status === PAUSED_STATUS}
 					<span class="paused-note">{PAUSED_LABEL}</span>
+				{:else if post.status === 'fulfilled'}
+					<span class="fulfilled-badge">{closedLabel(post)}</span>
 				{/if}
 				{#if post.author_id === myUserId && (onFulfill || onEdit || onDelete)}
-					{#if post.status === 'fulfilled'}
-						<span class="fulfilled-badge">Fulfilled</span>
-					{:else}
+					{#if post.status !== 'fulfilled'}
 						{#if onFulfill}<button class="action-btn fulfill" onclick={() => onFulfill(post.id)}>Fulfill</button>{/if}
 						{#if onEdit}<button class="action-btn edit" onclick={() => onEdit(post)}>Edit</button>{/if}
 						{#if onDelete}<button class="action-btn delete" onclick={() => onDelete(post.id)}>Delete</button>{/if}
@@ -258,7 +259,7 @@
 	.respond-btn { font-size: var(--text-xs); padding: var(--space-1) var(--space-3); }
 	.your-post { color: var(--text-muted); font-size: var(--text-xs); font-style: italic; }
 	.paused-note { color: var(--text-muted); font-size: var(--text-xs); font-weight: 600; }
-	.fulfilled-badge { font-size: 0.75rem; color: var(--success); font-weight: 600; }
+	.fulfilled-badge { font-size: var(--text-xs); color: var(--success); font-weight: 600; }
 
 	.action-btn { padding: 0.3rem 0.6rem; border-radius: var(--radius-full); font-size: 0.75rem; font-weight: 600; border: 1px solid; cursor: pointer; }
 	.action-btn.fulfill { background: var(--success-softer); color: var(--success); border-color: var(--success); }

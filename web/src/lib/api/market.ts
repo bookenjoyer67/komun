@@ -63,6 +63,7 @@ export interface MarketPost extends PostLike {
 	currency?: string | null;
 	price_negotiable?: boolean;
 	item_condition?: ItemCondition | string | null;
+	sold_at?: string | null;
 	/** Present only when the request carried a centre and the post has a location. */
 	distance_km?: number | null;
 }
@@ -169,6 +170,21 @@ export function formatPrice(
 export function conditionLabel(condition?: string | null): string {
 	if (!condition) return '';
 	return ITEM_CONDITION_LABELS[condition as ItemCondition] ?? condition;
+}
+
+/**
+ * A sale is stored as `fulfilled`, the status a finished want or need also carries, so the kind
+ * decides the word: only a listing is sold.
+ */
+export function closedLabel(post: {
+	kind?: string;
+	status?: string;
+	sold_at?: string | null;
+}): string {
+	const sold = post.kind === 'listing' && (post.sold_at != null || post.status === 'fulfilled');
+	if (sold) return 'Sold';
+	if (post.status === 'fulfilled') return 'Fulfilled';
+	return '';
 }
 
 /** "25.10" → 2510; empty or malformed → `null` (never `NaN` on the wire). */
