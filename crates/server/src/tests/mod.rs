@@ -14,6 +14,7 @@ mod outbound_routes;
 mod resource_limits;
 mod saved_searches;
 mod search_input;
+mod security_headers;
 mod support;
 
 /// The server-side half of the password path.
