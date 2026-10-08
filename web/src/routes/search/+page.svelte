@@ -187,8 +187,13 @@
     }
 </script>
 
+<svelte:head>
+    <title>Search — Komun</title>
+</svelte:head>
+
 <div class="container">
     <header class="search-header">
+        <h1>Search</h1>
         <form onsubmit={handleSearch} class="search-bar">
             <input
                 type="search"
@@ -278,7 +283,7 @@
                                     <span class="urgency" style="color: {urgencyColor(post.urgency)}">● {post.urgency}</span>
                                 {/if}
                             </div>
-                            <h3><a href="/p/{post.id}">{post.title}</a></h3>
+                            <h2><a href="/p/{post.id}">{post.title}</a></h2>
                             {#if post.body}
                                 <p class="post-body">{post.body.slice(0, 200)}{post.body.length > 200 ? '...' : ''}</p>
                             {/if}
@@ -321,6 +326,11 @@
 
     .search-header {
         margin-bottom: 1rem;
+    }
+
+    .search-header h1 {
+        font-size: var(--text-2xl);
+        margin-bottom: var(--space-3);
     }
 
     .search-input {
@@ -468,7 +478,7 @@
         padding: 0.75rem;
     }
 
-    .result-item h3 {
+    .result-item h2 {
         font-size: 1rem;
         margin: 0.25rem 0;
     }
