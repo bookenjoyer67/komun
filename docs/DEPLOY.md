@@ -105,13 +105,48 @@ server {
     location /api/          { proxy_pass http://127.0.0.1:3000; proxy_set_header Host $host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }
     location /avatars/      { proxy_pass http://127.0.0.1:3000; proxy_set_header Host $host; }
     location /post-images/  { proxy_pass http://127.0.0.1:3000; proxy_set_header Host $host; }
-    location /              { root /opt/komun/frontend; try_files $uri $uri/ /index.html; }
+    location / {
+        root /opt/komun/frontend;
+        try_files $uri $uri/ /index.html;
+        include /opt/komun/csp.conf;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+    }
 }
 ```
 
 If the server sits behind a trusted proxy, list that proxy in `[security] trusted_proxies`
 (as IP literals) so the rate limiter can believe `X-Forwarded-For`; otherwise the header is
 ignored, which is the safe default.
+
+### Security headers: repository side and operator side
+
+Which half of HSTS and the Content-Security-Policy does the repository send, and which half does the operator install?
+
+The server sends its own policy and HSTS on every response, media routes included
+(`crates/server/src/main.rs:130` `.layer(middleware::from_fn(security_headers::security_headers))`).
+It answers with no document, so its policy grants nothing
+(`crates/server/src/security_headers.rs:11` `"default-src 'none'; frame-ancestors 'none'"`).
+Its HSTS value carries neither `includeSubDomains` nor `preload`
+(`crates/server/src/security_headers.rs:12` `pub(crate) const HSTS: &str = "max-age=31536000";`).
+The sample's `location /` adds the SPA's per-build policy and the same HSTS value
+(`deploy/nginx-komun.conf:49` `include /opt/komun/csp.conf;`;
+`deploy/nginx-komun.conf:50` `add_header Strict-Transport-Security "max-age=31536000" always;`).
+That per-build policy carries the build's script hash and `frame-ancestors 'none'`
+(`scripts/csp-hash.sh:40` `"frame-ancestors 'none'"`;
+`scripts/csp-hash.sh:42` `print(f'add_header Content-Security-Policy "{policy}" always;')`).
+
+The operator installs the rest on the host:
+
+- Copy the sample's `location /` block into the host's nginx, because the updater never edits it
+  (`deploy/komun-update:13` `What it never touches: config.toml, data/, the database, /etc/nginx`).
+- Confirm `/opt/komun/csp.conf` exists before running `nginx -t`, because the include fails closed
+  (`deploy/nginx-komun.conf:47` `a missing file fails`).
+- Keep every SPA header inside `location /`, because an `add_header` there drops inherited ones
+  (`deploy/nginx-komun.conf:48` `drops every inherited one`).
+- Add `includeSubDomains` or `preload` on the host only, after checking every subdomain serves HTTPS
+  (`crates/server/src/security_headers.rs:12` `max-age=31536000`).
+- Run `curl -sI` against `/` and `/api/health` on the live host, and compare the `script-src` hash on
+  `/` with the output of `scripts/csp-hash.sh /opt/komun/frontend/index.html`.
 
 ## 6. Operate
 

@@ -13,6 +13,7 @@ mod ops_admin;
 mod outbound_routes;
 mod resource_limits;
 mod saved_searches;
+mod security_headers;
 mod support;
 
 /// The server-side half of the password path.
