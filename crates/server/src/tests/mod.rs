@@ -265,23 +265,27 @@ superadmin_public_keys = []
         assert_eq!(config.database.max_connections, 5);
     }
 
+    // Pure: setting DATABASE_URL in-process would race the parallel test threads.
     #[test]
-    fn test_config_missing_url_uses_default() {
+    fn startup_without_a_database_url_names_where_to_set_it() {
+        let err = Config::default()
+            .validate_database()
+            .expect_err("an unset database url must refuse to start")
+            .to_string();
+        assert!(err.contains("[database] url"), "unhelpful error: {err}");
+        assert!(err.contains("DATABASE_URL"), "unhelpful error: {err}");
+    }
+
+    #[test]
+    fn a_configured_database_url_passes_validation() {
         let toml = r#"
-[server]
-bind_address = "127.0.0.1"
-port = 3000
-
 [database]
-max_connections = 5
-
-[admin]
-superadmin_public_keys = []
+url = "postgres://db.test.invalid/komun"
 "#;
         let config: Config = toml::from_str(toml).expect("parse config");
-        assert!(config.database.url.contains("localhost"));
-        assert!(config.database.url.contains("postgres"));
-        assert_eq!(config.database.max_connections, 5);
+        config
+            .validate_database()
+            .expect("a configured database url must start");
     }
 
     // The messages never print the URL: a database URL can carry a password.

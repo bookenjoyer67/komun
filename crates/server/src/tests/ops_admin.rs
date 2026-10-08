@@ -112,8 +112,14 @@ async fn a_signed_in_user_can_report_a_post() {
     let path = format!("/posts/{post}/report");
     let body = json!({ "reason": "r14" });
 
-    let (status, response) =
-        send(&h.app, Method::POST, &path, Some(&reporter.bearer), Some(&body)).await;
+    let (status, response) = send(
+        &h.app,
+        Method::POST,
+        &path,
+        Some(&reporter.bearer),
+        Some(&body),
+    )
+    .await;
 
     assert!(
         status.is_success(),
@@ -181,8 +187,14 @@ async fn a_superadmin_sees_a_user_report() {
     let path = format!("/posts/{post}/report");
     let body = json!({ "reason": "r14" });
 
-    let (status, response) =
-        send(&h.app, Method::POST, &path, Some(&reporter.bearer), Some(&body)).await;
+    let (status, response) = send(
+        &h.app,
+        Method::POST,
+        &path,
+        Some(&reporter.bearer),
+        Some(&body),
+    )
+    .await;
     assert!(
         status.is_success(),
         "report: got {status}: {:?}",
@@ -202,7 +214,10 @@ async fn a_superadmin_sees_a_user_report() {
     let found = listed
         .as_array()
         .is_some_and(|reports| reports.iter().any(|r| r["id"] == report_id));
-    assert!(found, "the user's report must appear in the superadmin list");
+    assert!(
+        found,
+        "the user's report must appear in the superadmin list"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -289,8 +304,14 @@ async fn an_unknown_report_status_is_a_bad_request() {
     let path = format!("/admin/reports/{report}");
     let body = json!({ "status": "bogus" });
 
-    let (status, response) =
-        send(&h.app, Method::PATCH, &path, Some(&admin.bearer), Some(&body)).await;
+    let (status, response) = send(
+        &h.app,
+        Method::PATCH,
+        &path,
+        Some(&admin.bearer),
+        Some(&body),
+    )
+    .await;
 
     assert_eq!(
         status,
@@ -339,7 +360,12 @@ async fn deleting_an_unknown_user_is_not_found_and_unaudited() {
 
     let (status, body) = send(&h.app, Method::DELETE, &path, Some(&admin.bearer), None).await;
 
-    assert_eq!(status, StatusCode::NOT_FOUND, "error: {:?}", error_of(&body));
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "error: {:?}",
+        error_of(&body)
+    );
     assert!(audit_rows(&h.pool, DELETE_USER_ACTION, unknown)
         .await
         .is_empty());
@@ -390,10 +416,22 @@ async fn a_superadmin_hide_is_audited_once() {
     let admin = seed_user(&h.pool, "superadmin", "R14 admin").await;
     let post = seed_post(&h.pool, author.id).await;
     let path = format!("/posts/{post}/hide");
+    let body = json!({ "reason": "r14" });
 
-    let (status, body) = send(&h.app, Method::POST, &path, Some(&admin.bearer), None).await;
+    let (status, response) = send(
+        &h.app,
+        Method::POST,
+        &path,
+        Some(&admin.bearer),
+        Some(&body),
+    )
+    .await;
 
-    assert!(status.is_success(), "got {status}: {:?}", error_of(&body));
+    assert!(
+        status.is_success(),
+        "got {status}: {:?}",
+        error_of(&response)
+    );
     assert_eq!(post_status(&h.pool, post).await, "hidden");
     let rows = audit_rows(&h.pool, HIDE_POST_ACTION, admin.id).await;
     assert_eq!(rows.len(), 1, "want exactly one {HIDE_POST_ACTION} row");

@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${DB_USER:-komun}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-komun}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       POSTGRES_DB: ${DB_NAME:-komun}
     expose:
       - "5432"
@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     environment:
-      DATABASE_URL: postgres://${DB_USER:-komun}:${DB_PASSWORD:-komun}@db:5432/${DB_NAME:-komun}
+      DATABASE_URL: postgres://${DB_USER:-komun}:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/${DB_NAME:-komun}
       BIND_ADDR: 0.0.0.0:3000
       KOMUN_CONFIG: /app/config.toml
     ports:

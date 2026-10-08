@@ -9,7 +9,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use super::StatusError;
-use crate::auth::{require_auth, require_superadmin, AuthUser};
+use crate::auth::{record_audit, require_auth, require_superadmin, AuthUser};
 use crate::AppState;
 
 /// Any signed-in user can file a report, so the stored reason is bounded.
@@ -133,6 +133,17 @@ async fn hide_post(
     let reason = required_text("reason", input.reason.as_deref()).map_err(bad_request)?;
     let hidden = crate::db::reports::hide_post(&state.pool, post_id, auth.user_id, reason);
     let action_id = hidden.await?.ok_or_else(|| not_found("post not found"))?;
+
+    // `subject_id` names accounts; a post goes in the detail, as a directory URL does.
+    record_audit(
+        &state.pool,
+        Some(auth.user_id),
+        "admin.hide_post",
+        None,
+        serde_json::json!({ "post_id": post_id, "action_id": action_id }),
+    )
+    .await;
+
     let reply = serde_json::json!({"status": "hidden", "action_id": action_id});
     Ok(Json(reply))
 }
