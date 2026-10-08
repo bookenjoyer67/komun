@@ -447,5 +447,16 @@
       "run of 4h30m (docs/iteration-log.md), and 25 USD is about three times the largest",
       "observed single-run spend of $8.37 (docs/calibration-log.md)."
     ]
+  },
+  "retries": {
+    "per_call": 1,
+    "_purpose": [
+      "How many times one call is repeated after the environment killed it. Only exit 124 (the",
+      "per-call wall clock expired) and exit 137 (the container was killed) are retried, because",
+      "those two mean the call never reached a result; every other non-zero status is the command's",
+      "own verdict, and repeating a call that already ran doubles the spend without changing it.",
+      "scripts/run-agent.sh spends this value in the loop around the docker exec, and exposes it",
+      "through --print-config so scripts/port-self-test.sh can prove the wiring rather than trust it."
+    ]
   }
 }

@@ -92,3 +92,13 @@ Which repository rule does the rework loop enforce?
 - Follow the append-only migration rule: never edit `migrations/001_schema.sql`, and add `002+` for any schema change (`AGENTS.md:115-116` `Schema changes are additive files`).
 - Expect exactly three migration files in `migrations/` (`migrations/` → `001_schema.sql`, `002_directory_open_registration.sql`, `003_drop_matches_message.sql`).
 - Keep the prose standard in step with any doc change, because `docs/DOC-STYLE.md` governs it (`AGENTS.md:149` `Keep the prose docs in sync with the code`).
+
+## Human checkpoints
+
+What triggers each one, and what does each approve?
+
+Checkpoint 1 triggers before any code is written. The Orchestrator sends the ordered plan and the file list. A human approves them, and only then does the Implementer start.
+
+Checkpoint 2 triggers before release. Every gate has passed and the change has reached the Project Manager. A human rules on the release, and the ruling may be an amendment rather than a plain approval.
+
+Both were exercised rather than only described. `docs/iteration-log.md:303` records `Checkpoint 1 was approved with four item-by-item rulings`, and that `Checkpoint 2 was ruled` an amendment rather than a plain approval. The escalation thresholds that can force either checkpoint early are in `docs/governance-policy.md:390` `Escalation and rollback`.

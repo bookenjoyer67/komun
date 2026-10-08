@@ -3,6 +3,7 @@
     import EmptyState from '$lib/components/ui/EmptyState.svelte';
     import { goto } from '$app/navigation';
     import { getActiveServer, isConnected } from '$lib/stores/server';
+    import { getToken, isAuthenticated } from '$lib/stores/auth';
     import { location as savedLocation } from '$lib/stores/location';
     import { api } from '$lib/api/client';
     import {
@@ -39,16 +40,34 @@
     let loading = $state(untrack(() => hasQuery));
 
     let connected = $state(false);
+    let signedIn = $state(false);
     // Guards the effect from repeating the search onMount just ran.
     let lastCentre = $state<string | null>(null);
     // Guards the query effect from repeating the search onMount just ran.
     let lastQ = $state<string | null>(null);
+
+    // Built by `radiusParams`, so a saved search carries the same coarse cell the live search sends.
+    let saveBody = $derived<Record<string, string | number>>({
+        q: q.trim(),
+        ...Object.fromEntries(
+            Object.entries(radiusParams(centre, radius)).map(([key, value]) => [key, Number(value)])
+        )
+    });
+    // An outcome belongs to the search it was for: a new query, radius or centre is a new save.
+    let saveKey = $derived(JSON.stringify(saveBody));
+    let saving = $state(false);
+    let saveResult = $state<{ key: string; ok: boolean; message: string } | null>(null);
+    let savedHere = $derived(saveResult?.ok === true && saveResult.key === saveKey);
+    let saveError = $derived(
+        saveResult && !saveResult.ok && saveResult.key === saveKey ? saveResult.message : ''
+    );
 
     onMount(async () => {
         if (!isConnected()) { goto('/connect'); return; }
         lastCentre = centreKey;
         lastQ = q;
         connected = true;
+        signedIn = isAuthenticated();
         if (!hasQuery) return;
         await searchAll();
     });
@@ -125,6 +144,32 @@
         if (hasQuery) void searchPosts();
     }
 
+    async function saveSearch() {
+        const key = saveKey;
+        const body = saveBody;
+        saving = true;
+        try {
+            const res = await fetch(`${getActiveServer()}/api/me/saved-searches`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Could not save this search.');
+            }
+            saveResult = { key, ok: true, message: '' };
+        } catch (e) {
+            saveResult = {
+                key,
+                ok: false,
+                message: e instanceof Error ? e.message : 'Could not save this search.'
+            };
+        } finally {
+            saving = false;
+        }
+    }
+
     function kindBadge(kind: string): string {
         const m: Record<string, string> = { need: 'Need', offer: 'Offer', resource: 'Resource', listing: 'Listing', want: 'Want' };
         return m[kind] || kind;
@@ -186,7 +231,27 @@
             {:else}
                 <p class="hint">Set your location to filter by distance.</p>
             {/if}
+            {#if hasQuery && signedIn}
+                <button
+                    type="button"
+                    class="save-search"
+                    disabled={saving || savedHere}
+                    aria-busy={saving}
+                    onclick={saveSearch}
+                >
+                    Save this search
+                </button>
+            {/if}
         </div>
+        {#if hasQuery && signedIn}
+            {#if savedHere}
+                <p class="save-note" role="status">
+                    Search saved. New matches arrive as a daily digest; manage it on your <a href="/account">account page</a>.
+                </p>
+            {:else if saveError}
+                <p class="save-error" role="alert">{saveError}</p>
+            {/if}
+        {/if}
     {/if}
 
     {#if loading}
@@ -327,7 +392,8 @@
         cursor: not-allowed;
     }
 
-    .widen {
+    .widen,
+    .save-search {
         background: var(--bg-elevated);
         color: var(--text);
         border: 1px solid var(--border);
@@ -338,22 +404,49 @@
         transition: border-color var(--transition-fast);
     }
 
-    .widen:hover:not(:disabled) {
+    .widen:hover:not(:disabled),
+    .save-search:hover:not(:disabled) {
         border-color: var(--accent);
     }
 
-    .widen:focus-visible {
+    .widen:focus-visible,
+    .save-search:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
     }
 
-    .widen:disabled {
+    .widen:disabled,
+    .save-search:disabled {
         opacity: 0.6;
         cursor: not-allowed;
     }
 
-    .widen[aria-busy='true'] {
+    .widen[aria-busy='true'],
+    .save-search[aria-busy='true'] {
         cursor: progress;
+    }
+
+    .save-search {
+        margin-left: auto;
+    }
+
+    .save-note,
+    .save-error {
+        font-size: var(--text-sm);
+        margin-bottom: var(--space-4);
+    }
+
+    .save-note {
+        color: var(--text-muted);
+    }
+
+    .save-note a {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    .save-error {
+        color: var(--critical);
     }
 
     .hint {

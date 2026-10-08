@@ -1293,6 +1293,18 @@ def test_budget_ceilings_match_the_embedded_defaults() -> None:
     )
 
 
+def test_launcher_bounds_the_retry_and_retries_only_killed_calls() -> None:
+    """A retry that fires on the work's own verdict doubles the spend and changes nothing."""
+    launcher = (REPO / "scripts" / "run-agent.sh").read_text(encoding="utf-8")
+    assert "cfg retries.per_call" in launcher, (
+        "scripts/run-agent.sh does not read retries.per_call, so the retry bound is decorative"
+    )
+    assert "124|137" in launcher, (
+        "the retry must be limited to the exit codes the environment produces (124 the per-call "
+        "wall clock expired, 137 the container was killed), never to any non-zero status"
+    )
+
+
 def test_launcher_reads_both_ceilings_and_bounds_the_call() -> None:
     """The binding, not just the number: a ceiling no consumer reads is a comment."""
     launcher = (REPO / "scripts" / "run-agent.sh").read_text(encoding="utf-8")

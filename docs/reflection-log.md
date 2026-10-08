@@ -44,7 +44,7 @@ Which near-miss produced the skill, and what held after the addition?
 - Read the skill's own rationale, which names it (`.claude/skills/write-child-brief/SKILL.md:15` `the starvation near-miss recorded as NM-2`).
 - State the change as the new skill definition (`.claude/skills/write-child-brief/SKILL.md:2` `name: write-child-brief`).
 - Record the governance update that admits the skill (`docs/governance-policy.md:48` `the repository ships two skill files`).
-- Record the after as the policy suite staying green (`docs/capstone/video/demo-runbook.md:523` `Verified on 2026-10-01: 90 passed in 1.00s`).
+- Record the after as the policy suite staying green (`docs/capstone/video/demo-runbook.md:530` `Re-verified on 2026-10-07: 137 passed in 9.54s`).
 - Record that suite's size (`docs/capstone/one-pager.md:31` `95 tests in the policy gate, made up of 75 permission tests, 5 cost-control tests and 15 validator tests.`).
 - Record no rerun for the skill's activation: not recorded at decision time.
 

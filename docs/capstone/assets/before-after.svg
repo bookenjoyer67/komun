@@ -8,7 +8,7 @@
 
   <rect x="90" y="170" width="860" height="740" rx="12" fill="#ffffff" stroke="#b9c1cb" stroke-width="2"/>
   <text x="110" y="206" font-size="22" font-weight="700" fill="#1b1f24">Panel A - cycle time per run (seconds)</text>
-  <text x="210" y="234" font-size="16" fill="#1b1f24">cycle time (seconds) - LOG SCALE: equal vertical distance is a tenfold factor</text>
+  <text x="210" y="234" font-size="18" fill="#1b1f24">cycle time (seconds) - LOG SCALE: equal steps are tenfold</text>
 
   <line x1="210" y1="790" x2="900" y2="790" stroke="#1b1f24" stroke-width="2"/>
   <line x1="210" y1="790" x2="210" y2="250" stroke="#1b1f24" stroke-width="2"/>
@@ -18,46 +18,46 @@
   <line x1="210" y1="358" x2="900" y2="358" stroke="#e3e7ec" stroke-width="1.5"/>
   <line x1="210" y1="250" x2="900" y2="250" stroke="#e3e7ec" stroke-width="1.5"/>
 
-  <text x="196" y="795" text-anchor="end" font-size="15" fill="#1b1f24">0.1</text>
-  <text x="196" y="687" text-anchor="end" font-size="15" fill="#1b1f24">1</text>
-  <text x="196" y="579" text-anchor="end" font-size="15" fill="#1b1f24">10</text>
-  <text x="196" y="471" text-anchor="end" font-size="15" fill="#1b1f24">100</text>
-  <text x="196" y="363" text-anchor="end" font-size="15" fill="#1b1f24">1,000</text>
-  <text x="196" y="255" text-anchor="end" font-size="15" fill="#1b1f24">10,000</text>
+  <text x="196" y="795" text-anchor="end" font-size="18" fill="#1b1f24">0.1</text>
+  <text x="196" y="687" text-anchor="end" font-size="18" fill="#1b1f24">1</text>
+  <text x="196" y="579" text-anchor="end" font-size="18" fill="#1b1f24">10</text>
+  <text x="196" y="471" text-anchor="end" font-size="18" fill="#1b1f24">100</text>
+  <text x="196" y="363" text-anchor="end" font-size="18" fill="#1b1f24">1,000</text>
+  <text x="196" y="255" text-anchor="end" font-size="18" fill="#1b1f24">10,000</text>
 
   <rect x="240" y="311.2" width="120" height="478.8" fill="#a96200"/>
-  <text x="300" y="299" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">2713 s (45m13s)</text>
+  <text x="300" y="299" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">2713 s (45m13s)</text>
 
   <rect x="410" y="690" width="120" height="100" fill="#2f7d6b"/>
-  <text x="470" y="678" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">0.844 s</text>
+  <text x="470" y="678" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">0.844 s</text>
 
   <rect x="580" y="722.2" width="120" height="67.8" fill="#2f7d6b"/>
-  <text x="640" y="710" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">0.424 s</text>
+  <text x="640" y="710" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">0.424 s</text>
 
   <rect x="750" y="722.5" width="120" height="67.5" fill="#2f7d6b"/>
-  <text x="810" y="710" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">0.422 s</text>
+  <text x="810" y="710" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">0.422 s</text>
 
-  <text x="300" y="816" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">before</text>
-  <text x="470" y="816" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">after 1</text>
-  <text x="640" y="816" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">after 2</text>
-  <text x="810" y="816" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">after 3</text>
-  <text x="300" y="840" text-anchor="middle" font-size="14" fill="#5a6472">agentic run</text>
-  <text x="470" y="840" text-anchor="middle" font-size="14" fill="#5a6472">script run</text>
-  <text x="640" y="840" text-anchor="middle" font-size="14" fill="#5a6472">script run</text>
-  <text x="810" y="840" text-anchor="middle" font-size="14" fill="#5a6472">script run</text>
+  <text x="300" y="816" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">before</text>
+  <text x="470" y="816" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">after 1</text>
+  <text x="640" y="816" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">after 2</text>
+  <text x="810" y="816" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">after 3</text>
+  <text x="300" y="840.0" text-anchor="middle" font-size="18" fill="#5a6472">agentic run</text>
+  <text x="470" y="840.0" text-anchor="middle" font-size="18" fill="#5a6472">script run</text>
+  <text x="640" y="840.0" text-anchor="middle" font-size="18" fill="#5a6472">script run</text>
+  <text x="810" y="840.0" text-anchor="middle" font-size="18" fill="#5a6472">script run</text>
 
   <rect x="500" y="250" width="340" height="112" rx="8" fill="#ffffff" stroke="#b9c1cb" stroke-width="1.5" opacity="0.96"/>
-  <text x="516" y="276" font-size="16" font-weight="700" fill="#1b1f24">fastest run used: run 3 (0.422 s)</text>
-  <text x="516" y="300" font-size="16" fill="#1b1f24">before / after = 2713 / 0.422</text>
-  <text x="516" y="324" font-size="16" font-weight="700" fill="#2f7d6b">= 6,429x</text>
-  <text x="516" y="348" font-size="14" fill="#1b1f24">rounded operand 0.42 gives 6,459x</text>
+  <text x="516" y="276" font-size="18" font-weight="700" fill="#1b1f24">fastest run used: run 3 (0.422 s)</text>
+  <text x="516" y="300" font-size="18" fill="#1b1f24">before / after = 2713 / 0.422</text>
+  <text x="516" y="324" font-size="18" font-weight="700" fill="#2f7d6b">= 6,429x</text>
+  <text x="516" y="348" font-size="18" fill="#1b1f24">rounded operand 0.42 gives 6,459x</text>
 
-  <text x="110" y="872" font-size="15" fill="#1b1f24">The log scale is required: on a linear axis the three after bars (0.42 s to 0.84 s) would be invisible beside 2713 s.</text>
-  <text x="110" y="896" font-size="15" fill="#1b1f24">Across the three after runs the conversion is 3,214x to 6,429x faster than the agentic run.</text>
+  <text x="110" y="872.0" font-size="18" fill="#1b1f24">Log scale: the after bars (0.42-0.84 s) are invisible beside 2713 s.</text>
+  <text x="110" y="892.0" font-size="18" fill="#1b1f24">Across the three runs: 3,214x to 6,429x faster than the agentic run.</text>
 
   <rect x="970" y="170" width="860" height="740" rx="12" fill="#ffffff" stroke="#b9c1cb" stroke-width="2"/>
   <text x="990" y="206" font-size="22" font-weight="700" fill="#1b1f24">Panel B - model spend per run (US dollars)</text>
-  <text x="1090" y="234" font-size="16" fill="#1b1f24">model spend (US dollars, LINEAR scale)</text>
+  <text x="1090" y="234" font-size="18" fill="#1b1f24">model spend (US dollars, LINEAR scale)</text>
 
   <line x1="1090" y1="790" x2="1880" y2="790" stroke="#1b1f24" stroke-width="2"/>
   <line x1="1090" y1="790" x2="1090" y2="250" stroke="#1b1f24" stroke-width="2"/>
@@ -67,37 +67,41 @@
   <line x1="1090" y1="358" x2="1880" y2="358" stroke="#e3e7ec" stroke-width="1.5"/>
   <line x1="1090" y1="250" x2="1880" y2="250" stroke="#e3e7ec" stroke-width="1.5"/>
 
-  <text x="1076" y="795" text-anchor="end" font-size="15" fill="#1b1f24">$0</text>
-  <text x="1076" y="687" text-anchor="end" font-size="15" fill="#1b1f24">$2</text>
-  <text x="1076" y="579" text-anchor="end" font-size="15" fill="#1b1f24">$4</text>
-  <text x="1076" y="471" text-anchor="end" font-size="15" fill="#1b1f24">$6</text>
-  <text x="1076" y="363" text-anchor="end" font-size="15" fill="#1b1f24">$8</text>
-  <text x="1076" y="255" text-anchor="end" font-size="15" fill="#1b1f24">$10</text>
+  <text x="1076" y="795" text-anchor="end" font-size="18" fill="#1b1f24">$0</text>
+  <text x="1076" y="687" text-anchor="end" font-size="18" fill="#1b1f24">$2</text>
+  <text x="1076" y="579" text-anchor="end" font-size="18" fill="#1b1f24">$4</text>
+  <text x="1076" y="471" text-anchor="end" font-size="18" fill="#1b1f24">$6</text>
+  <text x="1076" y="363" text-anchor="end" font-size="18" fill="#1b1f24">$8</text>
+  <text x="1076" y="255" text-anchor="end" font-size="18" fill="#1b1f24">$10</text>
 
   <rect x="1245" y="337.9" width="180" height="452.1" fill="#a96200"/>
-  <text x="1335" y="292" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">$8.37</text>
-  <text x="1335" y="520" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">80 API requests</text>
+  <text x="1335" y="292" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">$8.37</text>
+  <text x="1335" y="520" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">80 API requests</text>
 
   <rect x="1545" y="786" width="180" height="4" fill="#2f7d6b"/>
-  <text x="1635" y="768" text-anchor="middle" font-size="16" font-weight="700" fill="#2f7d6b">$0.00 (0 model calls)</text>
+  <text x="1635" y="768" text-anchor="middle" font-size="18" font-weight="700" fill="#2f7d6b">$0.00 (0 model calls)</text>
 
-  <text x="1335" y="816" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">before</text>
-  <text x="1635" y="816" text-anchor="middle" font-size="16" font-weight="700" fill="#1b1f24">after</text>
-  <text x="1335" y="840" text-anchor="middle" font-size="14" fill="#5a6472">agentic, 2026-09-26</text>
-  <text x="1635" y="840" text-anchor="middle" font-size="14" fill="#5a6472">script, 2026-09-29</text>
+  <text x="1335" y="816" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">before</text>
+  <text x="1635" y="816" text-anchor="middle" font-size="18" font-weight="700" fill="#1b1f24">after</text>
+  <text x="1335" y="840.0" text-anchor="middle" font-size="18" fill="#5a6472">agentic, 2026-09-26</text>
+  <text x="1635" y="840.0" text-anchor="middle" font-size="18" fill="#5a6472">script, 2026-09-29</text>
 
   <rect x="1450" y="560" width="420" height="152" rx="8" fill="#ffffff" stroke="#b9c1cb" stroke-width="1.5" opacity="0.96"/>
-  <text x="1466" y="588" font-size="16" font-weight="700" fill="#1b1f24">multiplier, before / after</text>
-  <text x="1466" y="612" font-size="16" fill="#1b1f24">= 8.37 / 0.00</text>
-  <text x="1466" y="636" font-size="16" font-weight="700" fill="#2f7d6b">= undefined (division by zero)</text>
-  <text x="1466" y="660" font-size="16" fill="#1b1f24">the whole $8.37 is eliminated</text>
-  <text x="1466" y="684" font-size="14" fill="#1b1f24">no finite multiplier exists for $0.00</text>
+  <text x="1466" y="588" font-size="18" font-weight="700" fill="#1b1f24">multiplier, before / after</text>
+  <text x="1466" y="612" font-size="18" fill="#1b1f24">= 8.37 / 0.00</text>
+  <text x="1466" y="636" font-size="18" font-weight="700" fill="#2f7d6b">= undefined (division by zero)</text>
+  <text x="1466" y="660" font-size="18" fill="#1b1f24">the whole $8.37 is eliminated</text>
+  <text x="1466" y="684" font-size="18" fill="#1b1f24">no finite multiplier exists for $0.00</text>
 
-  <text x="990" y="872" font-size="15" fill="#1b1f24">Before: 80 API requests. After: zero model calls, because the script imports five standard modules and calls no model.</text>
-  <text x="990" y="896" font-size="15" fill="#1b1f24">The report carries no timestamp, so two runs over one input are byte-identical: one SHA-256 digest over all three reports.</text>
+  <text x="990" y="872.0" font-size="18" fill="#1b1f24">Before: 80 API requests. After: zero model calls, because the script imports five</text>
+      <text x="990" y="892.0" font-size="18" fill="#1b1f24">standard modules and calls no model.</text>
+  <text x="990" y="912.0" font-size="18" fill="#1b1f24">The report carries no timestamp, so two runs over one input are byte-identical: one</text>
+      <text x="990" y="932.0" font-size="18" fill="#1b1f24">SHA-256 digest over all three reports.</text>
 
-  <text x="90" y="952" font-size="16" font-weight="700" fill="#1b1f24">Step: the prose and citation conformance check. Decision of record: docs/adr/ADR-001-doc-conformance-deterministic-conversion.md. Carried by the conformance gate.</text>
-  <text x="90" y="982" font-size="15" fill="#1b1f24">Measures from docs/calibration-log.md - before: the agentic run of 2026-09-26 (45m13s wall, $8.37, 80 API requests, 11/12 rubric PASS); after: three script runs of 2026-09-29 (0.844 s, 0.424 s, 0.422 s; $0.00, zero model calls).</text>
-  <text x="90" y="1012" font-size="15" fill="#1b1f24">Adjacent measure, a different step (test-gate prompt revision): cycle 4m14s to 2m33s (-40%), cost $0.4845 to $0.1635 (-66%), requests 10 to 5. Baseline 2026-09-25: cargo test 158 passed, clippy exit 0, vitest 82 tests in 7 files.</text>
-  <text x="90" y="1054" font-size="15" fill="#5a6472">Sources: docs/calibration-log.md, docs/adr/ADR-001-doc-conformance-deterministic-conversion.md, docs/iteration-log.md.</text>
+  <text x="90" y="952.0" font-size="18" font-weight="700" fill="#1b1f24">Step: the prose and citation conformance check. Decision of record: docs/adr/ADR-001-doc-conformance-deterministic-conversion.md. Carried by the conformance gate.</text>
+  <text x="90" y="972.0" font-size="18" fill="#1b1f24">Measures from docs/calibration-log.md - before: the agentic run of 2026-09-26 (45m13s wall, $8.37, 80 API requests, 11/12 rubric PASS); after: three script runs of 2026-09-29</text>
+      <text x="90" y="992.0" font-size="18" fill="#1b1f24">(0.844 s, 0.424 s, 0.422 s; $0.00, zero model calls).</text>
+  <text x="90" y="1012.0" font-size="18" fill="#1b1f24">Adjacent measure, a different step (test-gate prompt revision): cycle 4m14s to 2m33s (-40%), cost $0.4845 to $0.1635 (-66%), requests 10 to 5. Baseline 2026-09-25: cargo test 158</text>
+      <text x="90" y="1032.0" font-size="18" fill="#1b1f24">passed, clippy exit 0, vitest 82 tests in 7 files.</text>
+  <text x="90" y="1052.0" font-size="18" fill="#5a6472">Sources: docs/calibration-log.md, docs/adr/ADR-001-doc-conformance-deterministic-conversion.md, docs/iteration-log.md.</text>
 </svg>

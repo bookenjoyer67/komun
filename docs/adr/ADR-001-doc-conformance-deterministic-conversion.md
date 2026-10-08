@@ -204,3 +204,8 @@ Two consequences this record should carry, because the first draft of the wiring
   clone carrying a deliberate three-finding drift, the HEAD-against-HEAD comparison printed
   `"verdict": "pass"`.
 
+## Open risks
+
+- The script judges only the rules it encodes. A citation defect outside those rules stays invisible, and the conformance gate's file list leaves out `docs/adr/` (`docs/adr/ADR-008-marketplace-parity-non-goals.md`), so an ADR can cite a stale line and pass.
+- The rollback is not clean. Exercised on 2026-10-03 it stops on four conflicts, because every file the conversion added was edited afterwards (`docs/capstone/deck.md:202` `exercised 2026-10-03. It stops on 4 conflicts`).
+- The conversion is one-directional in practice. Nothing converts a deterministic step back to an agent if its rule set proves wrong.
