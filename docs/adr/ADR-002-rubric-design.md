@@ -170,3 +170,9 @@ Which artifacts settle this decision?
 - The provenance of this record: it is written on 2026-10-01, after the decisions, from the artifacts
   above. Two alternatives below carry the words "Not recorded at decision time" and an [UNVERIFIED]
   sentence naming what would settle them.
+
+## Open risks
+
+- One level stays unreachable on a green run: the test gate's D5 level 4 asks for a crate to inspect, which a passing run does not have. It is recorded rather than fixed (`docs/iteration-log.md:1195` `level 4 is still unreachable on a green run (open rubric defect, recorded since Run 002)`).
+- The defect class recurred in a second workflow, so the freeze records defects at a rate the design did not anticipate.
+- The rubric is frozen, so a dimension that proves wrong is frozen wrong with it.

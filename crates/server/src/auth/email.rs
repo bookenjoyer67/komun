@@ -128,9 +128,11 @@ pub fn verification_link(public_url: &str, token: &str) -> String {
     )
 }
 
+/// The token rides in the fragment, which a browser never sends: it reaches no server, proxy log
+/// or referrer, and the reset page reads it from there.
 pub fn password_reset_link(public_url: &str, token: &str) -> String {
     format!(
-        "{}/reset-password?token={}",
+        "{}/account/reset#token={}",
         public_url.trim_end_matches('/'),
         urlencode(token)
     )
@@ -305,7 +307,7 @@ mod tests {
         let wire = render(&msg);
         let body = decoded_body(&wire);
 
-        assert!(body.contains("/reset-password?token=reset-token"), "{body}");
+        assert!(body.contains("/account/reset#token=reset-token"), "{body}");
         assert!(body.contains("30 minutes"), "{body}");
         assert!(
             body.contains("signs out every other device"),
@@ -380,5 +382,16 @@ mod tests {
             err.contains("from is not a valid address"),
             "unhelpful: {err}"
         );
+    }
+
+    // The fragment never reaches a server, a proxy log or a referrer.
+    #[test]
+    fn reset_link_opens_the_reset_page_with_the_token_in_the_fragment() {
+        let link = password_reset_link("https://x", "t");
+        let (page, fragment) = link.split_once('#').unwrap_or((link.as_str(), ""));
+
+        assert_eq!(page, "https://x/account/reset", "{link}");
+        assert_eq!(fragment, "token=t", "{link}");
+        assert!(!link.contains("?token="), "{link}");
     }
 }

@@ -405,3 +405,42 @@ Rollback is one commit and one command, and a threshold decides it in the same w
 - Revert the conversion commit when the script returns a wrong result in the running workflow (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:68` `one git revert`).
 - Close a rollback decision against the four-run regression rather than a single run (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:10` `the integrated end-to-end regression passed on 2026-09-29 across four runs`).
 - Record the revert as the next entry's change under gate, where every other change is recorded (`docs/iteration-log.md:14` `- Change under gate: ticket`).
+
+## Eval-gated change control, in the commit history
+
+Where does a change meet the evaluation gate, and how is that visible in the history?
+
+A change reaches `main` through a pull request whose gates have run. The history records the gate's
+decision, not the author's intention. `.github/workflows/ci.yml` triggers on `pull_request` and on a
+push to the default branch. It defines nine jobs. One of them is the evaluation harness, and its job
+name is `eval-gate`.
+
+The harness does not run unconditionally. It needs the change classifier and the policy suite first.
+A guard decides whether it runs at all:
+`needs.change-type-check.outputs.requires-governed-check == 'true'`. Whether a change faces the
+harness is itself a classified decision.
+
+The practice is recent, and the counts say so. The last twelve first-parent commits on `main` are all
+merges, from `#25` to `#37`. Across the whole history the first-parent chain is 191 commits, of which
+35 are merges. Earlier work landed directly, so this section claims recent control and no more.
+
+The rule is legible in one commit. `767058f` carries its own verdicts in its message. That message
+reads `conformance: pass, 207 findings at base, 207 at HEAD, no rule rose`. It also records `policy,
+run in the designed container: 134 passed, 3 failed`, naming the three as environmental. The same
+three fail at pristine `origin/main`. `a000bb0` records an exercised control the same way. A call
+killed by the per-call wall clock retried once and then settled. A call that exited 7 never retried.
+
+The gating can be inspected rather than assumed. `.memory/gate-audit.log` holds one row per gated
+call. Each row carries the calling role, the gate, the exit code and the duration. There are 254
+rows, covering 2026-09-28 to 2026-10-04. `scripts/build-audit-trail.py` assembles those rows into the
+run's audit trail.
+
+## What did the gate refuse most recently?
+
+Which change did the gate refuse, and what did the refusal say?
+
+On 2026-10-05 the conformance gate refused a change to `docs/orchestration-diagram.md`. The change added a section naming the trigger for each human checkpoint. The gate returned two findings against it before it could land.
+
+The first was R1-NOT-QUESTION. The line after the heading was not the question the section answers. The second was CIT-LITERAL-MISSING. A citation of `docs/governance-policy.md:390` `Escalation and rollback` carried a quoted literal absent from that line.
+
+The author repaired the prose until the same gate returned pass. Only then was the change committed, as `68ec5e4`. The refusal is the point. The gate decided when the change could land, and the history carries the commit that followed it.

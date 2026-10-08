@@ -145,3 +145,9 @@ Which artifacts settle this decision?
 - Provenance: this record derives from `docs/memory-architecture.md`, the two hooks under
   `.claude/hooks/`, and the Run 002 and Run 003 entries in `docs/iteration-log.md`
   (`docs/iteration-log.md:605` `## Run 002 (workflow 5`; `docs/iteration-log.md:535` `3 / 3 safeguards held`).
+
+## Open risks
+
+- The byte cap is a budget, not a guarantee. It bounds what the hook inlines, and an entry that outgrows it is truncated rather than refused.
+- The read-only layers are enforced at the hook, because permission bits do not bind a root process (`.claude/hooks/guard-readonly-memory.sh:6` `returned 0 as root and 1 as`). A write path that bypasses the hook is outside the control.
+- The allocation is judged against the workflows that exist. A role added later has no allocation until one is written for it.

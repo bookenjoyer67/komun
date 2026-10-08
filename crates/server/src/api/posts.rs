@@ -1,8 +1,13 @@
 //! `/api/posts` — the flat post collection. `require_auth` is the only gate on the mutating half
 //! of this router.
 
+use std::path::PathBuf;
+
 use axum::{
-    extract::{Extension, Multipart, Path, Query, State},
+    extract::{
+        multipart::{Field, MultipartError},
+        DefaultBodyLimit, Extension, Multipart, Path, Query, State,
+    },
     http::{header, HeaderMap, StatusCode},
     middleware,
     routing::get,
@@ -15,15 +20,35 @@ use uuid::Uuid;
 use crate::auth::{require_auth, AuthUser};
 use crate::config::is_currency_code;
 use crate::db::posts::{FeedPost, FeedSort, PostFilter, DEFAULT_LIMIT, MAX_LIMIT, MAX_RADIUS_KM};
+use crate::media;
 use crate::AppState;
 use komun_core::models::{
     coarsen_coordinate, CreatePost, ItemCondition, Post, PostKind, PostStatus, Urgency,
 };
 
 use super::categories::{bad_request, validate_slug};
-use super::StatusError;
+use super::{count_unavailable, hourly_count, Hourly, StatusError, MULTIPART_OVERHEAD};
+
+const MAX_TITLE_CHARS: usize = 200;
+const MAX_BODY_CHARS: usize = 10_000;
+const MAX_LOCATION_NAME_CHARS: usize = 200;
+const MAX_CONTACT_METHOD_CHARS: usize = 200;
+const MAX_TAGS: usize = 10;
+const MAX_TAG_CHARS: usize = 32;
+const MAX_QUANTITY: i32 = 1_000_000;
+const MAX_SEARCH_CHARS: usize = 200;
+
+/// Stored images are scaled down to fit this square.
+const IMAGE_FIT_PX: u32 = 1920;
+
+const NO_ROOM_FOR_IMAGES: &str = "the post already has as many images as it may carry";
 
 pub fn router(state: AppState) -> Router {
+    let media_config = &state.config.media;
+    let upload_limit = (media_config.max_post_images as usize)
+        .saturating_mul(media_config.max_post_image_bytes as usize)
+        .saturating_add(MULTIPART_OVERHEAD);
+
     let public = Router::new()
         .route("/", get(list_posts))
         .route("/{id}", get(get_post));
@@ -34,7 +59,10 @@ pub fn router(state: AppState) -> Router {
             "/{id}",
             axum::routing::patch(update_post).delete(withdraw_post),
         )
-        .route("/{id}/images", axum::routing::post(upload_images))
+        .route(
+            "/{id}/images",
+            axum::routing::post(upload_images).layer(DefaultBodyLimit::max(upload_limit)),
+        )
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     public.merge(protected).with_state(state)
@@ -155,11 +183,21 @@ pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> 
         }
     }
 
+    let q = trimmed(raw.q.as_deref());
+    if let Some(term) = q {
+        let length = term.chars().count();
+        if length > MAX_SEARCH_CHARS {
+            return Err(format!(
+                "q must be {MAX_SEARCH_CHARS} characters or fewer (got {length})"
+            ));
+        }
+    }
+
     Ok(PostFilter {
         kind,
         category,
         status,
-        q: trimmed(raw.q.as_deref()).map(str::to_string),
+        q: q.map(str::to_string),
         min_price_cents,
         max_price_cents,
         currency,
@@ -263,7 +301,13 @@ fn price_filter(name: &str, raw: Option<&str>) -> Result<Option<i64>, String> {
 }
 
 /// Rejected rather than clamped, so a caller is not silently handed 200.
-fn bounded(name: &str, raw: Option<&str>, default: i64, min: i64, max: i64) -> Result<i64, String> {
+pub(crate) fn bounded(
+    name: &str,
+    raw: Option<&str>,
+    default: i64,
+    min: i64,
+    max: i64,
+) -> Result<i64, String> {
     let Some(value) = trimmed(raw) else {
         return Ok(default);
     };
@@ -338,26 +382,9 @@ async fn create_post(
     Extension(auth): Extension<AuthUser>,
     Json(mut input): Json<CreatePost>,
 ) -> Result<Json<Post>, StatusError> {
-    let recent: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM posts WHERE author_id = $1 AND created_at > now() - interval '1 hour'"
-    )
-    .bind(auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
-
-    if recent >= state.config.security.max_posts_per_hour as i64 {
-        return Err(StatusError::with_status(
-            StatusCode::TOO_MANY_REQUESTS,
-            format!(
-                "rate limit: max {} posts per hour",
-                state.config.security.max_posts_per_hour
-            ),
-        ));
-    }
-
     validate_location(&input)?;
     validate_market_fields(&input)?;
+    validate_text_fields(&input)?;
 
     // Resolve only after validation, so a caller's bad currency is their 400 rather than silently
     // replaced by the server default.
@@ -369,7 +396,22 @@ async fn create_post(
         input.currency = resolved;
     }
 
-    let post = crate::db::posts::create(&state.pool, auth.user_id, input).await?;
+    let mut tx = state.pool.begin().await?;
+    let recent = hourly_count(&mut tx, Hourly::Posts, auth.user_id)
+        .await
+        .map_err(|e| count_unavailable(Hourly::Posts, e))?;
+    if recent >= state.config.security.max_posts_per_hour as i64 {
+        return Err(StatusError::with_status(
+            StatusCode::TOO_MANY_REQUESTS,
+            format!(
+                "rate limit: max {} posts per hour",
+                state.config.security.max_posts_per_hour
+            ),
+        ));
+    }
+
+    let post = crate::db::posts::create(&mut tx, auth.user_id, input).await?;
+    tx.commit().await?;
     Ok(Json(post))
 }
 
@@ -417,6 +459,52 @@ fn validate_market_fields(input: &CreatePost) -> Result<(), StatusError> {
                 "currency must be a three-letter uppercase ISO-4217 code",
             ));
         }
+    }
+    Ok(())
+}
+
+/// Refused, never truncated: a cut field is text the author did not write.
+fn validate_text_fields(input: &CreatePost) -> Result<(), StatusError> {
+    capped("title", Some(&input.title), MAX_TITLE_CHARS)?;
+    capped("body", input.body.as_deref(), MAX_BODY_CHARS)?;
+    capped(
+        "location_name",
+        input.location_name.as_deref(),
+        MAX_LOCATION_NAME_CHARS,
+    )?;
+    capped(
+        "contact_method",
+        input.contact_method.as_deref(),
+        MAX_CONTACT_METHOD_CHARS,
+    )?;
+    if let Some(tags) = &input.tags {
+        if tags.len() > MAX_TAGS {
+            return Err(bad_request(format!(
+                "tags must number {MAX_TAGS} or fewer (got {})",
+                tags.len()
+            )));
+        }
+        for tag in tags {
+            capped("each tag", Some(tag), MAX_TAG_CHARS)?;
+        }
+    }
+    if let Some(quantity) = input.quantity {
+        if !(0..=MAX_QUANTITY).contains(&quantity) {
+            return Err(bad_request(format!(
+                "quantity must be from 0 to {MAX_QUANTITY} (got {quantity})"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Characters, not bytes: a non-Latin field would otherwise get a third of the promised room.
+fn capped(name: &str, value: Option<&str>, max: usize) -> Result<(), StatusError> {
+    let length = value.map_or(0, |v| v.chars().count());
+    if length > max {
+        return Err(bad_request(format!(
+            "{name} must be {max} characters or fewer (got {length})"
+        )));
     }
     Ok(())
 }
@@ -483,6 +571,9 @@ async fn update_post(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdatePostRequest>,
 ) -> Result<Json<serde_json::Value>, StatusError> {
+    capped("title", input.title.as_deref(), MAX_TITLE_CHARS)?;
+    capped("body", input.body.as_deref(), MAX_BODY_CHARS)?;
+
     let post = load_post(&state, id).await?;
     if post.author_id != auth.user_id {
         return Err(StatusError::with_status(
@@ -528,6 +619,8 @@ async fn withdraw_post(
     Ok(Json(json!({"status": "withdrawn"})))
 }
 
+/// A part that is not a supported image, is over the size cap, or does not fit is skipped and
+/// reported; a part that claims a supported type and does not decode as it fails the request.
 async fn upload_images(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
@@ -542,74 +635,139 @@ async fn upload_images(
         ));
     }
 
-    let current_count: i64 =
-        sqlx::query_scalar("SELECT COALESCE(array_length(images, 1), 0) FROM posts WHERE id = $1")
-            .bind(id)
-            .fetch_one(&state.pool)
-            .await
-            .unwrap_or(0);
+    let max_images = state.config.media.max_post_images as usize;
+    let max_bytes = state.config.media.max_post_image_bytes as usize;
+    let room = max_images.saturating_sub(post.images.len());
+    let dir = PathBuf::from(&state.config.media.post_images_dir);
+    let mut written = WrittenFiles::new(dir.clone());
+    let mut skipped: Vec<serde_json::Value> = Vec::new();
 
-    let max = state.config.media.max_post_images as i64;
-    let mut filenames: Vec<String> = vec![];
-
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?
-    {
-        if current_count + filenames.len() as i64 >= max {
-            break;
-        }
-
+    while let Some(mut field) = multipart.next_field().await.map_err(multipart_error)? {
+        let name = field.name().unwrap_or("").to_string();
         let content_type = field.content_type().unwrap_or("").to_string();
-        if !matches!(
-            content_type.as_str(),
-            "image/png" | "image/jpeg" | "image/webp"
-        ) {
+        if media::claimed_format(&content_type).is_none() {
+            skipped.push(skip(&name, media::Rejected::UnsupportedType.reason()));
             continue;
         }
-
-        let data = field.bytes().await.map_err(|e| anyhow::anyhow!("{}", e))?;
-        if data.len() > state.config.media.max_post_image_bytes as usize {
+        if written.len() >= room {
+            skipped.push(skip(&name, NO_ROOM_FOR_IMAGES));
             continue;
         }
-
-        let img = image::load_from_memory(&data)
-            .map_err(|_| StatusError::with_status(StatusCode::BAD_REQUEST, "invalid image"))?;
-        let img = if img.width() > 1920 || img.height() > 1920 {
-            img.resize(1920, 1920, image::imageops::FilterType::Lanczos3)
-        } else {
-            img
+        let Some(data) = read_capped(&mut field, max_bytes).await? else {
+            skipped.push(skip(&name, &format!("the image is over {max_bytes} bytes")));
+            continue;
         };
 
-        let img_id = Uuid::now_v7();
-        let filename = format!("{}.webp", img_id);
-        let dir = std::path::Path::new(&state.config.media.post_images_dir);
-        std::fs::create_dir_all(dir).ok();
-        let path = dir.join(&filename);
-        img.save(&path).map_err(|e| anyhow::anyhow!("{}", e))?;
-        filenames.push(filename);
+        let img = media::decode_bounded(data, &content_type, IMAGE_FIT_PX)
+            .await
+            .map_err(|why| StatusError::with_status(StatusCode::BAD_REQUEST, why.reason()))?;
+
+        let filename = format!("{}.webp", Uuid::now_v7());
+        std::fs::create_dir_all(&dir).ok();
+        written.push(filename.clone());
+        img.save(dir.join(&filename))
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
     }
 
-    if filenames.is_empty() {
-        return Ok(Json(json!({"images": []})));
+    if written.is_empty() {
+        return Ok(Json(json!({"images": [], "skipped": skipped})));
     }
 
-    sqlx::query(
-        "UPDATE posts SET images = array_cat(COALESCE(images, '{}'), $1::text[]) WHERE id = $2",
+    // The count is checked in the same statement that appends, so concurrent uploads cannot
+    // together pass `max_post_images`.
+    let attached = sqlx::query_scalar::<_, Uuid>(
+        r#"UPDATE posts SET images = array_cat(COALESCE(images, '{}'), $1::text[])
+           WHERE id = $2 AND COALESCE(array_length(images, 1), 0) + $3 <= $4
+           RETURNING id"#,
     )
-    .bind(&filenames)
+    .bind(written.names())
     .bind(id)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| anyhow::anyhow!("{}", e))?;
+    .bind(written.len() as i32)
+    .bind(max_images as i32)
+    .fetch_optional(&state.pool)
+    .await?;
+    if attached.is_none() {
+        return Err(StatusError::with_status(
+            StatusCode::CONFLICT,
+            NO_ROOM_FOR_IMAGES,
+        ));
+    }
 
-    let urls: Vec<String> = filenames
+    let urls: Vec<String> = written
+        .keep()
         .iter()
         .map(|f| format!("/post-images/{}", f))
         .collect();
 
-    Ok(Json(json!({"images": urls})))
+    Ok(Json(json!({"images": urls, "skipped": skipped})))
+}
+
+fn skip(name: &str, reason: &str) -> serde_json::Value {
+    json!({"name": name, "reason": reason})
+}
+
+fn multipart_error(error: MultipartError) -> StatusError {
+    StatusError::with_status(error.status(), error.body_text())
+}
+
+/// `None` as soon as the part passes `max`; the rest of it is never buffered.
+async fn read_capped(field: &mut Field<'_>, max: usize) -> Result<Option<Vec<u8>>, StatusError> {
+    let mut data = Vec::new();
+    while let Some(chunk) = field.chunk().await.map_err(multipart_error)? {
+        if data.len() + chunk.len() > max {
+            return Ok(None);
+        }
+        data.extend_from_slice(&chunk);
+    }
+    Ok(Some(data))
+}
+
+/// The files this request has written. Dropped without [`WrittenFiles::keep`] it removes them, so
+/// an error, a refusal or a dropped connection after the first write leaves no file behind.
+struct WrittenFiles {
+    dir: PathBuf,
+    names: Vec<String>,
+}
+
+impl WrittenFiles {
+    fn new(dir: PathBuf) -> Self {
+        Self {
+            dir,
+            names: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, name: String) {
+        self.names.push(name);
+    }
+
+    fn len(&self) -> usize {
+        self.names.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    fn names(&self) -> &[String] {
+        &self.names
+    }
+
+    fn keep(mut self) -> Vec<String> {
+        std::mem::take(&mut self.names)
+    }
+}
+
+impl Drop for WrittenFiles {
+    fn drop(&mut self) {
+        for name in &self.names {
+            if let Err(e) = std::fs::remove_file(self.dir.join(name)) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!("could not remove an unattached post image: {e}");
+                }
+            }
+        }
+    }
 }
 
 fn post_not_found() -> StatusError {
@@ -833,5 +991,29 @@ mod tests {
     fn half_a_location_is_refused() {
         refused_with_400(Some(37.8), None);
         refused_with_400(None, Some(-122.3));
+    }
+
+    fn searching(q: String) -> PostFilters {
+        PostFilters {
+            q: Some(q),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_search_term_over_200_characters_is_refused_naming_q() {
+        let raw = searching("a".repeat(201));
+        let Err(why) = validate_filters(&raw) else {
+            panic!("a 201-character q must be refused");
+        };
+        assert!(why.starts_with("q "), "the error must name q: {why}");
+    }
+
+    /// Two-byte characters, so a cap counted in bytes would refuse this term.
+    #[test]
+    fn a_search_term_of_200_characters_is_accepted() {
+        let raw = searching("é".repeat(200));
+        let filter = validate_filters(&raw).expect("a 200-character q");
+        assert_eq!(filter.q.map(|q| q.chars().count()), Some(200));
     }
 }

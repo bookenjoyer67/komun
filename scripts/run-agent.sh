@@ -45,6 +45,8 @@ print_config() {
   printf '  "containers.broker.port": "%s",\n  "containers.registry_volume": "%s",\n' "$BROKER_PORT" "$REGISTRY_VOL"
   printf '  "containers.networks.internal": "%s",\n  "containers.networks.broker": "%s",\n' "$NET_INTERNAL" "$NET_BROKER"
   printf '  "containers.workspace": "%s",\n  "containers.memory_dir": "%s",\n' "$WORKSPACE" "$MEMORY_DIR"
+  printf '  "retries.per_call": "%s",\n  "budgets.per_call_seconds": "%s",\n' \
+    "$(cfg retries.per_call '1')" "$(cfg budgets.per_call_seconds '21600')"
   printf '  "roles.mounts": {'
   for role in $VALID_ROLES; do
     role_profile "$role" || continue
@@ -309,21 +311,42 @@ fi
 # the next call is checked against a number rather than against somebody's memory of one. The
 # dollar figure is the CLI's own accounting, passed in as BUDGET_CALL_USD; a call that reports none
 # still records its wall clock and its exit status, so the ledger stays a complete record.
+#
+# The retry is bounded and narrow, because a retry is only a reliability control when the failure was
+# not the work's own verdict. 124 means the per-call cap expired and 137 means the container was
+# killed, so the call never reached a result and repeating it costs nothing but time. Any other
+# non-zero status came from the command itself: it already ran, already spent, and is not retried.
+RETRIES="${RETRIES:-$(cfg retries.per_call '1')}"
 started="$(date +%s)"
 call_status=0
-if [ "$CMDLINE" = bash ] || [ "$CMDLINE" = sh ]; then
-  if [ -t 0 ] && [ "${#EXTRA[@]}" -eq 0 ]; then
-    timeout "${BUDGET_SECONDS}s" docker exec -it -w "$WORKSPACE" "$NAME" "$CMDLINE" || call_status=$?
+attempt=0
+while :; do
+  attempt=$(( attempt + 1 ))
+  if [ "$CMDLINE" = bash ] || [ "$CMDLINE" = sh ]; then
+    if [ -t 0 ] && [ "${#EXTRA[@]}" -eq 0 ]; then
+      timeout "${BUDGET_SECONDS}s" docker exec -it -w "$WORKSPACE" "$NAME" "$CMDLINE" || call_status=$?
+    elif [ "${#EXTRA[@]}" -gt 0 ]; then
+      timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" "${EXTRA[@]}" || call_status=$?
+    else
+      timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" || call_status=$?
+    fi
   elif [ "${#EXTRA[@]}" -gt 0 ]; then
     timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" "${EXTRA[@]}" || call_status=$?
   else
     timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" || call_status=$?
   fi
-elif [ "${#EXTRA[@]}" -gt 0 ]; then
-  timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" "${EXTRA[@]}" || call_status=$?
-else
-  timeout "${BUDGET_SECONDS}s" docker exec -w "$WORKSPACE" "$NAME" "$CMDLINE" || call_status=$?
-fi
+
+  case "$call_status" in
+    124|137)
+      if [ "$attempt" -le "$RETRIES" ]; then
+        printf 'retrying: attempt %s of %s after exit %s\n' \
+          "$(( attempt + 1 ))" "$(( RETRIES + 1 ))" "$call_status" >&2
+        continue
+      fi
+      ;;
+  esac
+  break
+done
 
 if [ -f "$BUDGET_TOOL" ]; then
   python3 "$BUDGET_TOOL" record --ledger "$LEDGER_FILE" --role "$ROLE" --usd "${BUDGET_CALL_USD:-0}" \

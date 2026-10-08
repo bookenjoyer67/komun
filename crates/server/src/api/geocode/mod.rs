@@ -34,6 +34,8 @@ const CACHE_CAPACITY: usize = 512;
 
 const DISPLAY_NAME_MAX_CHARS: usize = 256;
 
+const MAX_QUERY_CHARS: usize = 200;
+
 /// The client sees only these; the upstream detail goes to the log, without the query.
 const UPSTREAM_UNAVAILABLE: &str = "geocoding service unavailable";
 const BUSY: &str = "geocoding busy, try again shortly";
@@ -80,6 +82,14 @@ where
     let query = raw_query.trim();
     if query.is_empty() {
         return Err(GeocodeError::bad_request("q parameter is required"));
+    }
+    // Before the cache and the upstream, so an over-long query takes neither a cache slot nor
+    // this server's one request per second.
+    let length = query.chars().count();
+    if length > MAX_QUERY_CHARS {
+        return Err(GeocodeError::bad_request(format!(
+            "q must be {MAX_QUERY_CHARS} characters or fewer (got {length})"
+        )));
     }
 
     let key = normalize_query(query);
@@ -438,6 +448,33 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    /// Two-byte characters at the cap, so a cap counted in bytes would refuse the accepted query.
+    #[tokio::test]
+    async fn a_query_over_200_characters_is_refused_before_any_upstream_call() {
+        let cache = GeocodeCache::new(Duration::from_secs(60), 8);
+        let limiter = RateLimiter::new(Duration::from_millis(1));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counting_fetch = || {
+            let calls = calls.clone();
+            move |q: String| {
+                let calls = calls.clone();
+                async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(serde_json::json!({ "display_name": q }))
+                }
+            }
+        };
+
+        let refused = resolve(&"a".repeat(201), &cache, &limiter, counting_fetch()).await;
+        let err = refused.expect_err("a 201-character q");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        let accepted = resolve(&"é".repeat(200), &cache, &limiter, counting_fetch()).await;
+        assert!(accepted.is_ok(), "a 200-character q");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     // The paused clock makes `Instant::now()` and the sleeps below read tokio's timer, so the

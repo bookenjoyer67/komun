@@ -80,3 +80,9 @@ Which artifacts settle this decision?
 - Read the research synthesis at storage entry `fc8894a7-fcbf-4e01-97d5-5b987b36a580`.
 - Read the plan of record at storage entry `468ce9dd-2329-4986-b8f7-a5bce532f959`, section G, `THE FIVE REFUSALS — deliverables and enforcing artifacts`.
 - Read the built R-2 guard at `crates/server/src/api/users.rs:15` `RATING_PUBLISH_THRESHOLD` and its tests at `crates/server/src/api/users.rs:63` `#[cfg(test)]`.
+
+## Open risks
+
+- `docs/adr/` is not in the conformance gate's file list, so ADRs are read by reviewers and validated by nothing.
+- The non-goals hold only while the product does. A marketplace change that needs payments reopens the decision rather than the ADR.
+- Most existing profiles lose their visible mean at once, which is intended and is also unmeasured in its effect on use.
