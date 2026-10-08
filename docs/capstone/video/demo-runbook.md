@@ -162,9 +162,9 @@ sed -n '9,40p' docs/orchestration-diagram.md
 ./scripts/run-agent.sh --print-config
 ```
 
-`./scripts/run-agent.sh --matrix` was executed on 2026-10-01 and prints a seven row table with the
+`./scripts/run-agent.sh --matrix` was re-run on 2026-10-07 and prints an eight row table with the
 header `| Role | Workspace mount | Memory mount | Network | Reason |`. The rows are `orchestrator`,
-`planner`, `implementer`, `tester`, `reviewer`, `project-manager` and `researcher`, in that order.
+`planner`, `implementer`, `tester`, `reviewer`, `project-manager`, `researcher` and `beta-tester`.
 
 `./scripts/run-agent.sh --print-config` was executed on 2026-10-01 and prints one JSON object. The
 first keys are:
