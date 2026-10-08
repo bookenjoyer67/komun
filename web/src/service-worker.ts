@@ -30,6 +30,8 @@ sw.addEventListener('activate', (event) => {
 sw.addEventListener('fetch', (event) => {
 	const { request } = event;
 	const url = new URL(request.url);
+	// A worker's fetch is bound by connect-src, so a cross-origin load must stay the page's, under img-src.
+	if (url.origin !== sw.location.origin) return;
 
 	if (request.method !== 'GET') return;
 

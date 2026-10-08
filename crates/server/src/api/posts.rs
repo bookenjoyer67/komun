@@ -38,6 +38,8 @@ const MAX_TAG_CHARS: usize = 32;
 const MAX_QUANTITY: i32 = 1_000_000;
 const MAX_SEARCH_CHARS: usize = 200;
 
+pub(crate) const NUL_IN_SEARCH_TERM: &str = "q must not contain a NUL character";
+
 /// Stored images are scaled down to fit this square.
 const IMAGE_FIT_PX: u32 = 1920;
 
@@ -185,6 +187,7 @@ pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> 
 
     let q = trimmed(raw.q.as_deref());
     if let Some(term) = q {
+        check_search_term(term)?;
         let length = term.chars().count();
         if length > MAX_SEARCH_CHARS {
             return Err(format!(
@@ -208,6 +211,15 @@ pub(crate) fn validate_filters(raw: &PostFilters) -> Result<PostFilter, String> 
         limit: bounded("limit", raw.limit.as_deref(), DEFAULT_LIMIT, 1, MAX_LIMIT)?,
         offset: bounded("offset", raw.offset.as_deref(), 0, 0, i64::MAX)?,
     })
+}
+
+/// PostgreSQL refuses U+0000 in a text parameter, so a term carrying one must be refused here as a
+/// 400; past this point it is a 500 from the database. `trim` does not remove it.
+pub(crate) fn check_search_term(term: &str) -> Result<(), String> {
+    if term.contains('\0') {
+        return Err(NUL_IN_SEARCH_TERM.to_string());
+    }
+    Ok(())
 }
 
 /// An absent parameter and an empty one both mean no filter; `?kind=` comes from a form field the
@@ -1015,5 +1027,14 @@ mod tests {
         let raw = searching("é".repeat(200));
         let filter = validate_filters(&raw).expect("a 200-character q");
         assert_eq!(filter.q.map(|q| q.chars().count()), Some(200));
+    }
+
+    #[test]
+    fn a_search_term_with_a_nul_byte_is_refused_naming_q() {
+        let raw = searching("a\0b".to_string());
+        let Err(why) = validate_filters(&raw) else {
+            panic!("a q containing U+0000 must be refused");
+        };
+        assert!(why.starts_with("q "), "the error must name q: {why:?}");
     }
 }
