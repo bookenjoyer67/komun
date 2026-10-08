@@ -16,11 +16,11 @@ There are no bullet fragments to read out, no emoji and no em dash anywhere in t
 | C1 | 20 | 0:00 to 0:20 | Terminal open at the repository root. A title card reads "A governed pre-merge quality gate for Komun". Title card fades to the repository. | This is Komun, a real Rust and SvelteKit application. Before any change can merge, seven agent roles have to walk it through a governed quality gate. I built that gate. In the next eight minutes I will show you the numbers it started from, a live run of the gate, and the moment governance stopped an agent that tried to rewrite its own permissions. I will also show you what it still cannot do. |
 | B1 | 40 | 0:20 to 1:00 | A slide with five measured baseline numbers and the command that produced each one. | Here is the baseline I measured on the twenty fifth of September. The workspace test suite passed one hundred and fifty eight tests with zero failures. Clippy ran with warnings treated as errors and exited zero. The frontend type check reported zero errors and zero warnings. The frontend unit tests ran eighty two tests across seven files, and all of them passed. The policy gate ran ninety tests: seventy five permission tests and fifteen validator tests. Those five numbers are the floor this work has to hold. |
 | A1 | 50 | 1:00 to 1:50 | `docs/orchestration-diagram.md` rendered, then the role table from `docs/routing-and-tool-grant-map.md`, then a two line cut of `.claude/agents/` showing the role definitions. | Seven roles do the work. An orchestrator sequences them. A planner produces an ordered plan, and a human approves it at checkpoint one. An implementer writes the change. A tester runs the gates. A reviewer reviews the change. A project manager owns ticket state. A researcher answers external questions. Four MCP servers carry their capabilities: gate, storage, retrieval and coursetools. Authorization here is not a convention. It is a file. Every role has an entry in the allow lists and in the routing map, and the policy suite checks that those files still agree with the prose policy. |
-| G1 | 55 | 1:50 to 2:45 | Terminal. Run the policy gate inside the sandbox container, then the conformance gate on the host. Both outputs stay on screen. | Now the gate itself, on the real repository. I run the policy suite inside the sandbox container, because that is the container the roles actually get. Ninety tests, in about one second. Next the conformance gate, which checks the prose and the citations and fails only on drift the change introduced. It compares the working tree against the same files at the last commit, so the findings that were already there do not fail the gate. That verdict is pass. |
+| G1 | 55 | 1:50 to 2:45 | Terminal. Run the policy gate inside the sandbox container, then the conformance gate on the host. Both outputs stay on screen. | Now the gate itself, on the real repository. I run the policy suite inside the sandbox container, because that is the container the roles actually get. One hundred and thirty seven tests, in about ten seconds. Next the conformance gate, which checks the prose and the citations and fails only on drift the change introduced. It compares the working tree against the same files at the last commit, so the findings that were already there do not fail the gate. That verdict is pass. |
 | M1 | 30 | 2:45 to 3:15 | Split screen. Left: `eval/red-team-results.md` scrolled to the first-run outcome table. Right: the same file scrolled to the P7 and P10 sections showing the command, the expected outcome and the observed outcome. | This is the most important part of this video. I ran ten red-team probes against these boundaries. Eight of them were blocked on the first run. Two were not. Probe seven let an implementer rewrite its own grant authority. Probe ten let a reviewer rewrite the audit journals that recorded its refusals. Both failures were at the same layer, and it was not a permission bit. It was the container mount. |
-| M2 | 25 | 3:15 to 3:40 | Edit `scripts/run-agent.sh`. Highlight the `OVERLAY_FILES` array with its seven entries, then the reuse check that requires those mounts to be read-only. | The fix is in the launcher. Seven nested read-only binds sit over the workspace and memory binds. They cover four grant authority files and three audit journals. A nested bind wins for its own path alone, so the parent bind stays writable and those seven paths do not. The reuse check also changed. A running container that has any of those mounts writable is now recreated instead of reused. |
+| M2 | 25 | 3:15 to 3:40 | Edit `scripts/run-agent.sh`. Highlight the `OVERLAY_FILES` array with its eleven entries, then the reuse check that requires those mounts to be read-only. | The fix is in the launcher. Eleven nested read-only binds sit over the workspace and memory binds. They cover five grant authority files and four audit journals, plus the reference corpus and the gate's own config. A nested bind wins for its own path alone, so the parent bind stays writable and those eleven paths do not. The reuse check also changed. A running container that has any of those mounts writable is now recreated instead of reused. |
 | M3 | 20 | 3:40 to 4:00 | Terminal. Run the probe seven command against the implementer container. | Here is probe seven, live, after the fix. The implementer asks to rewrite the four files that define what the implementer is allowed to do. Every one of them refuses the write. Four blocked, none written. |
-| M4 | 20 | 4:00 to 4:20 | Terminal. Run the probe ten command against the reviewer container, then run the mount read-back and hold it on screen. | And probe ten. The reviewer holds a writable memory path. It asks to rewrite the three journals that record its own refusals. All three refuse. Now I read the mounts back from the running container rather than from the intent. The workspace and the memory are writable, exactly as the policy says. The four authority files and the three journals are all read-only. That is governance doing something, not promising something. |
+| M4 | 20 | 4:00 to 4:20 | Terminal. Run the probe ten command against the reviewer container, then run the mount read-back and hold it on screen. | And probe ten. The reviewer holds a writable memory path. It asks to rewrite the three journals that record its own refusals. All three refuse. Now I read the mounts back from the running container rather than from the intent. The workspace and the memory are writable, exactly as the policy says. Every one of the eleven overlays is read-only: five grant authority files, four audit journals, the reference corpus and the gate config. That is governance doing something, not promising something. |
 | E1 | 50 | 4:20 to 5:10 | `docs/calibration-log.md` from the top. Scroll to the ten near-miss patterns, then to the governance controls they argue for. | The governance rules did not come from a template. They came from this log. Ten near-miss patterns are named, and each one cites the iteration log line that evidences it. One near-miss showed that a filesystem permission bit stops nothing when the writing process runs as root. That is why the memory layers are enforced by a hard stop at the mount. Another showed a role approving its own checkpoint, so every checkpoint record now has one author. Each pattern buys exactly one control, and the policy suite checks that the control is still in place. |
 | R1 | 45 | 5:10 to 5:55 | `docs/calibration-log.md` scrolled to the four-run regression table. Then the matching rows in `.memory/gate-audit.log`. | Then I ran the whole thing end to end four times. Two runs on the new calibration work and two on governed changes. The wall clock was two thousand three hundred and twenty three seconds, fifteen ninety two, sixteen ninety eight and fourteen thirty eight. One run's test gate exited one hundred and one with two failures, and the harness caught it. I did not get a cost figure for these four runs, because the credential broker reports no usage for them. |
 | D1 | 50 | 5:55 to 6:45 | `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md` beside `docs/calibration-log.md`. Then the terminal running the converted step twice. | One step was agentic and did not need to be. The prose and citation conformance check used to cost one agentic pass: forty five minutes and thirteen seconds, eight dollars and thirty seven cents, eighty API requests, and a rubric score of eleven out of twelve. I converted it to a script. Three runs took zero point eight four four seconds, zero point four two four and zero point four two two, cost nothing, and made zero model calls. The reports were byte identical. Run the same command twice and the digests match. |
@@ -46,9 +46,9 @@ mouse or raises a window. Everything below is typed by hand into a terminal that
 1. Left terminal, full height, roughly 100 columns: this is the run log. All commands run here.
 2. Right terminal, full height: pre-arranged before recording so nothing has to be opened on camera.
    It holds `eval/red-team-results.md` at the first-run outcome table.
-3. Editor window: `scripts/run-agent.sh` with the view centred on line 187, where the
-   `OVERLAY_FILES` array is declared, through line 229, where the reuse check's read-only condition
-   is evaluated.
+3. Editor window: `scripts/run-agent.sh` with the view centred on line 195, where the
+   `OVERLAY_FILES` array is declared, through line 248, where the reuse check tests the
+   `overlays_ro` flag its loop sets.
 
 ### Shot M1, the flaw, 2:45 to 3:15
 
@@ -86,17 +86,21 @@ lived inside them.
 
 ### Shot M2, the fix, 3:15 to 3:40
 
-In the editor, the seven paths are right there:
+In the editor, the eleven paths are right there:
 
 ```
 declare -a OVERLAY_FILES=(
   "mcp/storage/allow-list.json"
   "mcp/retrieval/allow-list.json"
+  "mcp/browser/allow-list.json"
   "mcp/roles.allowlist.json"
   "docs/routing-and-tool-grant-map.json"
   ".memory/storage-audit.log"
   ".memory/retrieval-audit.log"
   ".memory/gate-audit.log"
+  ".memory/browser-audit.log"
+  ".memory/reference"
+  "agentic.config.json"
 )
 ```
 
