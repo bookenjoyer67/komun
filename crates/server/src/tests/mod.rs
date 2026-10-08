@@ -9,9 +9,11 @@ mod location_privacy;
 /// The marketplace foundation: `[market]` config, category scopes, market filters.
 #[cfg(test)]
 mod market;
+mod ops_admin;
 mod outbound_routes;
 mod resource_limits;
 mod saved_searches;
+mod support;
 
 /// The server-side half of the password path.
 #[cfg(test)]
@@ -264,22 +266,50 @@ superadmin_public_keys = []
         assert_eq!(config.database.max_connections, 5);
     }
 
+    // Pure: setting DATABASE_URL in-process would race the parallel test threads.
     #[test]
-    fn test_config_missing_url_uses_default() {
+    fn startup_without_a_database_url_names_where_to_set_it() {
+        let err = Config::default()
+            .validate_database()
+            .expect_err("an unset database url must refuse to start")
+            .to_string();
+        assert!(err.contains("[database] url"), "unhelpful error: {err}");
+        assert!(err.contains("DATABASE_URL"), "unhelpful error: {err}");
+    }
+
+    #[test]
+    fn a_configured_database_url_passes_validation() {
         let toml = r#"
-[server]
-bind_address = "127.0.0.1"
-port = 3000
-
 [database]
-max_connections = 5
-
-[admin]
-superadmin_public_keys = []
+url = "postgres://db.test.invalid/komun"
 "#;
         let config: Config = toml::from_str(toml).expect("parse config");
-        assert!(config.database.url.contains("localhost"));
-        assert!(config.database.url.contains("postgres"));
+        config
+            .validate_database()
+            .expect("a configured database url must start");
+    }
+
+    // The messages never print the URL: a database URL can carry a password.
+    #[test]
+    fn the_default_config_carries_no_database_url() {
+        let config = Config::default();
+        assert!(
+            config.database.url.is_empty(),
+            "the default config must carry no database URL"
+        );
+    }
+
+    #[test]
+    fn a_database_section_without_a_url_leaves_it_empty() {
+        let toml = r#"
+[database]
+max_connections = 5
+"#;
+        let config: Config = toml::from_str(toml).expect("parse config");
+        assert!(
+            config.database.url.is_empty(),
+            "an unset [database] url must stay empty"
+        );
         assert_eq!(config.database.max_connections, 5);
     }
 

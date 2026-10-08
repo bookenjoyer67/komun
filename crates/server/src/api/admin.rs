@@ -95,10 +95,29 @@ async fn delete_user(
             "cannot delete yourself",
         ));
     }
-    sqlx::query("DELETE FROM users WHERE id = $1")
+    let deleted = sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
-        .await?;
+        .await?
+        .rows_affected();
+    if deleted == 0 {
+        return Err(StatusError::with_status(
+            StatusCode::NOT_FOUND,
+            "no such user",
+        ));
+    }
+
+    // Audited after the delete, so a failed delete leaves no false record; `subject_id` has no
+    // foreign key, so the row outlives the account it names.
+    record_audit(
+        &state.pool,
+        Some(auth.user_id),
+        "admin.delete_user",
+        Some(id),
+        serde_json::json!({}),
+    )
+    .await;
+
     Ok(Json(serde_json::json!({"status": "deleted"})))
 }
 
@@ -237,13 +256,27 @@ async fn list_directory(
     Ok(Json(entries))
 }
 
+/// Audited under the same action as `DELETE /directory/{url}`, so both removal routes read as one
+/// trail.
 async fn remove_directory_entry(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
     Path(url): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusError> {
-    sqlx::query("DELETE FROM directory_entries WHERE url = $1")
+    let removed = sqlx::query("DELETE FROM directory_entries WHERE url = $1")
         .bind(&url)
         .execute(&state.pool)
-        .await?;
+        .await?
+        .rows_affected();
+
+    record_audit(
+        &state.pool,
+        Some(auth.user_id),
+        "directory.remove",
+        None,
+        serde_json::json!({ "url": url, "removed": removed }),
+    )
+    .await;
+
     Ok(Json(serde_json::json!({"status": "removed"})))
 }

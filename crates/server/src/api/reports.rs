@@ -1,5 +1,6 @@
 use axum::{
     extract::{Extension, Path, State},
+    http::StatusCode,
     middleware,
     routing::{get, patch, post},
     Json, Router,
@@ -8,30 +9,28 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use super::StatusError;
-use crate::auth::{require_auth, require_superadmin, AuthUser};
+use crate::auth::{record_audit, require_auth, require_superadmin, AuthUser};
 use crate::AppState;
 
+/// Any signed-in user can file a report, so the stored reason is bounded.
 const MAX_REASON_CHARS: usize = 1000;
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    // Two routers, not one chain: a layer wraps every route added before it, so a single chain
+    // would put the report route behind the superadmin guard too.
+    let reporting: Router<AppState> = Router::new()
         .route("/posts/{post_id}/report", post(report_post))
-        .layer(middleware::from_fn_with_state(state.clone(), require_auth))
+        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+    let moderation: Router<AppState> = Router::new()
         .route("/posts/{post_id}/hide", post(hide_post))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_superadmin,
-        ))
         .route("/admin/reports", get(list_reports))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_superadmin,
-        ))
         .route("/admin/reports/{report_id}", patch(resolve_report))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_superadmin,
-        ))
+        ));
+    reporting
+        .merge(moderation)
         .with_state(state.clone())
         .merge(appeal_routes(state.clone()))
         .merge(appeal_admin_routes(state))
@@ -75,7 +74,6 @@ async fn report_post(
             "reason must be 1 to {MAX_REASON_CHARS} characters (got {length})"
         )));
     }
-
     let report =
         crate::db::reports::create_report(&state.pool, auth.user_id, post_id, &input.reason)
             .await?;
@@ -102,7 +100,10 @@ async fn resolve_report(
     Json(input): Json<ResolveRequest>,
 ) -> Result<Json<serde_json::Value>, StatusError> {
     if input.status != "resolved" && input.status != "dismissed" {
-        return Err(anyhow::anyhow!("status must be 'resolved' or 'dismissed'").into());
+        return Err(StatusError::with_status(
+            StatusCode::BAD_REQUEST,
+            "status must be 'resolved' or 'dismissed'",
+        ));
     }
 
     crate::db::reports::resolve_report(
@@ -132,6 +133,17 @@ async fn hide_post(
     let reason = required_text("reason", input.reason.as_deref()).map_err(bad_request)?;
     let hidden = crate::db::reports::hide_post(&state.pool, post_id, auth.user_id, reason);
     let action_id = hidden.await?.ok_or_else(|| not_found("post not found"))?;
+
+    // `subject_id` names accounts; a post goes in the detail, as a directory URL does.
+    record_audit(
+        &state.pool,
+        Some(auth.user_id),
+        "admin.hide_post",
+        None,
+        serde_json::json!({ "post_id": post_id, "action_id": action_id }),
+    )
+    .await;
+
     let reply = serde_json::json!({"status": "hidden", "action_id": action_id});
     Ok(Json(reply))
 }

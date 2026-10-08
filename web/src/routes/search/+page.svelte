@@ -300,9 +300,8 @@
                         <li class="result-item">
                             <a href="/users/{u.id}"><strong>{u.display_name}</strong></a>
                             <span class="user-meta">
-                                {u.role === 'superadmin' ? 'superadmin' : u.role === 'admin' ? 'admin' : ''}
                                 {#if u.endorsement_count > 0}
-                                    · {u.endorsement_count} end{u.endorsement_count === 1 ? 'orsement' : 'orsements'}
+                                    {u.endorsement_count} end{u.endorsement_count === 1 ? 'orsement' : 'orsements'}
                                 {/if}
                             </span>
                         </li>
