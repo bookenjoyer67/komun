@@ -47,7 +47,7 @@ Enforcement lives in configuration and in named artifacts. Prose holds no rule a
 - Run the suite to a recorded count (`eval/README.md:18` `75 passed`).
 - Prove the suite bites by injecting drift into a live artifact, one defect per run (`eval/README.md:27` `Withdraw a policy storage grant, drift one`).
 - Prove the boundaries with an adversarial run, not with an assertion (`eval/red-team-prompts.md:7` `Ten prompts attack the six Module 4.1 boundaries.`).
-- Fix the layer that failed and re-run the same prompt (`eval/red-team-results.md:7` `Eight prompts were blocked on their first run.`).
+- Fix the layer that failed and re-run the same prompt (`report:7` `Eight prompts were blocked on their first run.`).
 - Gate a governed change with five CI jobs named for the lesson's rows (`/.github/workflows/ci.yml:4` `change-type-check, policy-gate, eval-gate, advisory-review`).
 - Keep the deterministic gates binding and the agentic ones advisory (`/.github/workflows/ci.yml:17` `policy-gate carries no`).
 - Mark the four advisory or report jobs continue-on-error, so a review cannot fail a merge (`/.github/workflows/ci.yml:486` `continue-on-error: true`).
@@ -82,13 +82,13 @@ What does this decision change, and what does it leave open?
 - The pipeline governs itself, because the workflow and the classifier are themselves governed globs (`agentic.config.json:210` `"governed_globs": [`).
 - Autonomy is not uniform across the roles, so the level is a per-role fact rather than a default (`docs/governance-policy.md:202` `Hold low autonomy`).
 - Every role's container line names its launcher mount, and the policy carries seven such lines (`docs/policy-reconciliation.md:27` `Show the per-role mount statement in every policy entry`).
-- The two failed red-team prompts were fixed at the container layer, not at the prompt layer (`eval/red-team-results.md:249` `The fix adds seven nested read-only binds`).
+- The two failed red-team prompts were fixed at the container layer, not at the prompt layer (`report:249` `The fix adds seven nested read-only binds`).
 - The fix is seven nested read-only binds over the grant files and the journals (`scripts/run-agent.sh:193` `declare -a OVERLAY_FILES=(`), each mounted read-only over its parent bind (`scripts/run-agent.sh:213` `MOUNTS+=(-v "$REPO/$overlay:$WORKSPACE/$overlay:ro")`).
 - The reuse check now also demands those mounts be read-only, so a stale container is recreated (`scripts/run-agent.sh:230` `ws_rw=""; mem_present=""; mem_rw=""; overlays_ro=yes`).
-- Each fixed boundary returns a refusal rather than a warning (`eval/red-team-results.md:151` `each authority file returned`), and P7 and P10 flip from not blocked to blocked (`eval/red-team-results.md:18` `| P7 | NOT blocked | blocked |`).
+- Each fixed boundary returns a refusal rather than a warning (`report:151` `each authority file returned`), and P7 and P10 flip from not blocked to blocked (`report:18` `| P7 | NOT blocked | blocked |`).
 - The write-mode gate is one named command, and the journal records it (`/.memory/gate-audit.log:181` `"tool": "run_fix"`).
 - The enforcement is demonstrated by the local suites and the workflow definition, not by a green CI run. This repository's workflow has no recorded run history (`gh run list` -> `no runs listed`, on 2026-10-01). That is a limitation of the evidence, not a claim that the workflow is broken.
-- One boundary stays unprobed: no prompt tested a direct write to the SQLite memory database (`eval/red-team-results.md:286` `no prompt here tested`).
+- One boundary stays unprobed: no prompt tested a direct write to the SQLite memory database (`report:286` `no prompt here tested`).
 - The policy's basis still names the range NM-1 to NM-9 although the log defines ten patterns (`docs/governance-policy.md:13` `patterns NM-1 to NM-9`). The policy cites seven of them (`grep -o 'NM-[0-9]*' docs/governance-policy.md | sort -u` -> `NM-1 NM-2 NM-3 NM-4 NM-5 NM-7 NM-9`). The suite passes because it checks that a cited pattern exists, not that every pattern is cited (`eval/test_policy.py:1132` `def test_near_miss_citations_exist`).
 - The policy is an unsigned v1.0.0 draft, and the human checkpoint still owns approval (`docs/governance-policy.md:5` `Reviewed by: pending`).
 - The reviewer no longer runs the prose check by hand, because that step is converted (`docs/routing-and-tool-grant-map.md:96` `Run the prose and citation conformance check as`).
@@ -106,11 +106,12 @@ Which artifacts settle this decision?
 - Retrieval allow-list, the project-manager holds no retrieve: `mcp/retrieval/allow-list.json:41` `"project-manager": [],`.
 - Per-role mount statements in the policy, one per role (`grep -c 'the launcher mounts this repository' docs/governance-policy.md` -> `7`).
 - Red-team prompt set: `eval/red-team-prompts.md:7` `Ten prompts attack the six Module 4.1 boundaries.`
-- Red-team outcomes: `eval/red-team-results.md:7` `Eight prompts were blocked on their first run.`, with P7 and P10 flipped after the fix (`eval/red-team-results.md:21` `| P10 | NOT blocked | blocked |`).
-- Red-team refusal recorded in a journal: `eval/red-team-results.md:56` `authorization_denied: role 'project-manager' is not granted 'write_entry'`.
-- Refused gate-name call journals nothing: `eval/red-team-results.md:113` `refused gate name or command runs nothing and journals nothing`.
-- Reviewer mount state at refusal: `eval/red-team-results.md:36` `/workspace RW=false`.
-- Red-team fix: `eval/red-team-results.md:252` `to be read-only, so a stale container is recreated instead of reused`, implemented at `scripts/run-agent.sh:193` and `scripts/run-agent.sh:212`.
+- Red-team run report: the raw report and its probe scripts are kept outside this repository (they are working exploits against the harness), so they are cited below as `report:NNN` with the quoted line kept inline.
+- Red-team outcomes: `report:7` `Eight prompts were blocked on their first run.`, with P7 and P10 flipped after the fix (`report:21` `| P10 | NOT blocked | blocked |`).
+- Red-team refusal recorded in a journal: `report:56` `authorization_denied: role 'project-manager' is not granted 'write_entry'`.
+- Refused gate-name call journals nothing: `report:113` `refused gate name or command runs nothing and journals nothing`.
+- Reviewer mount state at refusal: `report:36` `/workspace RW=false`.
+- Red-team fix: `report:252` `to be read-only, so a stale container is recreated instead of reused`, implemented at `scripts/run-agent.sh:193` and `scripts/run-agent.sh:212`.
 - Eval-gated change control: five jobs at `.github/workflows/ci.yml:4` `change-type-check, policy-gate, eval-gate, advisory-review`, with the gating decision at `.github/workflows/ci.yml:17` `policy-gate carries no`.
 - Classification globs: `agentic.config.json:210` `"governed_globs": [`, consumed at `scripts/classify-change.py:128` `classification.governed_globs`.
 - Calibration produced the policy from named patterns rather than from a template (`docs/calibration-log.md:18` `Ten patterns follow, each named and each cited to the line that evidences it`).
