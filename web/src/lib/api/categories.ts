@@ -20,6 +20,15 @@ export function categoriesForScope(rows: Category[], scope: CategoryScope): Cate
 	return rows.filter((row) => row.scope === scope || row.scope === 'both');
 }
 
+/**
+ * The human label for a post's category, falling back to the raw slug when the taxonomy has no
+ * row for it. `category_label` comes from the server's `categories` join, so no client keeps a
+ * second copy of the mapping.
+ */
+export function categoryLabel(post: { category: string; category_label?: string | null }): string {
+	return post.category_label || post.category;
+}
+
 function isCategory(value: unknown): value is Category {
 	if (typeof value !== 'object' || value === null) return false;
 	const candidate = value as Record<string, unknown>;

@@ -7,6 +7,7 @@
 	import LinkPreview from '$lib/components/LinkPreview.svelte';
 	import RespondModal from '$lib/components/RespondModal.svelte';
 	import { closedLabel, formatPrice, isMarketKind } from '$lib/api/market';
+	import { categoryLabel } from '$lib/api/categories';
 	import type { PostLike } from '$lib/api/types';
 
 	/** The marketplace facet a listing/want carries; `PostLike` deliberately omits it. */
@@ -116,7 +117,7 @@
 		<article class="post-detail">
 			<div class="meta">
 				<span class="kind kind-{post.kind}">{kindLabels[post.kind] || post.kind}</span>
-				<span class="category">{post.category}</span>
+				<span class="category">{categoryLabel(post)}</span>
 				{#if post.urgency}
 					<span class="urgency">{post.urgency}</span>
 				{/if}

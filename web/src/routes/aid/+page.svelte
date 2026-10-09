@@ -5,6 +5,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { closedLabel } from '$lib/api/market';
+	import { categoryLabel } from '$lib/api/categories';
 	import RespondModal from '$lib/components/RespondModal.svelte';
 	import type { PostLike } from '$lib/api/types';
 
@@ -123,10 +124,11 @@
 				<li class="post-card">
 					<div class="post-meta">
 						<span class="kind kind-{post.kind}">{kindLabels[post.kind]}</span>
-						<span class="category">{post.category}</span>
+						<span class="category">{categoryLabel(post)}</span>
 						{#if post.urgency}
 							<span class="urgency" style="color: {urgencyColors[post.urgency]}">{post.urgency}</span>
 						{/if}
+						<a class="permalink" href="/p/{post.id}" title="Open this post" aria-label="Open this post">🔗</a>
 					</div>
 					{#if editingId === post.id}
 						<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
@@ -272,6 +274,7 @@
 	.kind-resource { background: var(--kind-resource-soft); color: var(--kind-resource); }
 
 	.category { color: var(--text-muted); text-transform: capitalize; }
+	.permalink { margin-left: auto; text-decoration: none; line-height: 1; }
 	.urgency { font-weight: 600; text-transform: uppercase; }
 
 	h3 { font-size: 1.05rem; margin-bottom: 0.3rem; }

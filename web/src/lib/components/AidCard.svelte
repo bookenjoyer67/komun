@@ -6,6 +6,7 @@
 	import { getActiveServer } from '$lib/stores/server';
 	import { coarsenCoordinate } from '$lib/geo';
 	import { closedLabel } from '$lib/api/market';
+	import { categoryLabel } from '$lib/api/categories';
 	import type { PostLike } from '$lib/api/types';
 
 	interface Props {
@@ -107,7 +108,7 @@
 	{:else}
 		<div class="card-top">
 			<span class="kind kind-{post.kind}">{kindLabels[post.kind]}</span>
-			<span class="category">{post.category}</span>
+			<span class="category">{categoryLabel(post)}</span>
 			{#if post.urgency}
 				<span class="urgency" data-level={post.urgency}>{post.urgency}</span>
 			{/if}

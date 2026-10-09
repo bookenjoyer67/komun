@@ -16,6 +16,7 @@ mod saved_searches;
 mod search_input;
 mod security_headers;
 mod support;
+mod user_subresources;
 
 /// The server-side half of the password path.
 #[cfg(test)]
