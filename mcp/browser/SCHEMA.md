@@ -60,6 +60,7 @@ Exactly eight, no more and no fewer (`mcp/browser/server.py:88` `OPERATIONS = (`
 
 Every tool takes a `calling_role` string that defaults to `unknown`; the role is bound to the
 container's `AGENT_ROLE`, so the argument only corroborates the identity the harness set.
+Unbound, the declared role meets the same allow-list check (`mcp/browser/server.py:320` `if role and role in ALLOW_LIST and tool in ALLOW_LIST[role]:`).
 
 ## Which URLs may `browser_open` reach?
 
@@ -164,12 +165,13 @@ immediately (`mcp/hashchain.py:262` `os.fsync(handle.fileno())`).
 | --- | --- |
 | `timestamp` | ISO-8601 UTC instant (`mcp/browser/server.py:140` `"timestamp": utc_now(),`) |
 | `tool` | The tool name, one of the eight (`mcp/browser/server.py:141` `"tool": tool,`) |
-| `calling_role` | The bound role, defaulting to `unknown` (`mcp/browser/server.py:142` `"calling_role": calling_role or "unknown",`) |
+| `calling_role` | The role the authorisation resolved, defaulting to `unknown` (`mcp/browser/server.py:142` `"calling_role": calling_role or "unknown",`) |
 | `target` | The resolved URL, selector or key, or `null` (`mcp/browser/server.py:143` `"target": target if isinstance(target, str) else None,`) |
 | `allowed` | `true` for a permitted call, `false` for a denial (`mcp/browser/server.py:144` `"allowed": allowed,`) |
 | `ok` | Whether the call succeeded; `false` for a refused URL or a missed selector (`mcp/browser/server.py:145` `"ok": ok,`) |
 | `reason` | `null` when the call succeeded, a short cause otherwise (`mcp/browser/server.py:146` `"reason": reason,`) |
 | `chain` | The line's hash-chain block: `seq`, `prev`, `head` and `seeded` (`mcp/hashchain.py:229` `return {"seq": seq, "prev": prev_head, "head": head, "seeded": seeded}, add_newline`) |
+| `bound` | `true` when `AGENT_ROLE` was set and `false` when unbound; a row written before the key existed has none (`mcp/browser/server.py:147` `"bound": bool(environment_role()),`) |
 
 One live refusal row (`browser_open` of `http://example.com/evil` as `beta-tester`) carries
 `"allowed": true`, `"ok": false` and a `"reason"` beginning `url_refused:`. One authorization denial

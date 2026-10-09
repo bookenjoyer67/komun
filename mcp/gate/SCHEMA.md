@@ -406,7 +406,8 @@ Flush and `fsync` each record so a following `tail -n 1` sees it immediately
 | `guard_applied` / `guard_satisfied` | The cache-hit guard outcome (`mcp/gate/server.py:220` `"guard_applied": guard_applied,`) |
 | `summary` | The configured output summary, or an unapplied marker (`mcp/gate/server.py:222` `"summary": summary,`) |
 | `writes` | Whether the command rewrote files: `false` for a check, `true` for a fix (`mcp/gate/server.py:223` `"writes": writes,`) |
-| `calling_role` | The caller's role, defaulting to `unknown` (`mcp/gate/server.py:224` `"calling_role": calling_role or "unknown",`) |
+| `calling_role` | The role the authorisation resolved: the bound `AGENT_ROLE`, or the declared role when unbound (`mcp/gate/server.py:224` `"calling_role": calling_role or "unknown",`) |
+| `bound` | `true` when `AGENT_ROLE` was set and `false` when unbound; a row written before the key existed has none (`mcp/gate/server.py:225` `"bound": bool(environment_role()),`) |
 | `chain` | The line's hash-chain block: `seq`, `prev`, `head` and `seeded` (`mcp/hashchain.py:229` `return {"seq": seq, "prev": prev_head, "head": head, "seeded": seeded}, add_newline`) |
 
 How does a record join the hash chain?
@@ -478,6 +479,8 @@ journals a refused write (`mcp/storage/server.py:125` `if classification not in 
 
 `run_fix` is ordered the same way, so a refused fix is as absent from the journal as a refused gate
 (`mcp/gate/server.py:733` `validate_fix(command)` on a line above `mcp/gate/server.py:184` `audit_invocation(`).
+
+An authorisation refusal is the one exception: it journals one denied row, bound or not (`mcp/gate/server.py:13` `which journals a denied row, bound or not`).
 
 Measured: three refusals in one self-test run left the journal at 10 lines, unchanged
 (`refusals_journal_nothing :: journal lines before=10 after=10`).

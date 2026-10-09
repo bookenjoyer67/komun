@@ -21,7 +21,7 @@ Two enforcement layers sit in front of those operations, mirroring the storage s
 * ``browser_open`` resolves a path or an absolute URL against ``BETA_BASE_URL`` and refuses any
   origin but the base origin's. The refusal is journalled like an authorization refusal.
 * Every call appends one JSON object per line to ``.memory/browser-audit.log`` -- the tool, the
-  calling role, the target, whether it succeeded, and the refusal reason when it did not.
+  resolved calling role, the target, whether it succeeded, the refusal reason, and ``bound``.
 
 The allow-list is cross-checked at startup against ``docs/routing-and-tool-grant-map.json``: the
 projection of ``grants[role]`` filtered to ``mcp__browser__*`` must equal this file's entry for the
@@ -144,8 +144,8 @@ def audit_event(
             "allowed": allowed,
             "ok": ok,
             "reason": reason,
-        }
-    )
+            "bound": bool(environment_role()),
+        })
 
 
 # --- The allow-list: the whole grant surface, plus the guard every tool calls first ----------

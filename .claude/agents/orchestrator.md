@@ -77,6 +77,6 @@ Which half of the review does the orchestrator run before it delegates?
 The orchestration instructions live in `CLAUDE.md` (`## Orchestration`); this section names the one
 command they now require before the review starts.
 
-- Route the conformance half of the review through the `conformance` gate: the tester calls `mcp__gate__run_gate` with that gate name, and the wrapper fails only on new drift against the base revision (`agentic.config.json:61`).
+- Route the conformance half of the review through the `conformance` gate: the tester calls `mcp__gate__run_gate` with that gate name, and the wrapper fails only on new drift against the base revision (`agentic.config.json:79`).
 - Read the gate's journal entry instead of running anything yourself: this role holds no execution tool, and the gate server is the only path in this system that runs a command.
 

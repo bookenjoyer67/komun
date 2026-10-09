@@ -6,7 +6,7 @@ Where does the governance policy bind, and what proves each bound rule still hol
 
 What is this decision's current status?
 
-**Accepted.** The policy is published as `docs/governance-policy.md` v1.0.0, and each rule it states is carried by an artifact a program reads (`docs/governance-policy.md:4` `Last updated: 2026-09-28`). No human has signed the draft (`docs/governance-policy.md:5` `Reviewed by: pending`), so the Module 4.1 checkpoint owner holds approval.
+**Accepted.** The policy is published as `docs/governance-policy.md` v1.1.0, and each rule it states is carried by an artifact a program reads (`docs/governance-policy.md:4` `Last updated: 2026-10-09`). No human has signed the draft (`docs/governance-policy.md:5` `Reviewed by: pending`), so the Module 4.1 checkpoint owner holds approval.
 
 ## Context
 
@@ -90,7 +90,7 @@ What does this decision change, and what does it leave open?
 - The enforcement is demonstrated by the local suites and the workflow definition, not by a green CI run. This repository's workflow has no recorded run history (`gh run list` -> `no runs listed`, on 2026-10-01). That is a limitation of the evidence, not a claim that the workflow is broken.
 - One boundary stays unprobed: no prompt tested a direct write to the SQLite memory database (`eval/red-team-results.md:286` `no prompt here tested`).
 - The policy's basis still names the range NM-1 to NM-9 although the log defines ten patterns (`docs/governance-policy.md:13` `patterns NM-1 to NM-9`). The policy cites seven of them (`grep -o 'NM-[0-9]*' docs/governance-policy.md | sort -u` -> `NM-1 NM-2 NM-3 NM-4 NM-5 NM-7 NM-9`). The suite passes because it checks that a cited pattern exists, not that every pattern is cited (`eval/test_policy.py:1132` `def test_near_miss_citations_exist`).
-- The policy is an unsigned v1.0.0 draft, and the human checkpoint still owns approval (`docs/governance-policy.md:5` `Reviewed by: pending`).
+- The policy is an unsigned v1.1.0 draft, and the human checkpoint still owns approval (`docs/governance-policy.md:5` `Reviewed by: pending`).
 - The reviewer no longer runs the prose check by hand, because that step is converted (`docs/routing-and-tool-grant-map.md:96` `Run the prose and citation conformance check as`).
 
 ## Evidence

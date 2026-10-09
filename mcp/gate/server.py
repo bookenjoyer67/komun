@@ -10,8 +10,8 @@ entry, ``shell`` is never used, and no caller-supplied string reaches a command 
 Each invocation returns the exit code, the captured stdout and stderr, the wall-clock duration and a
 verdict, and appends one journal line naming the ``tool`` that ran it and its ``writes`` mode. A
 refused gate name or command runs nothing and journals nothing, so the journal holds only executed
-commands; the one exception is an authorisation refusal, which is raised only when ``AGENT_ROLE`` is
-set and which journals a denied row naming the caller and the mismatch.
+commands; the one exception is an authorisation refusal, which journals a denied row, bound or not.
+Unbound, the declared role needs the same grant, and every row written then carries ``"bound": false``.
 
 A gate that declares a ``guard`` carries the project's cache-hit guard, and its marker line and
 touched file are read from that gate's own ``toolchain.commands.<name>.guard`` block. cargo's
@@ -222,6 +222,7 @@ def audit_invocation(
             "summary": summary,
             "writes": writes,
             "calling_role": calling_role or "unknown",
+            "bound": bool(environment_role()),
         }
     )
 
@@ -343,9 +344,9 @@ def environment_role() -> str:
 def bind_role(calling_role: str | None) -> tuple[str, str | None]:
     """Bind the caller's role to this process's ``AGENT_ROLE`` and return ``(role, mismatch)``.
 
-    With ``AGENT_ROLE`` unset the argument is used exactly as before, so a local run, pytest or a
-    self-test is unchanged. With it set, the environment is the effective role: an omitted, blank
-    or ``unknown`` argument yields it, and an argument naming a *different* role yields a mismatch
+    With ``AGENT_ROLE`` unset the argument is the role, and ``_authorize`` checks it against the
+    same grants. With it set, the environment is the effective role: an omitted, blank or
+    ``unknown`` argument yields it, and an argument naming a *different* role yields a mismatch
     description instead of a role -- a caller cannot escalate by typing another role's name, and
     the environment is never silently overridden by the argument.
     """
@@ -387,30 +388,29 @@ def audit_denial(*, tool: str, gate: str | None, calling_role: str, reason: str)
             "calling_role": calling_role or "unknown",
             "allowed": False,
             "reason": reason,
+            "bound": bool(environment_role()),
         }
     )
 
 
 def _authorize(calling_role: str | None, operation: str, *, gate: str | None = None) -> str:
-    """Bind the caller's role and refuse an ungranted pair, journalling the refusal.
+    """Resolve the caller's role, refuse an ungranted pair, and journal the refusal.
 
-    This is the first statement of ``run_gate`` and ``run_fix``. With ``AGENT_ROLE`` unset -- local
-    dev, pytest, the self-tests and CI -- no authorisation runs at all and the server behaves
-    exactly as it did before this guard existed; the environment variable is the only switch. With
-    it set, the environment is the effective role: a ``calling_role`` that disagrees with it is
-    refused outright, an omitted or ``unknown`` argument yields the environment role, and an
-    ungranted (role, operation) pair is refused. Every refusal names the roles that ARE allowed.
+    The first statement of ``run_gate`` and ``run_fix``, so authorisation precedes the name check.
+    Bound, ``AGENT_ROLE`` is the role and a disagreeing ``calling_role`` is refused. Unbound, the
+    declared role passes through the same grant table, and an unknown, ``None`` or ungranted role is
+    refused: the orchestrator sidecar's in-process subagents call as several roles, so no single
+    bound role serves them, and every row an unbound server writes reads ``"bound": false``. Every
+    refusal names the roles that ARE allowed, and is journalled.
     """
     if operation not in GATE_OPERATIONS:
         raise ValueError(
             f"'{operation}' is not one of this server's gate operations {list(GATE_OPERATIONS)}"
         )
 
-    # The switch: with the environment unset the guard is inert, exactly as this server behaved
-    # before it existed. No flag and no config key turn it on; the harness sets AGENT_ROLE.
-    if not environment_role():
-        return calling_role.strip() if isinstance(calling_role, str) else "unknown"
-
+    # Bound or not, the role meets the same checks below: a server that skipped them unbound would
+    # run run_fix for any caller on the network, including one that declares no role at all, and
+    # an unknown or ungranted declaration would never reach the journal as a refusal.
     role, mismatch = bind_role(calling_role)
     grants = gate_grants()
     allowed = authorized_roles(operation)
@@ -690,13 +690,13 @@ def list_gates() -> list[dict]:
 def run_gate(gate: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:
     """Run one allowlisted check-mode gate by name and return its exit code, output and verdict.
 
-    The caller's role is bound to the container's ``AGENT_ROLE`` and the grant checked first: this
-    server runs a gate only for a role the routing map grants ``run_gate``, and a ``calling_role``
-    that disagrees with the environment is refused. The name is then resolved against the
-    check-mode table alone, so a write-mode command is refused however it is spelled. No parameter
-    carries an argv element, a path, a flag or a shell.
+    The caller's role is bound to the container's ``AGENT_ROLE`` (or, unset, taken as declared) and
+    the grant checked first: this server runs a gate only for a role the routing map grants
+    ``run_gate``, and a ``calling_role`` that disagrees with a bound environment is refused. The name
+    is then resolved against the check-mode table alone, so a write-mode command is refused however
+    it is spelled. No parameter carries an argv element, a path, a flag or a shell.
     """
-    _authorize(calling_role, "run_gate", gate=gate)
+    role = _authorize(calling_role, "run_gate", gate=gate)
     validate_gate(gate)
     effective_timeout = validate_timeout(timeout_seconds)
     result = execute_gate(gate, GATES, effective_timeout)
@@ -711,7 +711,7 @@ def run_gate(gate: str, calling_role: str = "unknown", timeout_seconds: int | No
         guard_applied=bool(result["guard"]["applied"]),
         guard_satisfied=result["guard"]["satisfied"],
         writes=False,
-        calling_role=calling_role,
+        calling_role=role,
         summary=result["summary"],
     )
     return result
@@ -722,14 +722,14 @@ def run_fix(command: str, calling_role: str = "unknown", timeout_seconds: int | 
     """Run one allowlisted write-mode command by name. It rewrites files in the workspace.
 
     The write-mode counterpart of ``run_gate`` and its exact mirror: the caller's role is bound to
-    the container's ``AGENT_ROLE`` and the grant checked first, so the command runs only for a role
-    the routing map grants ``run_fix`` and a disagreeing ``calling_role`` is refused; the name is
-    then resolved against the write-mode table alone, so a check-mode gate is refused however it is
-    spelled, and the argv comes from that table and nowhere else. No parameter carries an argv
-    element, a path, a flag, a cwd or a shell, so this tool widens what the server can run by
-    exactly one configured command and by nothing else. The journal records it as a mutation.
+    the container's ``AGENT_ROLE`` (or, unset, taken as declared) and the grant checked first, so
+    the command runs only for a role the routing map grants ``run_fix`` and a disagreeing bound
+    role is refused; the name is then resolved against the write-mode table alone, so a check-mode
+    gate is refused however it is spelled, and the argv comes from that table and nowhere else. No
+    parameter carries an argv element, a path, a flag, a cwd or a shell, so this tool widens what
+    the server can run by one configured command and nothing else. The journal records a mutation.
     """
-    _authorize(calling_role, "run_fix", gate=command)
+    role = _authorize(calling_role, "run_fix", gate=command)
     validate_fix(command)
     effective_timeout = validate_timeout(timeout_seconds)
     result = execute_gate(command, FIX_COMMANDS, effective_timeout)
@@ -744,7 +744,7 @@ def run_fix(command: str, calling_role: str = "unknown", timeout_seconds: int | 
         guard_applied=bool(result["guard"]["applied"]),
         guard_satisfied=result["guard"]["satisfied"],
         writes=True,
-        calling_role=calling_role,
+        calling_role=role,
         summary=result["summary"],
     )
     return result

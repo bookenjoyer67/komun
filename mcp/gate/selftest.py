@@ -23,7 +23,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -32,12 +31,13 @@ from typing import Any
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-# This self-test acts as the Tester, and the gate server binds the caller's role to the container's
-# own ``AGENT_ROLE`` (``scripts/run-agent.sh:259`` sets it). A container whose environment names a
-# different role would make the ``calling_role`` below disagree with the server and be refused, so
-# this process declares the role it is acting as: for an in-process server, or one co-launched from
-# this environment, the two then agree.
-os.environ["AGENT_ROLE"] = "tester"
+
+# The target is an unbound server on a scratch journal, so each call declares a role, and that
+# role must hold the grant for the tool it names: run_gate calls declare tester, and the run_fix
+# refusals declare implementer, the one role the routing map grants run_fix. A server bound to
+# either role refuses the other's calls by mismatch, and the denial row it journals breaks the
+# journal-count checks below.
+SELFTEST_ROLE = "tester"
 
 DEFAULT_URL = "http://localhost:8003/mcp"
 DEFAULT_AUDIT_PATH = "/workspace/.memory/gate-audit.log"
@@ -49,8 +49,8 @@ EXPECTED_GATES = {
     "clippy": ["cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings"],
     "fmt": ["cargo", "fmt", "--check"],
     "policy": [
-        "python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "-q",
-    ],
+        "python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py",
+        "eval/test_store_protection.py", "-q"],
     "conformance": ["python3", "scripts/run-conformance-gate.py"],
     "fmt-fix": ["cargo", "fmt", "--all"],
     "webcheck": ["npm", "--prefix", "web", "run", "check"],
@@ -212,14 +212,14 @@ async def refusal(
     what: str,
     tool: str = "run_gate",
     parameter: str = "gate",
+    calling_role: str = SELFTEST_ROLE,
 ) -> str | None:
     """Call a run tool with a value that must be refused and return the error text, or ``None``.
 
-    ``tool`` and ``parameter`` default to the check surface, so the existing call sites read as they
-    did; passing ``run_fix`` and ``command`` drives the same assertion against the write surface.
+    The defaults aim at the check surface as ``tester``; a ``run_fix`` call declares ``implementer``.
     """
     try:
-        result = await client.call_tool(tool, {parameter: value})
+        result = await client.call_tool(tool, {parameter: value, "calling_role": calling_role})
     except ToolError as error:
         text = str(error)
         check(name, "refused" in text and "allowlisted" in text, f"{what} -> {text.splitlines()[0]}")
@@ -340,16 +340,16 @@ async def run_selftest(url: str, audit_path: str) -> int:
             "run_fix_refuses_a_check_mode_gate",
             "fmt",
             "run_fix(command='fmt')",
-            tool="run_fix",
-            parameter="command",
+            tool="run_fix", parameter="command",
+            calling_role="implementer",
         )
         await refusal(
             client,
             "run_fix_refuses_shell_injection",
             f"fmt-fix; touch {INJECTION_TARGET_FIX}",
             f"run_fix(command='fmt-fix; touch {INJECTION_TARGET_FIX}')",
-            tool="run_fix",
-            parameter="command",
+            tool="run_fix", parameter="command",
+            calling_role="implementer",
         )
         check(
             "refused_run_fix_journals_nothing",
@@ -381,7 +381,7 @@ async def run_selftest(url: str, audit_path: str) -> int:
         # --- the three real gates, in the order that keeps the run short -----------------------
         # One extra invocation first: it proves the per-run timeout is clamped and reported rather
         # than passed through, and it is counted by the journal assertions below.
-        clamped = payload(await client.call_tool("run_gate", {"gate": "fmt", "timeout_seconds": 1}))
+        clamped = payload(await client.call_tool("run_gate", {"gate": "fmt", "timeout_seconds": 1, "calling_role": SELFTEST_ROLE}))
         check(
             "timeout_is_clamped_and_reported",
             clamped["timeout_seconds"] == 60 and clamped["timed_out"] is False,

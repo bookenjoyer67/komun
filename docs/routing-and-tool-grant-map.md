@@ -71,7 +71,7 @@ The retrieval server exposes one operation, `mcp__retrieval__retrieve`. A grant 
 Which grants repeat across roles, and does any repeat breach least privilege?
 
 - Hold `mcp__coursetools__web_search` on the Researcher alone, which is the whole reason the stretch role exists.
-- Hold `mcp__gate__run_gate` on the Tester alone, deny `mcp__coursetools__test_runner` to every role, and keep the gate server the one path that executes a command. Read that grant as reaching all seven check-mode names, `webcheck` and `webtest` included (`agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],`). Authorisation is held per tool, not per gate name. The server binds each caller to the container's `AGENT_ROLE` and checks the map's grant before the membership check (`mcp/gate/server.py:122` `if gate not in GATES:`). It validates the role per tool, so a name added to the config extends the surface only of the roles the map grants that tool.
+- Hold `mcp__gate__run_gate` on the Tester alone, deny `mcp__coursetools__test_runner` to every role, and keep the gate server the one path that executes a command. Read that grant as reaching all seven check-mode names, `webcheck` and `webtest` included (`agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],`). Authorisation is held per tool, not per gate name. The server authorises the bound `AGENT_ROLE`, or the declared role when unbound, against the map's grant before the membership check (`mcp/gate/server.py:699` `role = _authorize(calling_role, "run_gate", gate=gate)`). It validates the role per tool, so a name added to the config extends the surface only of the roles the map grants that tool.
 - Hold `mcp__coursetools__task_tracker` on the Project Manager alone, because ticket state has one owner.
 - Hold `mcp__storage__update_entry` on the Implementer alone, which is the only role that revises a record it wrote.
 - Grant `mcp__storage__delete_entry` to no role, and keep record removal outside the gate.
@@ -116,4 +116,40 @@ Which tools does the operator hold outside the agent roles, and what can each on
 - Read every artifact without altering it, because each journal is read as bytes and the store opens with SQLite read-only (`scripts/chain_anchor.py:12` `There is no write mode. Journals are read as bytes, and the store is opened with SQLite`).
 - Treat a non-zero `verify` exit as a hard failure and never as a warning, reading the three constants as intact, fail and error (`scripts/chain_anchor.py:39` `EXIT_INTACT, EXIT_FAIL, EXIT_ERROR = 0, 1, 2`).
 - Take the first anchor only once the four servers restart on the chained code and each makes one chained write (`python3 scripts/chain_anchor.py head` -> all five artifacts read `"seq": 0` today). An artifact predating the chain has no head to anchor.
+- Hold `scripts/chain_crosscheck.py` on the operator and grant it to no agent role (`scripts/chain_crosscheck.py:24` `No agent role is granted this command; the operator runs it on the host.`).
+- Pair the store's chain records with the storage journal's write lines with `python3 scripts/chain_crosscheck.py`. It opens the store read-only and hashes nothing (`scripts/chain_crosscheck.py:23` `There is no write mode: the store is opened with SQLite mode=ro`).
+- Read its exit as no mismatch, any mismatch or error, and treat a mismatch as a fact to explain rather than a pass (`scripts/chain_crosscheck.py:44` `EXIT_MATCH, EXIT_MISMATCH, EXIT_ERROR = 0, 1, 2`).
+- Explain an unjournalled chain record as a crash after the commit or a write that bypassed the server. That reading holds because the journal line follows the commit (`scripts/chain_crosscheck.py:9` `The storage server appends the journal line after the store commit`).
+- Start each role box's servers with `./scripts/run-agent-servers.sh <role>`, which binds the sidecar to that role unless `--unbound` is passed (`scripts/run-agent-servers.sh:82` `declare -a ENVS=(-e "AGENT_ROLE=$BOUND_ROLE")`).
+- Wire the role box to its sidecar with the printed `claude mcp add` commands, and repeat them after the launcher recreates the box (`scripts/run-agent-servers.sh:169` `run-agent.sh reseeds /root/.claude.json whenever it`).
 
+## Container mounts and sidecars
+
+Which mounts does a role box hold, and where do the servers that write the store run?
+
+| Role | `/workspace/.memory` in the box | `/workspace/.memory/project` in the box | Sidecar `AGENT_ROLE` |
+| :--- | :--- | :--- | :--- |
+| `orchestrator` | read-only | not bound | `orchestrator` by default; empty only with `--unbound` |
+| `planner` | read-only | read-write | `planner` |
+| `implementer` | read-only | read-write | `implementer` |
+| `tester` | read-only | read-write | `tester` |
+| `reviewer` | read-only | read-write | `reviewer` |
+| `project-manager` | not mounted | not bound | `project-manager` |
+| `researcher` | read-only | read-write | `researcher` |
+| `beta-tester` | read-only | read-write | `beta-tester` |
+
+- Mount `/workspace/.memory` read-only in every role box that mounts it, so no role writes `storage.db` or its `-wal` past the server (`scripts/run-agent.sh:110` `No role box mounts .memory read-write`).
+- Refuse, with exit 2 and before any docker call, a launch or `--print-mounts` whose resolved profile sets `memory=rw` (`scripts/run-agent.sh:48` `[ "$ROLE_MEM" != rw ] || why="memory=rw mounts .memory read-write"`).
+- Refuse `memory=none` under a read-write workspace, and `memory_project=rw` without `memory=ro`, because each leaves `.memory` writable (`scripts/run-agent.sh:49` `leaves .memory writable through the workspace bind`; `scripts/run-agent.sh:50` `memory_project=rw needs memory=ro`).
+- Bind `/workspace/.memory/project` read-write for the six roles the map grants `mcp__storage__write_entry`, so their decision files stay writable (`scripts/run-agent.sh:175` `MOUNTS+=(-v "$REPO/.memory/project:/workspace/.memory/project")`).
+- Run the storage, retrieval and gate servers in the role's `<role>-servers` sidecar, the only container that mounts `.memory` read-write (`scripts/run-agent-servers.sh:7` `The sidecar mounts .memory read-write and no overlays`).
+- Bind every sidecar to the role it serves by default, the orchestrator's included (`scripts/run-agent-servers.sh:82` `declare -a ENVS=(-e "AGENT_ROLE=$BOUND_ROLE")`).
+- Treat an unbound gate server as open to any caller claiming a granted role, `run_fix` included (`mcp/gate/server.py:14` `the declared role needs the same grant`; `scripts/run-agent-servers.sh:36` `lets any caller on the network claim`).
+- Let only the orchestrator's sidecar run unbound, because its in-process subagents call the servers as several roles (`scripts/run-agent-servers.sh:12` `The orchestrator's sidecar is the single exception that may run`).
+- Start it unbound only with `--unbound`, whose help names the exposure (`scripts/run-agent-servers.sh:36` `EXPOSURE: an unbound gate server lets any caller on the network claim`). The script refuses that flag for every other role (`scripts/run-agent-servers.sh:69` `--unbound is accepted for the orchestrator sidecar only`).
+- Drive gated work from per-role boxes, each served by a bound sidecar (`scripts/run-agent-servers.sh:10` `Every sidecar binds the role it serves with AGENT_ROLE="$ROLE" unless it is started with --unbound.`).
+- Read `"bound": true` on a gate or browser journal row as written by a bound server, and `"bound": false` as an unbound declaration (`mcp/gate/server.py:225` `"bound": bool(environment_role()),`; `mcp/browser/server.py:147` `"bound": bool(environment_role()),`).
+- Refuse `BETA_BASE_URL` on an unbound sidecar, so no unbound browser server starts in it (`scripts/run-agent-servers.sh:73` `refuses BETA_BASE_URL: no orchestrated role holds a browser grant`).
+- Bind the browser server in a bound sidecar through the container's own environment, which the server start inherits (`scripts/run-agent-servers.sh:82` `declare -a ENVS=(-e "AGENT_ROLE=$BOUND_ROLE")`).
+- Overlay the inputs that define enforcement read-only in every role box: the launchers, the client configuration, the permission hooks and the host-run helpers (`scripts/run-agent.sh:148` `Enforcement inputs, not code under change`).
+- Treat every edit to one of them as an operator edit on the host (`scripts/run-agent.sh:150` `every change to one is an operator edit on the host`).

@@ -3,9 +3,9 @@
 
 The four servers bind every caller to the container's own ``AGENT_ROLE``: a ``calling_role``
 argument that disagrees with it is refused outright, an omitted or ``unknown`` argument yields the
-environment role, and with ``AGENT_ROLE`` unset the server behaves exactly as it did before the
-guard existed. This test drives the servers **in process**, because the environment variable being
-tested is process state: the same interpreter must set it before each call.
+environment role, and with ``AGENT_ROLE`` unset each server checks the declared role against its own
+grants. This test drives the servers **in process**, because the environment variable being tested
+is process state: the same interpreter must set it before each call.
 
 Run inside the tools image, where the MCP dependencies are real:
 
@@ -16,7 +16,10 @@ It covers, per server:
   (a) AGENT_ROLE set, the argument matches it  -> the call is authorised
   (b) AGENT_ROLE set, the argument disagrees    -> refused, and the refusal is journalled
   (c) AGENT_ROLE set, the argument is omitted    -> the environment role is used
-  (d) AGENT_ROLE unset                           -> today's behaviour is unchanged
+  (d) AGENT_ROLE unset                           -> the declared role is checked against the grants
+
+and, for the gate and the browser, T-G1..T-G9 and T-B1..T-B5: unbound refusals by declared role, and
+the resolved role plus the ``bound`` key on every journal row.
 
 Plain ``python3`` on purpose: no pytest is required inside the image. Exit code 0 when every
 check passes, 1 otherwise; the last line is machine-readable.
@@ -272,25 +275,172 @@ def check_gate(gate: Any) -> None:
         check("gate (c) AGENT_ROLE=tester + no argument -> the environment role is used (name refused)",
               not is_denied(error) and "not an allowlisted gate" in str(error), str(error)[:200])
 
-    # (d) AGENT_ROLE unset: today's behaviour -- no authorisation runs at all.
+    # (d) AGENT_ROLE unset: the declared role meets the same grants, so an unknown one is refused.
+    # Neither name is runnable by its tool, so a guard that let "anon" through still runs nothing.
     set_role(None)
-    for tool, call, needle in (
-        ("run_gate", lambda: gate.run_gate("definitely-not-a-gate", calling_role="anon"),
-         "not an allowlisted gate"),
-        ("run_fix", lambda: gate.run_fix("fmt", calling_role="anon"),
-         "not an allowlisted write-mode command"),
+    for tool, call in (
+        ("run_gate", lambda: gate.run_gate("definitely-not-a-gate", calling_role="anon")),
+        ("run_fix", lambda: gate.run_fix("fmt", calling_role="anon")),
     ):
+        name = f"gate (d) AGENT_ROLE unset + {tool}(calling_role='anon') -> REFUSED, 'unknown role'"
         try:
             call()
-            check(f"gate (d) AGENT_ROLE unset + {tool} -> no authorisation, today's refusal",
-                  False, "the call was allowed")
+            check(name, False, "the call was allowed")
         except Exception as error:  # noqa: BLE001
-            check(f"gate (d) AGENT_ROLE unset + {tool} -> no authorisation, today's refusal",
-                  not is_denied(error) and needle in str(error), str(error)[:200])
+            check(name, is_denied(error) and "unknown role" in str(error), str(error)[:200])
+
+
+# Every name here fails validation, so code that skips authorisation refuses by name and runs nothing.
+GATE_REFUSED_NAME = {"run_gate": "definitely-not-a-gate", "run_fix": "definitely-not-a-command"}
+GATE_NAME_REFUSAL = {"run_gate": "not an allowlisted gate",
+                     "run_fix": "not an allowlisted write-mode command"}
+
+
+def check_gate_unbound(gate: Any) -> None:
+    path = Path(os.environ["GATE_AUDIT_PATH"])
+    set_role(None)
+
+    # T-G1, T-G2: a declared role holding the grant still reaches the name check unbound.
+    for case, tool, declared in (("T-G1", "run_gate", "tester"), ("T-G2", "run_fix", "implementer")):
+        name = f"gate {case} AGENT_ROLE unset + {tool}(calling_role={declared!r}) -> authorised, name refused"
+        try:
+            getattr(gate, tool)(GATE_REFUSED_NAME[tool], calling_role=declared)
+            check(name, False, "an unallowlisted name was accepted")
+        except Exception as error:  # noqa: BLE001
+            check(name, not is_denied(error) and GATE_NAME_REFUSAL[tool] in str(error),
+                  f"{type(error).__name__}: {error}"[:240])
+
+    # T-G3..T-G6 refuse by authorisation; T-G7 requires exactly one denial row for each.
+    for case, tool, declared, journalled, needle in (
+        ("T-G3", "run_fix", "janitor", "janitor", "unknown role"),
+        ("T-G4", "run_fix", None, "unknown", "unknown role"),
+        ("T-G5", "run_fix", "tester", "tester", "is not granted 'run_fix'"),
+        ("T-G6", "run_gate", "reviewer", "reviewer", "is not granted 'run_gate'"),
+    ):
+        name = f"gate {case} AGENT_ROLE unset + {tool}(calling_role={declared!r}) -> REFUSED, {needle!r}"
+        before = len(journal(path))
+        try:
+            getattr(gate, tool)(GATE_REFUSED_NAME[tool], calling_role=declared)
+            check(name, False, "the call was allowed")
+        except Exception as error:  # noqa: BLE001
+            check(name, is_denied(error) and needle in str(error),
+                  f"{type(error).__name__}: {error}"[:240])
+        added = journal(path)[before:]
+        row = added[0] if len(added) == 1 else None
+        check(f"gate T-G7 ({case}) one denial row: allowed=false, bound=false, "
+              f"calling_role={journalled!r}",
+              row is not None and row.get("allowed") is False and row.get("bound") is False
+              and row.get("calling_role") == journalled and row.get("tool") == tool,
+              json.dumps(added, sort_keys=True)[:240] if added else "no row written")
+
+
+class StubExecutor:
+    """Replaces ``execute_gate`` so the attribution cases journal a row while no command runs."""
+
+    def __init__(self) -> None:
+        self.tables: list[Any] = []
+
+    def __call__(self, command: str, table: Any, timeout_seconds: int) -> dict[str, Any]:
+        self.tables.append(table)
+        return {
+            "gate": command,
+            "argv": ["stub"],
+            "exit_code": 0,
+            "passed": True,
+            "verdict": "pass",
+            "timed_out": False,
+            "timeout_seconds": timeout_seconds,
+            "duration_seconds": 0.0,
+            "guard": {"applied": False, "satisfied": True},
+            "summary": None,
+        }
+
+
+def last_row_after(path: Path, before: int) -> dict | None:
+    added = journal(path)[before:]
+    return added[-1] if added else None
+
+
+def check_gate_attribution(gate: Any) -> None:
+    path = Path(os.environ["GATE_AUDIT_PATH"])
+    stub = StubExecutor()
+    real = gate.execute_gate
+    gate.execute_gate = stub
+    try:
+        # T-G8a: bound, no argument -> the row names the bound role.
+        set_role("tester")
+        before = len(journal(path))
+        try:
+            gate.run_gate("fmt")
+            row, detail = last_row_after(path, before), ""
+        except Exception as error:  # noqa: BLE001
+            row, detail = None, f"{type(error).__name__}: {error}"
+        check("gate T-G8a AGENT_ROLE=tester + run_gate(fmt), no argument -> row calling_role=tester, "
+              "bound=true",
+              row is not None and row.get("tool") == "run_gate" and row.get("calling_role") == "tester"
+              and row.get("bound") is True,
+              detail or json.dumps(row, sort_keys=True)[:240])
+
+        # T-G8b: bound, no argument, write mode -> the stub got the write table, the row the role.
+        set_role("implementer")
+        before = len(journal(path))
+        try:
+            gate.run_fix("fmt-fix")
+            row, detail = last_row_after(path, before), ""
+        except Exception as error:  # noqa: BLE001
+            row, detail = None, f"{type(error).__name__}: {error}"
+        check("gate T-G8b AGENT_ROLE=implementer + run_fix(fmt-fix), no argument -> FIX_COMMANDS, "
+              "row calling_role=implementer, writes=true, bound=true",
+              bool(stub.tables) and stub.tables[-1] is gate.FIX_COMMANDS and row is not None
+              and row.get("tool") == "run_fix" and row.get("calling_role") == "implementer"
+              and row.get("writes") is True and row.get("bound") is True,
+              detail or json.dumps(row, sort_keys=True)[:240])
+
+        # T-G8c: unbound, declared and granted -> the row is marked unbound.
+        set_role(None)
+        before = len(journal(path))
+        try:
+            gate.run_gate("fmt", calling_role="tester")
+            row, detail = last_row_after(path, before), ""
+        except Exception as error:  # noqa: BLE001
+            row, detail = None, f"{type(error).__name__}: {error}"
+        check("gate T-G8c AGENT_ROLE unset + run_gate(fmt, calling_role=tester) -> row "
+              "calling_role=tester, bound=false",
+              row is not None and row.get("calling_role") == "tester" and row.get("bound") is False,
+              detail or json.dumps(row, sort_keys=True)[:240])
+
+        # T-G9: rows written before "bound" existed and rows carrying it verify as one chain.
+        hashchain = load_module("rb_hashchain", REPO / "mcp" / "hashchain.py")
+        compat = SCRATCH / "gate-chain-compat.log"
+        hashchain.append_journal_record(compat, {
+            "timestamp": "2026-10-01T00:00:00+00:00", "tool": "run_gate", "gate": "fmt",
+            "argv": ["stub"], "exit_code": 0, "duration_seconds": 0.0, "passed": True,
+            "timed_out": False, "guard_applied": False, "guard_satisfied": True, "summary": None,
+            "writes": False, "calling_role": "tester",
+        })
+        saved = gate.AUDIT_PATH
+        gate.AUDIT_PATH = str(compat)
+        try:
+            set_role(None)
+            try:
+                gate.run_gate("fmt", calling_role="tester")
+                detail = ""
+            except Exception as error:  # noqa: BLE001
+                detail = f"{type(error).__name__}: {error}"
+        finally:
+            gate.AUDIT_PATH = saved
+        rows = journal(compat)
+        verdict = hashchain.verify_journal(compat)
+        check("gate T-G9 a row without 'bound' then a row with bound=false -> chain INTACT",
+              verdict.get("status") == "INTACT" and len(rows) == 2 and "bound" not in rows[0]
+              and rows[1].get("bound") is False,
+              detail or json.dumps({"verify": verdict, "rows": rows}, sort_keys=True)[:240])
+    finally:
+        gate.execute_gate = real
 
 
 # --- browser ----------------------------------------------------------------------------------
-def check_browser(browser: Any) -> None:
+async def check_browser(browser: Any) -> None:
     # (a) AGENT_ROLE set and the argument matches it: authorised (the guard returns the role).
     set_role("beta-tester")
     try:
@@ -344,6 +494,44 @@ def check_browser(browser: Any) -> None:
         check("browser (d) AGENT_ROLE unset + unknown role -> refused, as before",
               is_denied(error) and "unknown role" in str(error), str(error)[:200])
 
+    path = Path(os.environ["BROWSER_AUDIT_PATH"])
+
+    # T-B1, T-B2 are refused unbound; T-B3 requires their denial rows to read bound=false.
+    set_role(None)
+    for case, declared, needle in (("T-B1", "tester", "is not granted"),
+                                   ("T-B2", "janitor", "unknown role")):
+        name = f"browser {case} AGENT_ROLE unset + calling_role={declared} -> REFUSED, {needle!r}"
+        before = len(journal(path))
+        try:
+            browser._authorize(declared, "browser_open")
+            check(name, False, "the call was allowed")
+        except Exception as error:  # noqa: BLE001
+            check(name, is_denied(error) and needle in str(error),
+                  f"{type(error).__name__}: {error}"[:240])
+        row = last_row_after(path, before)
+        check(f"browser T-B3 ({case}) the denial row reads bound=false",
+              row is not None and row.get("allowed") is False and row.get("calling_role") == declared
+              and row.get("bound") is False,
+              json.dumps(row, sort_keys=True)[:240] if row else "no denial row")
+
+    # browser_close needs no Chromium while no browser is open. A fastmcp release that wraps its
+    # tools keeps the coroutine function on ``.fn``.
+    close = getattr(browser.browser_close, "fn", browser.browser_close)
+    for case, bound_role, argument, bound in (("T-B4", "beta-tester", None, True),
+                                              ("T-B5", None, "beta-tester", False)):
+        set_role(bound_role)
+        before = len(journal(path))
+        try:
+            await (close() if argument is None else close(calling_role=argument))
+            row, detail = last_row_after(path, before), ""
+        except Exception as error:  # noqa: BLE001
+            row, detail = None, f"{type(error).__name__}: {error}"
+        check(f"browser {case} AGENT_ROLE={bound_role} + browser_close(calling_role={argument!r}) "
+              f"-> row calling_role=beta-tester, bound={str(bound).lower()}",
+              row is not None and row.get("allowed") is True and row.get("tool") == "browser_close"
+              and row.get("calling_role") == "beta-tester" and row.get("bound") is bound,
+              detail or json.dumps(row, sort_keys=True)[:240])
+
 
 async def main() -> int:
     print(f"role-binding test at {SCRATCH}  primary role={PRIMARY!r}")
@@ -356,7 +544,9 @@ async def main() -> int:
     await check_storage(storage)
     check_retrieval(retrieval)
     check_gate(gate)
-    check_browser(browser)
+    check_gate_unbound(gate)
+    check_gate_attribution(gate)
+    await check_browser(browser)
 
     passed = sum(1 for _, ok, _ in RESULTS if ok)
     total = len(RESULTS)

@@ -37,6 +37,20 @@ NET_BROKER="${NET_BROKER:-$(cfg containers.networks.broker 'agent-net')}"
 WORKSPACE="$(cfg containers.workspace '/workspace')"
 MEMORY_DIR="$(cfg containers.memory_dir '/workspace/.memory')"
 
+# The environment wins over the config and the case block, and no source may leave .memory writable.
+ENV_ROLE_MEM="${ROLE_MEM:-}"
+ENV_ROLE_MEM_PROJECT="${ROLE_MEM_PROJECT:-}"
+unset ROLE_MEM ROLE_MEM_PROJECT
+case "$ENV_ROLE_MEM" in ''|rw|ro|none) ;; *) printf 'error: ROLE_MEM must be rw, ro or none, not "%s"\n' "$ENV_ROLE_MEM" >&2; exit 2 ;; esac
+case "$ENV_ROLE_MEM_PROJECT" in ''|rw|none) ;; *) printf 'error: ROLE_MEM_PROJECT must be rw or none, not "%s"\n' "$ENV_ROLE_MEM_PROJECT" >&2; exit 2 ;; esac
+refuse_writable_memory() {
+  local why=""; case "$ROLE_MEM" in rw|ro|none) ;; *) why="memory=$ROLE_MEM is not ro or none" ;; esac
+  [ "$ROLE_MEM" != rw ] || why="memory=rw mounts .memory read-write"
+  [ "$ROLE_MEM" != none ] || [ "$ROLE_WS" != rw ] || why="memory=none with workspace=rw leaves .memory writable through the workspace bind"
+  [ "$ROLE_MEM_PROJECT" != rw ] || [ "$ROLE_MEM" = ro ] || why="${why:-memory_project=rw needs memory=ro}"
+  [ -z "$why" ] || { printf 'error: role "%s" refused: %s (from ROLE_MEM, ROLE_MEM_PROJECT or roles.mounts.%s)\n' "$1" "$why" "$1" >&2; exit 2; }
+}
+
 # --print-config: the config keys this script consumes, each resolved, as one JSON object. The role
 # matrix is the effective one, so a fork can prove what the launcher actually applied.
 print_config() {
@@ -50,32 +64,35 @@ print_config() {
   printf '  "roles.mounts": {'
   for role in $VALID_ROLES; do
     role_profile "$role" || continue
-    printf '%s\n    "%s": {"workspace": "%s", "memory": "%s", "build_cache": "%s"}' \
-      "$sep" "$role" "$ROLE_WS" "$ROLE_MEM" "$ROLE_TARGET"
+    printf '%s\n    "%s": {"workspace": "%s", "memory": "%s", "build_cache": "%s", "memory_project": "%s"}' \
+      "$sep" "$role" "$ROLE_WS" "$ROLE_MEM" "$ROLE_TARGET" "$ROLE_MEM_PROJECT"
     sep=","
   done
   printf '\n  }\n}\n'
 }
 
 usage() {
-  printf 'usage: ./scripts/run-agent.sh <role> <command>\n\n'
+  printf 'usage: ./scripts/run-agent.sh <role> <command>\n'
+  printf '       ./scripts/run-agent.sh --print-mounts <role>   # the -v arguments a launch passes; no docker call\n\n'
   printf '  <role>     %s\n' "$VALID_ROLES"
   printf '  <command>  %s\n\n' "$VALID_CMDS"
+  printf 'environment: ROLE_MEM (ro|none) and ROLE_MEM_PROJECT (rw|none) override the memory mounts; a writable .memory is refused.\n\n'
   printf 'examples:\n'
   printf '  ./scripts/run-agent.sh reviewer bash\n'
   printf '  ./scripts/run-agent.sh implementer bash -c "touch /workspace/ok-to-write.txt"\n'
   printf '  ./scripts/run-agent.sh --matrix\n'
+  printf '  ./scripts/run-agent.sh --print-mounts implementer\n'
 }
 
 MATRIX_ROWS="$(cat <<'ROWS'
 | `orchestrator` | `/workspace` read-write | `/workspace/.memory` read-only | agent-internal + agent-net (broker only) | Policy grants workspace writes and no memory write (`docs/governance-policy.md:67` `holds no memory write grant`). |
-| `planner` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one plan entry and denies a workspace write (`docs/governance-policy.md:111` `writes one plan entry into`). |
-| `implementer` | `/workspace` read-write | `/workspace/.memory` read-write | agent-internal + agent-net (broker only) | Policy grants workspace writes and memory entry writes (`docs/governance-policy.md:159` `writes and revises its own entries in`). |
-| `tester` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one result entry and denies a workspace write (`docs/governance-policy.md:207` `writes one test-result entry into`). |
-| `reviewer` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one review entry and denies a workspace write (`docs/governance-policy.md:254` `writes one review entry into`). |
+| `planner` | `/workspace` read-only | `/workspace/.memory` read-only, with `/workspace/.memory/project` writable through a nested bind | agent-internal + agent-net (broker only) | Policy grants one plan entry and denies a workspace write (`docs/governance-policy.md:111` `writes one plan entry into`). |
+| `implementer` | `/workspace` read-write | `/workspace/.memory` read-only, with `/workspace/.memory/project` writable through a nested bind | agent-internal + agent-net (broker only) | Policy grants workspace writes and memory entry writes (`docs/governance-policy.md:159` `writes and revises its own entries in`). |
+| `tester` | `/workspace` read-only | `/workspace/.memory` read-only, with `/workspace/.memory/project` writable through a nested bind | agent-internal + agent-net (broker only) | Policy grants one result entry and denies a workspace write (`docs/governance-policy.md:207` `writes one test-result entry into`). |
+| `reviewer` | `/workspace` read-only | `/workspace/.memory` read-only, with `/workspace/.memory/project` writable through a nested bind | agent-internal + agent-net (broker only) | Policy grants one review entry and denies a workspace write (`docs/governance-policy.md:254` `writes one review entry into`). |
 | `project-manager` | `/workspace` read-only | not mounted (visible read-only through the workspace bind) | agent-internal + agent-net (broker only) | Policy grants memory reads and no write (`docs/governance-policy.md:298` `reads stored entries from`). |
-| `researcher` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one research entry and denies a repository read (`docs/governance-policy.md:343` `writes one `public` research entry into`). |
-| `beta-tester` | `/workspace` read-only | `/workspace/.memory` read-write (nested bind over the read-only workspace) | agent-internal + agent-net (broker only) | Policy grants one result entry and its screenshots and denies a workspace write (`docs/governance-policy.md:388` `writes no file there`). |
+| `researcher` | `/workspace` read-only | `/workspace/.memory` read-only, with `/workspace/.memory/project` writable through a nested bind | agent-internal + agent-net (broker only) | Policy grants one research entry and denies a repository read (`docs/governance-policy.md:343` `writes one `public` research entry into`). |
+| `beta-tester` | `/workspace` read-only | `/workspace/.memory` read-only, with `/workspace/.memory/project` writable through a nested bind | agent-internal + agent-net (broker only) | Policy grants one result entry and its screenshots and denies a workspace write (`docs/governance-policy.md:388` `writes no file there`). |
 ROWS
 )"
 
@@ -85,27 +102,95 @@ print_matrix() {
   printf '%s\n' "$MATRIX_ROWS"
 }
 
-# Per-role profile: workspace mode, memory-layer mode, build-cache mode.
-#   none = no mount at all; the path stays visible read-only through the workspace bind.
+# Per-role profile: workspace mode, memory-layer mode, build-cache mode, and the mode of the
+# .memory/project bind nested over the memory layer.
+#   none = no mount at all; the path stays visible read-only through the parent bind.
 # The case block is this repository's embedded matrix and the fallback when the loader or the config is
-# absent; the loop after it then overrides each dimension from roles.mounts.<role>. ROLE_MEM=rw is derived
-# from the grant map: exactly the roles the map gives mcp__storage__write_entry hold a writable memory
-# path (`docs/routing-and-tool-grant-map.json:17` `"mcp__storage__write_entry"`), which is planner,
-# implementer, tester, reviewer, researcher and beta-tester.
+# absent; the loop after it then overrides each dimension from roles.mounts.<role>, and the environment
+# overrides both. No role box mounts .memory read-write: the store's only writer is the storage server
+# in the role's sidecar (scripts/run-agent-servers.sh), and a writable .memory lets a role write
+# storage.db, or create the -wal beside it, past the server. ROLE_MEM_PROJECT=rw goes to exactly the
+# roles the grant map gives mcp__storage__write_entry.
 role_profile() {
   case "$1" in
-    orchestrator)    ROLE_WS=rw; ROLE_MEM=ro;   ROLE_TARGET=ro ;;
-    planner)         ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;
-    implementer)     ROLE_WS=rw; ROLE_MEM=rw;   ROLE_TARGET=ro ;;
-    tester)          ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=rw ;;
-    reviewer)        ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;
-    project-manager) ROLE_WS=ro; ROLE_MEM=none; ROLE_TARGET=ro ;;
-    researcher)      ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;
-    beta-tester)     ROLE_WS=ro; ROLE_MEM=rw;   ROLE_TARGET=ro ;;
+    orchestrator)    ROLE_WS=rw; ROLE_MEM=ro;   ROLE_TARGET=ro; ROLE_MEM_PROJECT=none ;;
+    planner)         ROLE_WS=ro; ROLE_MEM=ro;   ROLE_TARGET=ro; ROLE_MEM_PROJECT=rw ;;
+    implementer)     ROLE_WS=rw; ROLE_MEM=ro;   ROLE_TARGET=ro; ROLE_MEM_PROJECT=rw ;;
+    tester)          ROLE_WS=ro; ROLE_MEM=ro;   ROLE_TARGET=rw; ROLE_MEM_PROJECT=rw ;;
+    reviewer)        ROLE_WS=ro; ROLE_MEM=ro;   ROLE_TARGET=ro; ROLE_MEM_PROJECT=rw ;;
+    project-manager) ROLE_WS=ro; ROLE_MEM=none; ROLE_TARGET=ro; ROLE_MEM_PROJECT=none ;;
+    researcher)      ROLE_WS=ro; ROLE_MEM=ro;   ROLE_TARGET=ro; ROLE_MEM_PROJECT=rw ;;
+    beta-tester)     ROLE_WS=ro; ROLE_MEM=ro;   ROLE_TARGET=ro; ROLE_MEM_PROJECT=rw ;;
     *) return 1 ;;
   esac
-  local dim var mode; for dim in workspace:ROLE_WS memory:ROLE_MEM build_cache:ROLE_TARGET; do
+  local dim var mode; for dim in workspace:ROLE_WS memory:ROLE_MEM build_cache:ROLE_TARGET memory_project:ROLE_MEM_PROJECT; do
     var="${dim#*:}"; mode="$(cfg "roles.mounts.$1.${dim%%:*}" "${!var}")"; [ -z "$mode" ] || printf -v "$var" '%s' "$mode"
+  done
+  [ -z "$ENV_ROLE_MEM" ] || ROLE_MEM="$ENV_ROLE_MEM"
+  [ -z "$ENV_ROLE_MEM_PROJECT" ] || ROLE_MEM_PROJECT="$ENV_ROLE_MEM_PROJECT"
+}
+
+# The read-only overlays: the grant authority, the audit journals, the reference corpus and the
+# inputs that define enforcement. A read-write workspace or memory bind would otherwise let a role
+# rewrite the grants it is checked against, erase the journal line that recorded its refusal,
+# reclassify a reference document past its own retrieval ceiling, or change what binds, mounts or
+# authorises the next box. Each path is a nested read-only bind, so it wins for that path alone.
+declare -a OVERLAY_FILES=(
+  "mcp/storage/allow-list.json"
+  "mcp/retrieval/allow-list.json"
+  "mcp/browser/allow-list.json"
+  "mcp/roles.allowlist.json"
+  "docs/routing-and-tool-grant-map.json"
+  ".memory/storage-audit.log"
+  ".memory/retrieval-audit.log"
+  ".memory/gate-audit.log"
+  ".memory/browser-audit.log"
+  # Enforcement inputs, not code under change, follow the reference corpus: the gate vocabulary,
+  # the launchers, the client config, the permission hooks and the helpers this script runs on the
+  # host. The trade-off: no box can edit them, so every change to one is an operator edit on the host.
+  ".memory/reference" "agentic.config.json"
+  ".mcp.json" "sandbox/opencode-sandbox.json" ".claude/settings.json" ".claude/hooks"
+  "scripts/run-agent.sh" "scripts/run-agent-servers.sh" "scripts/start-mcp-servers.sh"
+  "scripts/agentic_config.py" "scripts/budget.py"
+)
+declare -a MOUNTS=() OVERLAY_MOUNTED=()
+
+# One builder for both paths, so what --print-mounts prints is what a launch passes.
+build_mounts() {
+  MOUNTS=()
+  OVERLAY_MOUNTED=()
+  if [ "$ROLE_WS" = rw ]; then
+    MOUNTS+=(-v "$REPO:/workspace")
+  else
+    MOUNTS+=(-v "$REPO:/workspace:ro")
+  fi
+  case "$ROLE_MEM" in
+    rw)   MOUNTS+=(-v "$REPO/.memory:/workspace/.memory") ;;
+    ro)   MOUNTS+=(-v "$REPO/.memory:/workspace/.memory:ro") ;;
+    none) : ;;
+  esac
+  # Docker mounts a nested destination after its parent, so this bind wins over a read-only .memory
+  # for .memory/project alone.
+  if [ "$ROLE_MEM_PROJECT" = rw ]; then
+    MOUNTS+=(-v "$REPO/.memory/project:/workspace/.memory/project")
+  fi
+  if [ "$ROLE_TARGET" = rw ]; then
+    MOUNTS+=(-v "$TARGET_VOL:$WORKSPACE/target")
+    MOUNTS+=(-v "$REGISTRY_VOL:/usr/local/cargo/registry")
+  else
+    MOUNTS+=(-v "$TARGET_VOL:$WORKSPACE/target:ro")
+    MOUNTS+=(-v "$REGISTRY_VOL:/usr/local/cargo/registry:ro")
+  fi
+  if [ -f "$OPENCODE_JSON" ]; then
+    MOUNTS+=(-v "$OPENCODE_JSON:/root/.config/opencode/opencode.json:ro")
+  fi
+  local overlay
+  for overlay in "${OVERLAY_FILES[@]}"; do
+    # -e, not -f: the reference corpus and the hooks are overlaid as directories.
+    if [ -e "$REPO/$overlay" ]; then
+      MOUNTS+=(-v "$REPO/$overlay:$WORKSPACE/$overlay:ro")
+      OVERLAY_MOUNTED+=("$overlay")
+    fi
   done
 }
 
@@ -118,6 +203,15 @@ case "$1" in
   -h|--help) usage; exit 0 ;;
   --matrix)  print_matrix; exit 0 ;;
   --print-config) print_config; exit 0 ;;
+  --print-mounts)
+    if [ $# -ne 2 ] || ! role_profile "$2"; then
+      printf 'error: --print-mounts takes one role: %s\n' "$VALID_ROLES" >&2
+      exit 2
+    fi
+    refuse_writable_memory "$2"; build_mounts
+    for ((i = 1; i < ${#MOUNTS[@]}; i += 2)); do printf -- '-v %s\n' "${MOUNTS[$i]}"; done
+    exit 0
+    ;;
 esac
 
 ROLE="$1"
@@ -127,7 +221,7 @@ if ! role_profile "$ROLE"; then
   usage >&2
   exit 2
 fi
-
+refuse_writable_memory "$ROLE"
 CMDLINE="${2:-}"
 if [ -z "$CMDLINE" ]; then
   printf 'error: no command given for role "%s"\n\n' "$ROLE" >&2
@@ -162,66 +256,16 @@ if ! docker inspect "$BROKER" >/dev/null 2>&1 || [ "$(docker inspect -f '{{.Stat
   printf 'broker %s is not running: start it with sandbox/run-agent.sh\n' "$BROKER" >&2
   exit 1
 fi
-declare -a MOUNTS=()
-if [ "$ROLE_WS" = rw ]; then
-  MOUNTS+=(-v "$REPO:/workspace")
-else
-  MOUNTS+=(-v "$REPO:/workspace:ro")
-fi
-case "$ROLE_MEM" in
-  rw)   MOUNTS+=(-v "$REPO/.memory:/workspace/.memory") ;;
-  ro)   MOUNTS+=(-v "$REPO/.memory:/workspace/.memory:ro") ;;
-  none) : ;;
-esac
+build_mounts
 # The cargo cache mounts at $WORKSPACE/target, inside the workspace bind. Docker must create that
 # mountpoint in the container's own root filesystem, and it cannot once the parent is a read-only
 # bind: a repository with no target/ directory fails to start with a bare EROFS. Creating it here is
 # what keeps a fresh clone launchable.
 mkdir -p "$REPO/target"
-if [ "$ROLE_TARGET" = rw ]; then
-  MOUNTS+=(-v "$TARGET_VOL:$WORKSPACE/target")
-  MOUNTS+=(-v "$REGISTRY_VOL:/usr/local/cargo/registry")
-else
-  MOUNTS+=(-v "$TARGET_VOL:$WORKSPACE/target:ro")
-  MOUNTS+=(-v "$REGISTRY_VOL:/usr/local/cargo/registry:ro")
-fi
-if [ -f "$OPENCODE_JSON" ]; then
-  MOUNTS+=(-v "$OPENCODE_JSON:/root/.config/opencode/opencode.json:ro")
-fi
+# The same holds for the .memory/project mountpoint inside a read-only .memory bind.
+[ "$ROLE_MEM_PROJECT" != rw ] || mkdir -p "$REPO/.memory/project"
 
-# The read-only overlays: the grant authority, the audit journals, and the two inputs a role's own
-# limits are enforced against. A read-write workspace, or a read-write memory bind, would otherwise let
-# a role rewrite the files its own grants are read from, erase the journal line that recorded its
-# refusal, or reclassify a reference document so its own retrieval ceiling admits it. Each path is a
-# nested read-only bind over the parent bind, so the read-only mount wins for that path alone.
-declare -a OVERLAY_FILES=(
-  "mcp/storage/allow-list.json"
-  "mcp/retrieval/allow-list.json"
-  "mcp/browser/allow-list.json"
-  "mcp/roles.allowlist.json"
-  "docs/routing-and-tool-grant-map.json"
-  ".memory/storage-audit.log"
-  ".memory/retrieval-audit.log"
-  ".memory/gate-audit.log"
-  ".memory/browser-audit.log"
-  # The retrieval ceiling is enforced against the `classification` in each reference document's own
-  # front matter (mcp/retrieval/server.py loads this directory at startup), and the gate vocabulary —
-  # names, argv, guards — comes from agentic.config.json. Both sat in writable binds, so a role could
-  # rewrite the input its own ceiling and its own gate list were checked against. Nothing in the
-  # harness writes either one.
-  ".memory/reference"
-  "agentic.config.json"
-)
-declare -a OVERLAY_MOUNTED=()
-for overlay in "${OVERLAY_FILES[@]}"; do
-  # -e, not -f: the reference corpus is overlaid as a directory.
-  if [ -e "$REPO/$overlay" ]; then
-    MOUNTS+=(-v "$REPO/$overlay:$WORKSPACE/$overlay:ro")
-    OVERLAY_MOUNTED+=("$overlay")
-  fi
-done
-
-# 3. Expected mode of the two mounts this launcher is judged on, in docker inspect terms.
+# 3. Expected mode of the mounts this launcher is judged on, in docker inspect terms.
 WANT_WS_RW=true
 [ "$ROLE_WS" = ro ] && WANT_WS_RW=false
 WANT_MEM_PRESENT=yes
@@ -230,22 +274,26 @@ case "$ROLE_MEM" in
   ro)   WANT_MEM_RW=false ;;
   none) WANT_MEM_PRESENT=no ;;
 esac
+WANT_PROJECT_RW=""
+[ "$ROLE_MEM_PROJECT" != rw ] || WANT_PROJECT_RW=true
 
-# 4. Reuse or recreate. A running container whose two mounts already match is reused, so a second launch
-#    of the same role is a no-op instead of a name collision.
-ws_rw=""; mem_present=""; mem_rw=""; overlays_ro=yes
+# 4. Reuse or recreate. A running container whose mounts already match is reused, so a second launch
+#    of the same role is a no-op instead of a name collision. A box still on a read-write .memory
+#    fails the match and is recreated.
+ws_rw=""; mem_present=""; mem_rw=""; project_rw=""; overlays_ro=yes
 if docker inspect "$NAME" >/dev/null 2>&1; then
   running_now="$(docker inspect -f '{{.State.Running}}' "$NAME")"
   ws_rw="$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$WORKSPACE\"}}{{.RW}}{{end}}{{end}}" "$NAME")"
   mem_present="$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$MEMORY_DIR\"}}yes{{end}}{{end}}" "$NAME")"
   mem_rw="$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$MEMORY_DIR\"}}{{.RW}}{{end}}{{end}}" "$NAME")"
+  project_rw="$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$MEMORY_DIR/project\"}}{{.RW}}{{end}}{{end}}" "$NAME")"
   [ -n "$mem_present" ] || mem_present=no
   for overlay in "${OVERLAY_MOUNTED[@]}"; do
     mnt_rw="$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$WORKSPACE/$overlay\"}}{{.RW}}{{end}}{{end}}" "$NAME")"
     [ "$mnt_rw" = false ] || overlays_ro=no
   done
   if [ "$running_now" = true ] && [ "$ws_rw" = "$WANT_WS_RW" ] && [ "$mem_present" = "$WANT_MEM_PRESENT" ] && \
-     [ "$overlays_ro" = yes ] && \
+     [ "$overlays_ro" = yes ] && [ "$project_rw" = "$WANT_PROJECT_RW" ] && \
      { [ "$WANT_MEM_PRESENT" = no ] || [ "$mem_rw" = "$WANT_MEM_RW" ]; }; then
     printf 'container %s is already running with the %s profile — reusing it\n' "$NAME" "$ROLE"
   else
@@ -284,6 +332,8 @@ fi
 eff_ws="$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$WORKSPACE\"}}{{if .RW}}read-write{{else}}read-only{{end}}{{end}}{{end}}" "$NAME")"
 eff_mem="$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$MEMORY_DIR\"}}{{if .RW}}mounted read-write{{else}}mounted read-only{{end}}{{end}}{{end}}" "$NAME")"
 [ -n "$eff_mem" ] || eff_mem="not mounted (visible read-only through the workspace bind)"
+eff_project="$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$MEMORY_DIR/project\"}}{{if .RW}}mounted read-write{{else}}mounted read-only{{end}}{{end}}{{end}}" "$NAME")"
+[ -n "$eff_project" ] || eff_project="not mounted (follows the memory mount)"
 
 printf 'role      : %s\n' "$ROLE"
 printf 'image     : %s\n' "$IMAGE"
@@ -291,6 +341,7 @@ printf 'container : %s\n' "$NAME"
 printf 'networks  : %s (no egress) + %s (broker %s:%s only)\n' "$NET_INTERNAL" "$NET_BROKER" "$BROKER" "$BROKER_PORT"
 printf 'workspace : %s -> %s (%s)\n' "$REPO" "$WORKSPACE" "$eff_ws"
 printf 'memory    : %s (%s)\n' "$MEMORY_DIR" "$eff_mem"
+printf 'project   : %s/project (%s)\n' "$MEMORY_DIR" "$eff_project"
 printf 'cache     : %s -> %s/target (%s)\n' "$TARGET_VOL" "$WORKSPACE" "$ROLE_TARGET"
 printf 'command   : docker exec -w %s %s %s\n' "$WORKSPACE" "$NAME" "$CMDLINE"
 

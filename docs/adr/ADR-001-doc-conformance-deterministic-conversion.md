@@ -165,7 +165,7 @@ Which artifacts settle this decision?
   H2 holdout - each reached a reviewer verdict, with the `conformance` gate run by the tester in every run.
 - Runnable in the workflow: the deterministic step runs inside the gate workflow through the
   `conformance` gate. Its name is `toolchain.commands.conformance`, and the config entry
-  (`agentic.config.json:61` `"argv": ["python3", "scripts/run-conformance-gate.py"],`) is its argv.
+  (`agentic.config.json:79` `"argv": ["python3", "scripts/run-conformance-gate.py"],`) is its argv.
   The gate's prose file set is the config key `gates.conformance.files`.
   The wrapper fails only on new drift against `HEAD`, so the repository's pre-existing findings never
   make it red (`scripts/run-conformance-gate.py:2` `fail on NEW drift only.`).

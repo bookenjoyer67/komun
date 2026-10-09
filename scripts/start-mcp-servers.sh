@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Start the Module 3 MCP servers inside the Komun sandbox container (Agentic Engineer 3.2).
+# Start the Module 3 MCP servers in the container that hosts them (Agentic Engineer 3.2).
 #
 #   storage    streamable HTTP, port 8001, mcp/storage/server.py
 #   retrieval  streamable HTTP, port 8002, mcp/retrieval/server.py
 #   browser    streamable HTTP, port 8004, mcp/browser/server.py  (only when BETA_BASE_URL is set)
 #
-# coursetools is NOT started here. It is a stdio server that Claude Code spawns itself from
-# .mcp.json (the course writes that entry with `claude mcp add coursetools python
-# /workspace/mcp/coursetools_server.py`). A second copy started by hand would write JSON-RPC to the
-# same stdout stream the real one is using, so this script only checks that the file parses and
-# then prints the registration commands.
+# For a role box this runs in the <role>-servers sidecar and never inside the box: a role box mounts
+# .memory read-only, so the store's writer cannot live there. scripts/run-agent-servers.sh starts the
+# sidecar with AGENT_ROLE bound to the role it serves and runs this script in it. The Module 3
+# sandbox (sandbox/run-agent-m3.sh) still runs it in place.
 #
-# The browser server is optional and starts only when BETA_BASE_URL names a beta target. Without it
-# the script starts the same two HTTP servers it always did, so no other role changes; the
-# `beta-tester` role is the only caller and it holds the browser grant.
+# coursetools is NOT started here. Claude Code spawns that stdio server from .mcp.json, and a second
+# copy would write JSON-RPC to the stream the real one uses, so this script only checks that the
+# file parses and prints the registration command.
 #
+# The browser server starts only when BETA_BASE_URL names a beta target, so no other role changes.
 # Run inside the container:  bash /workspace/scripts/start-mcp-servers.sh
-# Then register the HTTP servers once:
+# Then register the HTTP servers once (a role box registers http://<role>-servers:<port>/mcp):
 #   claude mcp add --transport http storage   http://localhost:8001/mcp
 #   claude mcp add --transport http retrieval http://localhost:8002/mcp
 #   claude mcp add --transport http browser   http://localhost:8004/mcp   # only with BETA_BASE_URL
@@ -128,12 +128,20 @@ else
 fi
 echo "memory            $MEMORY  (storage.db, storage-audit.log, browser-audit.log, reference/)"
 echo
-echo "coursetools is spawned by Claude Code from .mcp.json, not by this script. Registration:"
-echo "  claude mcp add coursetools python $COURSETOOLS_SERVER"
-echo "  claude mcp add --transport http storage   http://localhost:$STORAGE_PORT/mcp"
-echo "  claude mcp add --transport http retrieval http://localhost:$RETRIEVAL_PORT/mcp"
-if [ -n "$BROWSER_PID" ]; then
-  echo "  claude mcp add --transport http browser   http://localhost:$BROWSER_PORT/mcp"
+# A run-agent-servers.sh sidecar always carries AGENT_ROLE, empty when unbound, and the Module 3
+# sandbox carries none. A role box reaches a sidecar at http://<role>-servers:<port>/mcp, never at
+# localhost, so the localhost registration is printed for the sandbox alone.
+if [ -n "${AGENT_ROLE+set}" ]; then
+  echo "sidecar: register these servers from the role box with the claude mcp add commands that"
+  echo "scripts/run-agent-servers.sh printed (http://<role>-servers:<port>/mcp), not at localhost."
+else
+  echo "coursetools is spawned by Claude Code from .mcp.json, not by this script. Registration:"
+  echo "  claude mcp add coursetools python $COURSETOOLS_SERVER"
+  echo "  claude mcp add --transport http storage   http://localhost:$STORAGE_PORT/mcp"
+  echo "  claude mcp add --transport http retrieval http://localhost:$RETRIEVAL_PORT/mcp"
+  if [ -n "$BROWSER_PID" ]; then
+    echo "  claude mcp add --transport http browser   http://localhost:$BROWSER_PORT/mcp"
+  fi
 fi
 echo
 echo "Press Ctrl-C to stop the servers."

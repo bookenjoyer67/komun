@@ -69,7 +69,7 @@
         "writes": false
       },
       "policy": {
-        "argv": ["python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "-q"],
+        "argv": ["python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "eval/test_store_protection.py", "-q"],
         "description": "policy gate: the governance and deterministic-step eval suites",
         "guard": null,
         "summary": null,
@@ -154,42 +154,50 @@
       "orchestrator": {
         "workspace": "rw",
         "memory": "ro",
-        "build_cache": "ro"
+        "build_cache": "ro",
+        "memory_project": "none"
       },
       "planner": {
         "workspace": "ro",
-        "memory": "rw",
-        "build_cache": "ro"
+        "memory": "ro",
+        "build_cache": "ro",
+        "memory_project": "rw"
       },
       "implementer": {
         "workspace": "rw",
-        "memory": "rw",
-        "build_cache": "ro"
+        "memory": "ro",
+        "build_cache": "ro",
+        "memory_project": "rw"
       },
       "tester": {
         "workspace": "ro",
-        "memory": "rw",
-        "build_cache": "rw"
+        "memory": "ro",
+        "build_cache": "rw",
+        "memory_project": "rw"
       },
       "reviewer": {
         "workspace": "ro",
-        "memory": "rw",
-        "build_cache": "ro"
+        "memory": "ro",
+        "build_cache": "ro",
+        "memory_project": "rw"
       },
       "project-manager": {
         "workspace": "ro",
         "memory": "none",
-        "build_cache": "ro"
+        "build_cache": "ro",
+        "memory_project": "none"
       },
       "researcher": {
         "workspace": "ro",
-        "memory": "rw",
-        "build_cache": "ro"
+        "memory": "ro",
+        "build_cache": "ro",
+        "memory_project": "rw"
       },
       "beta-tester": {
         "workspace": "ro",
-        "memory": "rw",
-        "build_cache": "ro"
+        "memory": "ro",
+        "build_cache": "ro",
+        "memory_project": "rw"
       }
     }
   },
