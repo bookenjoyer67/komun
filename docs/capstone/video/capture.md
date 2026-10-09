@@ -78,6 +78,9 @@ exercised end to end while this file was written.
 script -q -T "$S/p7.timing" -c "./scripts/run-agent.sh implementer bash -c 'python3 /workspace/eval/red-team/rt_grant_widen_files.py'" "$S/p7.typescript"
 ```
 
+That probe is not in this repository — it is a working exploit, kept outside it with the rest of the
+red-team evidence; the command above is recorded as it was run.
+
 Read that command left to right. `-q` keeps `script` from printing its own banner to the terminal.
 `-T` names the timing file. `-c` gives the command to run, as one shell string. The last word is the
 transcript file.
@@ -251,6 +254,9 @@ mkdir -p "$S"
 cd /home/computing/komun
 script -q -T "$S/smoke.timing" -c "./scripts/run-agent.sh implementer bash -c 'python3 /workspace/eval/red-team/rt_grant_widen_files.py'" "$S/smoke.typescript"
 ```
+
+That probe is not in this repository — it is a working exploit, kept outside it with the rest of the
+red-team evidence; the command above is recorded as it was run.
 
 Expected: exit 0, and the command's own output is echoed to the terminal as it runs, ending in four
 lines that each begin with `BLOCKED`. Two files appear in `$S`.

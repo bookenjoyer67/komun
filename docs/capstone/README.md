@@ -37,7 +37,7 @@ the repository itself, and these are the files a reader should open.
 | Quality specification and baseline | `docs/rubric.md`, `docs/agent-rubric.md`, the measured baseline block in `AGENTS.md` |
 | Agents, skills and memory | `.claude/agents/`, `.claude/skills/`, `docs/memory-architecture.md` |
 | Orchestration and MCP tools | `docs/orchestration-diagram.md`, `docs/routing-and-tool-grant-map.md` and its `.json`, `scripts/start-mcp-servers.sh` |
-| Evaluation and calibration | `eval/`, `docs/calibration-log.md`, `eval/red-team-results.md` and `eval/red-team/` |
+| Evaluation and calibration | `eval/`, `docs/calibration-log.md`, `eval/red-team-prompts.md` and `eval/red-team/` (the raw run report is kept outside this repository) |
 | Governance, security and CI-CD | `docs/governance-policy.md`, `.github/workflows/ci.yml`, `eval/test_policy.py` |
 | Right-tool decisions | `docs/adr/`, `docs/step-classification.md` |
 | Production integration and tool-evolution drill | `docs/iteration-log.md` Run 003, `docs/capstone/evidence/`, `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md` |
