@@ -107,9 +107,18 @@ TOOLS_IMAGE = str(agentic_config.get("containers.tools_image"))
 
 # The output-summary modes this vocabulary recognises. `count_matching_lines` reports how many
 # lines the pattern matches; `count_unique_groups` reports how many distinct values its named
-# group takes. A rule naming any other mode is dropped whole rather than partly honoured.
-SUMMARY_MODES: frozenset[str] = frozenset({"count_matching_lines", "count_unique_groups"})
+# group takes; `collect_group_values` reports how many lines match and keeps the named group's
+# values in output order, duplicates included. A rule naming any other mode is dropped whole
+# rather than partly honoured.
+SUMMARY_MODES: frozenset[str] = frozenset(
+    {"count_matching_lines", "count_unique_groups", "collect_group_values"}
+)
 SUMMARY_STREAMS: tuple[str, ...] = ("stdout", "stderr")
+# A collect count keeps at most `limit` items, each cut to SUMMARY_VALUE_MAX_CHARS, so a run that
+# fails every test still yields a response and a journal row of bounded size.
+SUMMARY_LIMIT_DEFAULT = 20
+SUMMARY_LIMIT_MAX = 50
+SUMMARY_VALUE_MAX_CHARS = 200
 
 
 def _writes(command: dict[str, Any], embedded: dict[str, Any]) -> bool:
@@ -132,14 +141,16 @@ def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any
 
     Read exactly as ``guard`` is read: the config's rule when it is well formed, the embedded
     default's when the config leaves it out, and None otherwise. None is the ordinary case --
-    seven of this repository's eight commands declare ``"summary": null`` -- so a command with no
+    six of this repository's eight commands declare ``"summary": null`` -- so a command with no
     rule is not an error and never becomes one.
 
     A rule is taken whole or not at all. An unrecognised mode, a missing or empty pattern, a
-    pattern that will not compile, and a ``count_unique_groups`` rule naming a group its own
-    pattern does not define each drop the whole summary to None, because a partly honoured rule
-    would report a number nobody declared. Every pattern is compiled here, at import time, so a
-    pattern a fork breaks is found at startup rather than inside a gate run.
+    pattern that will not compile, a ``count_unique_groups`` or ``collect_group_values`` rule
+    naming a group its own pattern does not define, and a ``collect_group_values`` ``limit`` that
+    is not an integer from 1 to ``SUMMARY_LIMIT_MAX`` each drop the whole summary to None, because
+    a partly honoured rule would report a number nobody declared. A missing or null ``limit`` reads
+    as ``SUMMARY_LIMIT_DEFAULT``. Every pattern is compiled here, at import time, so a pattern a
+    fork breaks is found at startup rather than inside a gate run.
 
     The returned rule is JSON-safe: it carries the pattern as the string the config wrote, and the
     compiled objects live in ``SUMMARY_PATTERNS`` below, beside ``GUARD_MARKER_PATTERNS``.
@@ -165,12 +176,19 @@ def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any
         except re.error:  # a fork's pattern that will not compile: the rule is dropped whole
             return None
         group = rule.get("group")
-        if mode == "count_unique_groups":
+        if mode in ("count_unique_groups", "collect_group_values"):
             if not isinstance(group, str) or group not in compiled.groupindex:
                 return None
         else:
             group = None
         normalised[str(label)] = {"mode": str(mode), "pattern": pattern, "group": group}
+        if mode == "collect_group_values":
+            limit = SUMMARY_LIMIT_DEFAULT if rule.get("limit") is None else rule["limit"]
+            if isinstance(limit, bool) or not isinstance(limit, int):
+                return None
+            if not 1 <= limit <= SUMMARY_LIMIT_MAX:
+                return None
+            normalised[str(label)]["limit"] = limit
     declared_streams = declared.get("streams")
     if not isinstance(declared_streams, (list, tuple)):
         declared_streams = SUMMARY_STREAMS

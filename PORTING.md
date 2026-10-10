@@ -18,7 +18,7 @@ Which files must a fork copy, and which config values must it change?
 
 1. Copy the tree and keep `agentic.config.json` at its root, because every consumer resolves paths from there (`agentic.config.json:2` `"schema_version": 1`).
 2. Replace the toolchain commands, because three of the five gates are Rust and cargo today (`agentic.config.json:20` `"argv": ["cargo", "test", "--workspace"]`).
-3. Rewrite both cache-hit guards, because each marker names one of this repository's crates (`agentic.config.json:26` `"marker": "Compiling komun-core"`, `agentic.config.json:42` `"marker": "Checking komun-server",`, `agentic.config.json:44` `"touch_file": "crates/server/src/main.rs",`).
+3. Rewrite both cache-hit guards, because each marker names one of this repository's crates (`agentic.config.json:26` `"marker": "Compiling komun-core"`, `agentic.config.json:42` `"marker": "Checking komun-server",`, `agentic.config.json:53` `"touch_file": "crates/server/src/main.rs",`).
 4. Rebuild both images under the fork's own tags (`agentic.config.json:43` `"base_image": "agent-sandbox:komun"`, `agentic.config.json:44` `"tools_image": "agent-sandbox:komun-m3"`).
 5. Rename the cargo registry volume, because the tester mounts it read-write (`agentic.config.json:48` `"registry_volume": "komun-cargo-registry"`).
 6. Rename both networks, because the launcher creates one and requires the other (`agentic.config.json:50` `"internal": "agent-internal"`, `agentic.config.json:51` `"broker": "agent-net"`).

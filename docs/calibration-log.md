@@ -153,7 +153,7 @@ What did each run cost, and what did its gate report?
 
 Which gate carried the step, and which role called it?
 
-- Carry the step as the `conformance` gate, whose argv is the repository's own config entry (`agentic.config.json:79` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
+- Carry the step as the `conformance` gate, whose argv is the repository's own config entry (`agentic.config.json:88` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
 - Call that gate from the `tester` alone, the one role the map grants `mcp__gate__run_gate`, with the converted step's own MCP access empty (`docs/routing-and-tool-grant-map.json:71` `"mcp_access": []`).
 - Read four journal rows in `.memory/gate-audit.log` as `"gate": "conformance"`, `"exit_code": 0` and `"calling_role": "tester"`, at `17:48:56`, `18:35:29`, `21:07:44` and `21:35:22` on 2026-09-29.
 - Spawn no `komun-docs-stylist` in any of the four runs. The four session transcripts list their subagent spawns in order, and that name is absent from every one.

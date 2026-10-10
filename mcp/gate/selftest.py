@@ -74,11 +74,11 @@ EXPECTED_RUN_GATE_PARAMS = {"gate", "calling_role", "timeout_seconds"}
 # timeout. A property beyond these three would be a way to reach a command line, so the set is
 # asserted rather than assumed.
 EXPECTED_RUN_FIX_PARAMS = {"command", "calling_role", "timeout_seconds"}
-# The counts the `fmt` gate's configured summary rule declares, and the one command that declares a
+# The counts the `fmt` gate's configured summary rule declares, and the commands that declare a
 # rule at all, both as independent literals for the same reason the allowlist above is one.
 # `agentic.config.json` is the declaration; these are this file's expectation of it.
 EXPECTED_SUMMARY_COUNTS = {"hunks", "files", "added", "removed"}
-EXPECTED_SUMMARY_GATES = {"fmt"}
+EXPECTED_SUMMARY_GATES = {"fmt", "test"}
 # The recorded test baseline, and the two synthetic records the baseline predicate is asserted on
 # before any server call. The predicate this replaced compared `failed == 0` to `exit_code == 0` as
 # an equivalence, so a record of 158 passed and 1 failed at exit 1 satisfied it and a gate that
@@ -513,8 +513,6 @@ async def run_selftest(url: str, audit_path: str) -> int:
             "no_summary_gate_records_none",
             clippy["summary"]["applied"] is False
             and clippy["summary"]["counts"] is None
-            and test["summary"]["applied"] is False
-            and test["summary"]["counts"] is None
             and summarised == EXPECTED_SUMMARY_GATES,
             f"clippy summary={json.dumps(clippy['summary'], sort_keys=True)} "
             f"gates reporting a summary={sorted(summarised)} "

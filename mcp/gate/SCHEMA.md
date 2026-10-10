@@ -8,10 +8,10 @@ HTTP at `http://localhost:8003/mcp` (a live `initialize` returned `HTTP/1.1 200 
 
 It exposes four named operations and no shell, no argv, and no working-directory control:
 `list_gates`, `run_gate`, `run_fix`, `read_audit_log`
-(`mcp/gate/server.py:662` `def list_gates() -> list[dict]:`,
-`mcp/gate/server.py:690` `def run_gate(gate: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:`,
-`mcp/gate/server.py:721` `def run_fix(command: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:`,
-`mcp/gate/server.py:754` `def read_audit_log(limit: int = 20) -> list[dict]:`, one `@mcp.tool` before each).
+(`mcp/gate/server.py:682` `def list_gates() -> list[dict]:`,
+`mcp/gate/server.py:710` `def run_gate(gate: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:`,
+`mcp/gate/server.py:741` `def run_fix(command: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:`,
+`mcp/gate/server.py:774` `def read_audit_log(limit: int = 20) -> list[dict]:`, one `@mcp.tool` before each).
 
 `run_gate` runs the check-mode gates and `run_fix` runs the write-mode commands. Neither accepts a
 command string, an extra argument or a shell.
@@ -37,8 +37,8 @@ python3 mcp/gate/server.py --port 8003 --host 0.0.0.0
 claude mcp add --transport http gate http://localhost:8003/mcp
 ```
 
-`--port` defaults to `8003` (`mcp/gate/server.py:781` `parser.add_argument("--port", type=int, default=8003, help="HTTP port (default 8003)")`),
-and `--host` defaults to `0.0.0.0` (`mcp/gate/server.py:782` `parser.add_argument("--host", default="0.0.0.0", help="bind address (default 0.0.0.0)")`). The help output
+`--port` defaults to `8003` (`mcp/gate/server.py:801` `parser.add_argument("--port", type=int, default=8003, help="HTTP port (default 8003)")`),
+and `--host` defaults to `0.0.0.0` (`mcp/gate/server.py:802` `parser.add_argument("--host", default="0.0.0.0", help="bind address (default 0.0.0.0)")`). The help output
 confirms both (`python3 mcp/gate/server.py --help` -> `--port PORT           HTTP port (default 8003)`).
 
 ## Which eight commands exist, and which command does each one run?
@@ -47,23 +47,23 @@ Where do the eight command names come from?
 
 Eight commands exist: seven are check-mode and one is write-mode. The names are the
 `toolchain.commands` keys in `agentic.config.json`, and `gate_vocabulary.py` builds one table from
-them (`mcp/gate/gate_vocabulary.py:248` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
+them (`mcp/gate/gate_vocabulary.py:266` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
 
 That table is then split by each command's declared `writes` boolean into two disjoint vocabularies
-(`mcp/gate/gate_vocabulary.py:249` `GATES: dict[str, dict[str, Any]] = {` and
-`mcp/gate/gate_vocabulary.py:252` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`). `run_gate` resolves a
+(`mcp/gate/gate_vocabulary.py:267` `GATES: dict[str, dict[str, Any]] = {` and
+`mcp/gate/gate_vocabulary.py:270` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`). `run_gate` resolves a
 name against `GATES` only, and `run_fix` resolves a name against `FIX_COMMANDS` only.
 
 | Command | Mode | Exact argv | Authority |
 | --- | --- | --- | --- |
 | `test` | check | `cargo test --workspace` | `agentic.config.json:20-24` `"argv": [ "cargo", "test", "--workspace" ],` |
-| `clippy` | check | `cargo clippy --release --all-targets -- -D warnings` | `agentic.config.json:31-39` `"argv": [ "cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings" ],` |
-| `fmt` | check | `cargo fmt --check` | `agentic.config.json:51-55` `"argv": [ "cargo", "fmt", "--check" ],` |
-| `policy` | check | `python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py -q` | `agentic.config.json:72` `"argv": ["python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "-q"],` |
-| `conformance` | check | `python3 scripts/run-conformance-gate.py` | `agentic.config.json:79` `"argv": ["python3", "scripts/run-conformance-gate.py"],` |
-| `webcheck` | check | `npm --prefix web run check` | `agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],` |
-| `webtest` | check | `npm --prefix web run test` | `agentic.config.json:100` `"argv": ["npm", "--prefix", "web", "run", "test"],` |
-| `fmt-fix` | write | `cargo fmt --all` | `agentic.config.json:86` `"argv": ["cargo", "fmt", "--all"],` |
+| `clippy` | check | `cargo clippy --release --all-targets -- -D warnings` | `agentic.config.json:40-48` `"argv": [ "cargo", "clippy", "--release", "--all-targets", "--", "-D", "warnings" ],` |
+| `fmt` | check | `cargo fmt --check` | `agentic.config.json:60-64` `"argv": [ "cargo", "fmt", "--check" ],` |
+| `policy` | check | `python3 -m pytest eval/test_policy.py eval/test_deterministic_step.py eval/test_store_protection.py -q` | `agentic.config.json:81` `"argv": ["python3", "-m", "pytest", "eval/test_policy.py", "eval/test_deterministic_step.py", "eval/test_store_protection.py", "-q"],` |
+| `conformance` | check | `python3 scripts/run-conformance-gate.py` | `agentic.config.json:88` `"argv": ["python3", "scripts/run-conformance-gate.py"],` |
+| `webcheck` | check | `npm --prefix web run check` | `agentic.config.json:102` `"argv": ["npm", "--prefix", "web", "run", "check"],` |
+| `webtest` | check | `npm --prefix web run test` | `agentic.config.json:109` `"argv": ["npm", "--prefix", "web", "run", "test"],` |
+| `fmt-fix` | write | `cargo fmt --all` | `agentic.config.json:95` `"argv": ["cargo", "fmt", "--all"],` |
 
 Both frontend gates name an npm script rather than a command line
 (`web/package.json:9` `"test": "vitest run"`). The `check` script sits on that same line
@@ -73,12 +73,12 @@ Which mode does each command declare, and who declares it?
 
 The config declares it, one boolean per command. The seven check-mode commands carry
 `"writes": false` and the one write-mode command carries `"writes": true`
-(`agentic.config.json:90` `"writes": true`). Nothing in the server infers a mode from a command's
+(`agentic.config.json:99` `"writes": true`). Nothing in the server infers a mode from a command's
 argv, so a fork that adds a mutating command declares it rather than being guessed at.
 
 The `policy` gate runs the eval suites. The `conformance` gate runs `scripts/run-conformance-gate.py`,
 whose verdict is new drift only (`scripts/run-conformance-gate.py:2` `fail on NEW drift only.`), and
-whose prose file set is the config key `gates.conformance.files` (`agentic.config.json:264` `"files": [`).
+whose prose file set is the config key `gates.conformance.files` (`agentic.config.json:291` `"files": [`).
 It checks each file against the same file at `HEAD` and fails only when a rule's finding count rises,
 so the repository's pre-existing findings never make it red.
 
@@ -94,9 +94,9 @@ The clippy argv is deliberately stricter than the documented form: it adds `--al
 and example targets are linted too.
 
 `list_gates` publishes every command with its argv and its mode
-(`mcp/gate/server.py:672` `"argv": list(definition["argv"]),`,
-`mcp/gate/server.py:674` `"writes": definition["writes"],`,
-`mcp/gate/server.py:640` `"mode": "write" if definition["writes"] else "check",`). A caller can
+(`mcp/gate/server.py:692` `"argv": list(definition["argv"]),`,
+`mcp/gate/server.py:694` `"writes": definition["writes"],`,
+`mcp/gate/server.py:660` `"mode": "write" if definition["writes"] else "check",`). A caller can
 therefore see which tool runs a command before naming it.
 
 A live call on 2026-09-28, against the five-command surface of that day, returned the check-mode
@@ -115,7 +115,7 @@ What does the tool accept in place of a command string?
 
 Because the only thing `run_gate` accepts is a key into `GATES`, and the argv it executes is that
 table's tuple (`mcp/gate/server.py:122` `if gate not in GATES:` and
-`mcp/gate/server.py:590` `argv = list(definition["argv"])`).
+`mcp/gate/server.py:610` `argv = list(definition["argv"])`).
 
 The refusal is raised before anything is executed
 (`mcp/gate/server.py:124` `f"refused: '{gate}' is not an allowlisted gate. This server runs only "`). A caller asking for a
@@ -139,50 +139,50 @@ configured command and by no new kind of input
 Which properties make that airtight?
 
 - `shell` is never enabled and no caller string reaches the command line
-  (`mcp/gate/server.py:596` `completed = subprocess.run(  # noqa: S603 - a fixed argv, never a caller-supplied string`
+  (`mcp/gate/server.py:616` `completed = subprocess.run(  # noqa: S603 - a fixed argv, never a caller-supplied string`
   with `shell` absent, and `mcp/gate/server.py:73` `argv,` as the whole argument list).
 - The same tuple is what the result reports and what the journal records, so a reviewer can compare
   the executed argv against the allowlist rather than trusting the tool
   (`mcp/gate/server.py:215` `"argv": argv,`).
 - The working directory is the server's own workspace, not a caller value
-  (`mcp/gate/server.py:598` `cwd=WORKSPACE,`).
+  (`mcp/gate/server.py:618` `cwd=WORKSPACE,`).
 - The commands cannot be widened by a second element: there is no per-call argument list in either
-  tool signature at all (`mcp/gate/server.py:690` `def run_gate(gate: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:`,
-  `mcp/gate/server.py:721` `def run_fix(command: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:`).
+  tool signature at all (`mcp/gate/server.py:710` `def run_gate(gate: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:`,
+  `mcp/gate/server.py:741` `def run_fix(command: str, calling_role: str = "unknown", timeout_seconds: int | None = None) -> dict:`).
 - The executing function reads the argv from the table its caller passed, so neither tool can reach
   the other's command even by name
-  (`mcp/gate/server.py:702` `result = execute_gate(gate, GATES, effective_timeout)` and
-  `mcp/gate/server.py:735` `result = execute_gate(command, FIX_COMMANDS, effective_timeout)`).
+  (`mcp/gate/server.py:722` `result = execute_gate(gate, GATES, effective_timeout)` and
+  `mcp/gate/server.py:755` `result = execute_gate(command, FIX_COMMANDS, effective_timeout)`).
 
 ## What does `run_gate` accept, and what does it return?
 
 Which artifact settles the parameter list?
 
-The tool signature is the parameter authority (`mcp/gate/server.py:690` `def run_gate(`).
+The tool signature is the parameter authority (`mcp/gate/server.py:710` `def run_gate(`).
 
 - Pass `gate` (`str`, required) as one of `test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck`, `webtest` (`mcp/gate/server.py:187` `gate: str,`).
-- Pass `calling_role` (`str`, optional, default `unknown`) so the journal names the caller (`mcp/gate/server.py:690` `calling_role: str = "unknown"`).
-- Pass `timeout_seconds` (`int`, optional, default `null` -> 900) as the per-run cap, clamped to 60..3600 (`mcp/gate/server.py:690` `timeout_seconds: int | None = None`).
+- Pass `calling_role` (`str`, optional, default `unknown`) so the journal names the caller (`mcp/gate/server.py:710` `calling_role: str = "unknown"`).
+- Pass `timeout_seconds` (`int`, optional, default `null` -> 900) as the per-run cap, clamped to 60..3600 (`mcp/gate/server.py:710` `timeout_seconds: int | None = None`).
 
 The returned object carries one key per required fact (`mcp/gate/server.py:449` `return {`):
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `gate` | `str` | The allowlisted name that ran (`mcp/gate/server.py:631` `"gate": command,`) |
+| `gate` | `str` | The allowlisted name that ran (`mcp/gate/server.py:651` `"gate": command,`) |
 | `argv` | `list[str]` | The exact argv executed (`mcp/gate/server.py:215` `"argv": argv,`) |
 | `exit_code` | `int` | Process exit status, `-1` when the run was killed (`mcp/gate/server.py:216` `"exit_code": exit_code,`) |
-| `passed` | `bool` | Verdict: exit 0 **and** guard satisfied (`mcp/gate/server.py:618` `passed = exit_code == 0 and bool(guard["satisfied"])`) |
-| `verdict` | `str` | `pass`, `fail: exit code N`, or the guard/timeout cause (`mcp/gate/server.py:620` `verdict = f"fail: killed after {timeout_seconds}s without finishing"`) |
-| `timed_out` | `bool` | Whether the timeout killed the process (`mcp/gate/server.py:608` `timed_out = True`) |
-| `timeout_seconds` | `int` | The effective (clamped) timeout (`mcp/gate/server.py:637` `"timeout_seconds": timeout_seconds,`) |
-| `duration_seconds` | `float` | Wall-clock seconds, rounded to milliseconds (`mcp/gate/server.py:612` `duration_seconds = round(time.monotonic() - started, 3)`) |
-| `writes` | `bool` | The command's declared mode as a boolean (`mcp/gate/server.py:639` `"writes": bool(definition["writes"]),`) |
-| `mode` | `str` | `check` or `write`, the same fact in words (`mcp/gate/server.py:640` `"mode": "write" if definition["writes"] else "check",`) |
-| `guard` | `dict` | The cache-hit guard outcome, see below (`mcp/gate/server.py:641` `"guard": guard,`) |
+| `passed` | `bool` | Verdict: exit 0 **and** guard satisfied (`mcp/gate/server.py:638` `passed = exit_code == 0 and bool(guard["satisfied"])`) |
+| `verdict` | `str` | `pass`, `fail: exit code N`, or the guard/timeout cause (`mcp/gate/server.py:640` `verdict = f"fail: killed after {timeout_seconds}s without finishing"`) |
+| `timed_out` | `bool` | Whether the timeout killed the process (`mcp/gate/server.py:628` `timed_out = True`) |
+| `timeout_seconds` | `int` | The effective (clamped) timeout (`mcp/gate/server.py:657` `"timeout_seconds": timeout_seconds,`) |
+| `duration_seconds` | `float` | Wall-clock seconds, rounded to milliseconds (`mcp/gate/server.py:632` `duration_seconds = round(time.monotonic() - started, 3)`) |
+| `writes` | `bool` | The command's declared mode as a boolean (`mcp/gate/server.py:659` `"writes": bool(definition["writes"]),`) |
+| `mode` | `str` | `check` or `write`, the same fact in words (`mcp/gate/server.py:660` `"mode": "write" if definition["writes"] else "check",`) |
+| `guard` | `dict` | The cache-hit guard outcome, see below (`mcp/gate/server.py:661` `"guard": guard,`) |
 | `summary` | `dict` | The configured output summary, see below (`mcp/gate/server.py:222` `"summary": summary,`) |
-| `stdout` / `stderr` | `str` | Captured output, ANSI escapes stripped (`mcp/gate/server.py:628` `stdout, stdout_truncated = clamp_output(strip_ansi(raw_stdout))`) |
+| `stdout` / `stderr` | `str` | Captured output, ANSI escapes stripped (`mcp/gate/server.py:648` `stdout, stdout_truncated = clamp_output(strip_ansi(raw_stdout))`) |
 | `stdout_truncated` / `stderr_truncated` | `bool` | Whether the 200 000-character cap cut the stream (`mcp/gate/server.py:86` `MAX_OUTPUT_CHARS = 200_000`) |
-| `output_ansi_stripped` | `bool` | Always `true`, so a caller knows colour codes were removed (`mcp/gate/server.py:647` `"output_ansi_stripped": True,`) |
+| `output_ansi_stripped` | `bool` | Always `true`, so a caller knows colour codes were removed (`mcp/gate/server.py:667` `"output_ansi_stripped": True,`) |
 
 A `run_gate` result always reports `"mode": "check"`, because the name was resolved against the
 check-mode table before anything ran.
@@ -192,12 +192,12 @@ check-mode table before anything ran.
 Which artifact settles this tool's parameter list?
 
 The tool signature settles it, and it is the mirror of `run_gate`'s
-(`mcp/gate/server.py:721` `def run_fix(`). Three parameters, none of which carries an argv element, a
+(`mcp/gate/server.py:741` `def run_fix(`). Three parameters, none of which carries an argv element, a
 path, a flag, a working directory or a shell:
 
 - Pass `command` (`str`, required) as an allowlisted write-mode name; the vocabulary holds one, `fmt-fix` (`mcp/gate/server.py:478` `command: str,`).
-- Pass `calling_role` (`str`, optional, default `unknown`) so the journal names the caller (`mcp/gate/server.py:690` `calling_role: str = "unknown"`).
-- Pass `timeout_seconds` (`int`, optional, default `null` -> 900) as the per-run cap, clamped the same way (`mcp/gate/server.py:690` `timeout_seconds: int | None = None`).
+- Pass `calling_role` (`str`, optional, default `unknown`) so the journal names the caller (`mcp/gate/server.py:710` `calling_role: str = "unknown"`).
+- Pass `timeout_seconds` (`int`, optional, default `null` -> 900) as the per-run cap, clamped the same way (`mcp/gate/server.py:710` `timeout_seconds: int | None = None`).
 
 The returned object is the table above, with `"writes": true` and `"mode": "write"`.
 
@@ -230,14 +230,14 @@ Each guarded gate touches its own file under test, then requires cargo's status 
 
 1. Touch the gate's own file before running cargo. `test` touches `crates/core/src/tests.rs`
    (`agentic.config.json:26` `"touch_file": "crates/core/src/tests.rs"`), and `clippy` touches
-   `crates/server/src/main.rs` (`agentic.config.json:44` `"touch_file": "crates/server/src/main.rs",`,
+   `crates/server/src/main.rs` (`agentic.config.json:53` `"touch_file": "crates/server/src/main.rs",`,
    `mcp/gate/server.py:459` `os.utime(touch_file, None)`). A missing file is reported as an
    unsatisfied guard rather than ignored (`mcp/gate/server.py:466` `"detail": f"cache-hit guard could not touch {touch_file}: {error}",`).
 2. Require the gate's own marker in the combined output. `test` requires `Compiling komun-core`
    (`agentic.config.json:26` `"marker": "Compiling komun-core"`), and `clippy` requires `Checking komun-server`
-   (`agentic.config.json:42` `"marker": "Checking komun-server",`,
-   `agentic.config.json:43` `"marker_regex": "\\bChecking\\b\\s+(?P<marker>komun-server)\\b",`).
-3. Fail the gate when the marker is absent, even at exit 0 (`mcp/gate/server.py:623` `elif not guard["satisfied"]:` with `mcp/gate/server.py:484` `f"cache-hit guard not satisfied: no '{guard['marker']}' line in the output, so a clean "`).
+   (`agentic.config.json:51` `"marker": "Checking komun-server",`,
+   `agentic.config.json:52` `"marker_regex": "\\bChecking\\b\\s+(?P<marker>komun-server)\\b",`).
+3. Fail the gate when the marker is absent, even at exit 0 (`mcp/gate/server.py:643` `elif not guard["satisfied"]:` with `mcp/gate/server.py:484` `f"cache-hit guard not satisfied: no '{guard['marker']}' line in the output, so a clean "`).
 
 Why does the guard check the stripped output rather than the raw output?
 
@@ -270,67 +270,132 @@ exit codes alone would call that a clean lint; the guard makes it unrepresentabl
 What happens when a guard's `marker_regex` is unusable?
 
 The server still starts, because no guard pattern raises at import. The vocabulary checks the
-configured pattern first (`mcp/gate/gate_vocabulary.py:313` `configured, reason = _usable_marker_regex(agentic_config.get(key))`).
+configured pattern first (`mcp/gate/gate_vocabulary.py:331` `configured, reason = _usable_marker_regex(agentic_config.get(key))`).
 A key left out or set to null reaches that check as the default's value
-(`scripts/agentic_config.py:597` `a key the config leaves out falls back to the embedded default`).
+(`scripts/agentic_config.py:624` `a key the config leaves out falls back to the embedded default`).
 
-- Reject a value that is missing or not a string (`mcp/gate/gate_vocabulary.py:273` `return None, "is missing" if value is None else f"is not a string ({type(value).__name__})"`).
-- Reject a blank value (`mcp/gate/gate_vocabulary.py:275` `return None, "is empty"`).
-- Reject a pattern that will not compile (`mcp/gate/gate_vocabulary.py:279` `return None, f"does not compile ({error})"`).
-- Reject a pattern that matches empty text, because it would satisfy every guard (`mcp/gate/gate_vocabulary.py:280` `if compiled.search("") is not None:`).
-- Fall back to the built-in default when it passes the same four checks, and record the fallback (`mcp/gate/gate_vocabulary.py:318` `return default, f"{key} {reason}; the built-in default answers", None`).
-- Fail that gate's guard alone when no usable default exists, with a detail naming the key (`mcp/gate/gate_vocabulary.py:320` `f"cache-hit guard not satisfied: {key} {reason}, and no usable built-in default exists "`).
+- Reject a value that is missing or not a string (`mcp/gate/gate_vocabulary.py:291` `return None, "is missing" if value is None else f"is not a string ({type(value).__name__})"`).
+- Reject a blank value (`mcp/gate/gate_vocabulary.py:293` `return None, "is empty"`).
+- Reject a pattern that will not compile (`mcp/gate/gate_vocabulary.py:297` `return None, f"does not compile ({error})"`).
+- Reject a pattern that matches empty text, because it would satisfy every guard (`mcp/gate/gate_vocabulary.py:298` `if compiled.search("") is not None:`).
+- Fall back to the built-in default when it passes the same four checks, and record the fallback (`mcp/gate/gate_vocabulary.py:336` `return default, f"{key} {reason}; the built-in default answers", None`).
+- Fail that gate's guard alone when no usable default exists, with a detail naming the key (`mcp/gate/gate_vocabulary.py:338` `f"cache-hit guard not satisfied: {key} {reason}, and no usable built-in default exists "`).
 
 The server passes that detail through unchanged
 (`mcp/gate/server.py:482` `match, unusable = guard_marker_search(command, strip_ansi(combined_output))`,
 `mcp/gate/server.py:488` `guard["detail"] = unusable or (f"found '{guard['marker']}' in the cargo output" if match else missing)`).
-The verdict then reads `fail:` plus that detail (`mcp/gate/server.py:624` `verdict = f"fail: {guard['detail']}"`).
+The verdict then reads `fail:` plus that detail (`mcp/gate/server.py:644` `verdict = f"fail: {guard['detail']}"`).
 
 ## What does the configured output summary report?
 
-Which artifact declares a summary rule, and which command carries one?
+Which artifact declares a summary rule, and which commands carry one?
 
-The config declares it, one `summary` block per command, beside the `guard` block it mirrors. Seven
-commands declare `"summary": null` and one declares a rule: `fmt`
-(`agentic.config.json:58` `"summary": {`).
+The config declares it, one `summary` block per command, beside the `guard` block it mirrors. Two
+commands declare a rule: `test` (`agentic.config.json:27` `"summary": {`) and `fmt`
+(`agentic.config.json:67` `"summary": {`).
+
+The other six declare `"summary": null`: `clippy` (`agentic.config.json:56` `"summary": null,`),
+`policy` (`agentic.config.json:84` `"summary": null,`), `conformance` (`agentic.config.json:91` `"summary": null,`),
+`fmt-fix` (`agentic.config.json:98` `"summary": null,`), `webcheck` (`agentic.config.json:105` `"summary": null,`)
+and `webtest` (`agentic.config.json:112` `"summary": null,`).
 
 The vocabulary normalises that block once, at import time
-(`mcp/gate/gate_vocabulary.py:130` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`),
+(`mcp/gate/gate_vocabulary.py:139` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`),
 and compiles each declared pattern beside the guard's
-(`mcp/gate/gate_vocabulary.py:361` `SUMMARY_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {`).
+(`mcp/gate/gate_vocabulary.py:379` `SUMMARY_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {`).
 
 Compiled patterns live in `SUMMARY_PATTERNS` and not in `COMMANDS`, so `COMMANDS` stays JSON-safe for
-the tool that publishes it (`mcp/gate/server.py:672` `"argv": list(definition["argv"]),`).
+the tool that publishes it (`mcp/gate/server.py:692` `"argv": list(definition["argv"]),`).
 
 A malformed rule degrades to no summary rather than to a crash. `_summary` returns `None` for an
 unrecognised mode, an uncompilable pattern, or a named group absent from that pattern
-(`mcp/gate/gate_vocabulary.py:130` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`).
+(`mcp/gate/gate_vocabulary.py:139` `def _summary(command: dict[str, Any], embedded: dict[str, Any]) -> dict[str, Any] | None:`).
 
 Which four numbers does the `fmt` rule count?
 
 | Count | Mode | Declared at |
 | --- | --- | --- |
-| `hunks` | `count_matching_lines` | `agentic.config.json:63` `"hunks": {"mode": "count_matching_lines", "pattern": "^Diff in "},` |
-| `files` | `count_unique_groups` | `agentic.config.json:64` `"files": {"mode": "count_unique_groups", "pattern": "^Diff in (?P<value>.+?)(?:(?::|\\s+at\\s+line\\s+)\\d+)?:?\\s*$", "group": "value"},` |
-| `added` | `count_matching_lines` | `agentic.config.json:65` `"added": {"mode": "count_matching_lines", "pattern": "^\\+"},` |
-| `removed` | `count_matching_lines` | `agentic.config.json:66` `"removed": {"mode": "count_matching_lines", "pattern": "^-"}` |
+| `hunks` | `count_matching_lines` | `agentic.config.json:72` `"hunks": {"mode": "count_matching_lines", "pattern": "^Diff in "},` |
+| `files` | `count_unique_groups` | `agentic.config.json:73` `"files": {"mode": "count_unique_groups", "pattern": "^Diff in (?P<value>.+?)(?:(?::|\\s+at\\s+line\\s+)\\d+)?:?\\s*$", "group": "value"},` |
+| `added` | `count_matching_lines` | `agentic.config.json:74` `"added": {"mode": "count_matching_lines", "pattern": "^\\+"},` |
+| `removed` | `count_matching_lines` | `agentic.config.json:75` `"removed": {"mode": "count_matching_lines", "pattern": "^-"}` |
 
 `count_matching_lines` counts the lines a pattern matches. `count_unique_groups` counts the distinct
 values of one named group across those matches, which is what turns hunk lines into a file count.
 
+What does a `collect_group_values` count add?
+
+It counts the matching lines as `count_matching_lines` does, and it also keeps one named group's value
+from each match (`mcp/gate/gate_vocabulary.py:114` `{"count_matching_lines", "count_unique_groups", "collect_group_values"}`).
+The values land under a `values` key, shaped `{label: {"items": [...], "truncated": bool}}`
+(`mcp/gate/server.py:557` `"truncated": len(matches) > count_rule["limit"],`).
+
+The items keep the output's order and its duplicates, and each item is cut to 200 characters
+(`mcp/gate/server.py:554` `(match.group(group) or "")[:SUMMARY_VALUE_MAX_CHARS]`,
+`mcp/gate/gate_vocabulary.py:121` `SUMMARY_VALUE_MAX_CHARS = 200`).
+Only the first `limit` items are kept, and `truncated` says whether any match was left out
+(`mcp/gate/server.py:555` `for match in matches[: count_rule["limit"]]`).
+The count stays the total match count, so a capped list never lowers the reported number
+(`mcp/gate/server.py:551` `counts[label] = len(matches)`).
+
+Which `limit` does a collect count accept?
+
+An integer from 1 to 50, and a missing or null `limit` reads as 20
+(`mcp/gate/gate_vocabulary.py:119` `SUMMARY_LIMIT_DEFAULT = 20`,
+`mcp/gate/gate_vocabulary.py:120` `SUMMARY_LIMIT_MAX = 50`).
+Any other value, a boolean included, drops the whole rule
+(`mcp/gate/gate_vocabulary.py:187` `if isinstance(limit, bool) or not isinstance(limit, int):`).
+The group must be named in the pattern, exactly as for `count_unique_groups`
+(`mcp/gate/gate_vocabulary.py:179` `if mode in ("count_unique_groups", "collect_group_values"):`).
+
+Which summaries carry a `values` key?
+
+Only a summary whose rule declares a collect count carries one, so the `fmt` summary and the no-rule
+marker keep their exact shape (`mcp/gate/server.py:576` `if values:`).
+
+Which three numbers does the `test` rule report?
+
+The config declares the `test` rule (`agentic.config.json:27` `"summary": {`), and the embedded
+default mirrors it (`scripts/agentic_config.py:77` `"summary": {`).
+Each pattern is shown as the regex reads, before JSON escaping.
+
+| Count | Mode | Pattern | Limit | Declared at |
+| --- | --- | --- | --- | --- |
+| `suites` | `count_matching_lines` | `^test result: ` | none | `agentic.config.json:32` `"suites": {"mode": "count_matching_lines", "pattern": "^test result: "},` |
+| `suite_results` | `collect_group_values` | `^test result: (?P<value>.+?)(?:; finished in .*)?$` | 50 | `agentic.config.json:33` `"suite_results": {"mode": "collect_group_values", "pattern": "^test result: (?P<value>.+?)(?:; finished in .*)?$", "group": "value", "limit": 50},` |
+| `failed_tests` | `collect_group_values` | `^test (?P<value>\S+) \.\.\. FAILED$` | 20 | `agentic.config.json:34` `"failed_tests": {"mode": "collect_group_values", "pattern": "^test (?P<value>\\S+) \\.\\.\\. FAILED$", "group": "value", "limit": 20}` |
+
+How is a `test` summary read?
+
+`suites=0` with a non-zero exit code means no suite ran, which is a compile error. A unit test pins
+that reading on synthetic compiler output, and no journal row shows the case yet
+(`eval/test_deterministic_step.py:1050` `assert summary["counts"] == {"suites": 0, "suite_results": 0, "failed_tests": 0}`).
+
+`suites` above 0 with `failed_tests` above 0 means an assertion failed. Journal rows seq 155 and 156
+show it, with one and with two failing tests
+(`.memory/gate-audit.log:409` `"counts": {"failed_tests": 1, "suite_results": 1, "suites": 1}`,
+`.memory/gate-audit.log:410` `"counts": {"failed_tests": 2, "suite_results": 1, "suites": 1}`).
+
+Those failing runs reported `suites=1`, where the green run after them reported five
+(`.memory/gate-audit.log:411` `"counts": {"failed_tests": 0, "suite_results": 5, "suites": 5}`).
+Read `suites` as the suites that ran, not as the workspace's total.
+
+A doc-test name holds spaces, so `\S+` leaves a failing doc-test out of `failed_tests`. [UNVERIFIED]
+
 Which text does the count run over, and at which point in the run?
 
-Count over the captured `stdout` and `stderr` together
-(`agentic.config.json:60` `"streams": ["stdout", "stderr"],`), with ANSI escapes stripped first
-(`agentic.config.json:61` `"strip_ansi": true,`).
+Count over the captured `stdout` and `stderr` together, as both rules declare
+(`agentic.config.json:29` `"streams": ["stdout", "stderr"],`, `agentic.config.json:69` `"streams": ["stdout", "stderr"],`),
+with ANSI escapes stripped first
+(`agentic.config.json:30` `"strip_ansi": true,`, `agentic.config.json:70` `"strip_ansi": true,`).
 
 Strip before matching, because this image forces cargo colour on, so `^\+` against the raw bytes
 matches nothing (`mcp/gate/server.py:81` `ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")`).
 
-Count above the output clamp, so the four numbers describe the whole run
-(`mcp/gate/server.py:617` `summary = compute_output_summary(command, raw_stdout, raw_stderr)`). That
+Count above the output clamp, so the numbers describe the whole run
+(`mcp/gate/server.py:637` `summary = compute_output_summary(command, raw_stdout, raw_stderr)`). That
 line takes the raw capture, and the clamp runs later
-(`mcp/gate/server.py:628` `stdout, stdout_truncated = clamp_output(strip_ansi(raw_stdout))`).
+(`mcp/gate/server.py:648` `stdout, stdout_truncated = clamp_output(strip_ansi(raw_stdout))`).
 
 The summary reports the character count it consumed and whether the clamp would have cut it, so a
 reader can tell a whole-run count from a partial one
@@ -339,7 +404,7 @@ reader can tell a whole-run count from a partial one
 Does the summary change any verdict?
 
 No. `passed` stays exit 0 **and** guard satisfied
-(`mcp/gate/server.py:618` `passed = exit_code == 0 and bool(guard["satisfied"])`), and the summary is
+(`mcp/gate/server.py:638` `passed = exit_code == 0 and bool(guard["satisfied"])`), and the summary is
 computed on a line above it without entering it.
 
 `verdict` is unchanged for the same reason. The summary is a reporting field in the response and one
@@ -349,17 +414,22 @@ What does a command with no rule record?
 
 Record an unapplied marker with no counts, so the absence is explicit rather than a missing key
 (`mcp/gate/server.py:507` `def compute_output_summary(command: str, stdout: str, stderr: str) -> dict[str, Any]:`).
-The seven commands that declare `"summary": null` take that path, and the self-test asserts it on
-`clippy` and on `test` (`mcp/gate/selftest.py:505` `"no_summary_gate_records_none",`).
+The six commands that declare `"summary": null` take that path, and the self-test asserts it on
+`clippy` (`mcp/gate/selftest.py:513` `"no_summary_gate_records_none",`).
 
 What does this run not settle?
 
-Whether any other gate needs a summary rule is not settled by this run. Only `fmt` declares one
-(`agentic.config.json:58` `"summary": {`), and nothing measured here bears on `test`, `clippy`,
-`policy`, `conformance`, `webcheck`, `webtest` or `fmt-fix`.
+Whether any other gate needs a summary rule is not settled by this run. `test` and `fmt` declare one
+(`agentic.config.json:27` `"summary": {`, `agentic.config.json:67` `"summary": {`), and nothing measured
+here bears on `clippy`, `policy`, `conformance`, `webcheck`, `webtest` or `fmt-fix`.
 
-No run through the summary code path is recorded in this document yet, so treat the four numbers the
-gate now reports as unmeasured here until a journal row carries them.
+Journal rows now carry both rules' output on a green tree. The `test` row is seq 157
+(`.memory/gate-audit.log:411` `"counts": {"failed_tests": 0, "suite_results": 5, "suites": 5}`), and the
+`fmt` row is seq 159 (`.memory/gate-audit.log:413` `"counts": {"added": 0, "files": 0, "hunks": 0, "removed": 0}`).
+
+Claims needing verification:
+
+- Settle the doc-test limitation with a `test` run that fails a doc-test, and a journal row showing whether `failed_tests` names it.
 
 ## What does the per-run timeout do?
 
@@ -370,7 +440,7 @@ clamped into 60..3600 s (`mcp/gate/server.py:170` `return max(MIN_TIMEOUT_SECOND
 
 The expiry kills the process and is reported rather than raised: `exit_code` becomes `-1`,
 `timed_out` becomes `true`, and `passed` becomes `false`
-(`mcp/gate/server.py:607` `except subprocess.TimeoutExpired as expired:`).
+(`mcp/gate/server.py:627` `except subprocess.TimeoutExpired as expired:`).
 
 A live call asked for `timeout_seconds=1` and got the floor reported back
 (`requested=1s reported=60s timed_out=False exit=1`), which is the clamp working. The kill path
@@ -378,7 +448,7 @@ itself is not exercised by the self-test: no gate in this repository runs longer
 so there is no honest way to reach it without changing the gates.
 
 Both tools clamp through the same function, so `run_fix` cannot buy a longer or shorter window than
-`run_gate` (`mcp/gate/server.py:701` `effective_timeout = validate_timeout(timeout_seconds)`).
+`run_gate` (`mcp/gate/server.py:721` `effective_timeout = validate_timeout(timeout_seconds)`).
 
 ## What shape does one audit-journal record have?
 
@@ -430,7 +500,7 @@ What happens to lines written before the chain existed?
 They stay exactly as written. The first chained line records how many lines came before it and the
 digest of their bytes (`mcp/hashchain.py:199` `return {"prior_lines": lines, "prior_sha256": digest.hexdigest()}`).
 No line is added, so the journal still grows by one line per executed invocation
-(`mcp/gate/selftest.py:529` `len(after) == len(before) + len(executed),`).
+(`mcp/gate/selftest.py:527` `len(after) == len(before) + len(executed),`).
 
 What happens when the chain cannot extend?
 
@@ -454,14 +524,14 @@ Because a journal reader reaches the counts without the payload that produced th
 is the part the clamp cuts. The server passes the same object to both
 (`mcp/gate/server.py:222` `"summary": summary,` in the result, `mcp/gate/server.py:222` `"summary": summary,`
 in the record), and the self-test compares them
-(`mcp/gate/selftest.py:544` `"journal_records_the_summary",`).
+(`mcp/gate/selftest.py:550` `"journal_records_the_summary",`).
 
 Why do `tool` and `writes` both appear?
 
 Because a reader of the journal should be able to tell a check from a mutation from the record alone,
 without consulting the config. `tool` names the operation and `writes` names the mode, and the server
-sets them together at the call site (`mcp/gate/server.py:713` `writes=False,` in `run_gate`,
-`mcp/gate/server.py:746` `writes=True,` in `run_fix`).
+sets them together at the call site (`mcp/gate/server.py:733` `writes=False,` in `run_gate`,
+`mcp/gate/server.py:766` `writes=True,` in `run_fix`).
 
 A real line written by this server (`run_gate` on `clippy` as `tester`), captured before the `writes`
 key existed:
@@ -473,12 +543,12 @@ key existed:
 Why does a refused call add no line?
 
 Because the refusal is raised in validation, before `execute_gate` and before `audit_invocation`
-(`mcp/gate/server.py:700` `validate_gate(gate)` on a line above `mcp/gate/server.py:184` `audit_invocation(`),
+(`mcp/gate/server.py:720` `validate_gate(gate)` on a line above `mcp/gate/server.py:184` `audit_invocation(`),
 so the journal stays a record of executed commands only — the same reason the storage server never
 journals a refused write (`mcp/storage/server.py:125` `if classification not in WRITE_CLASSIFICATIONS:`).
 
 `run_fix` is ordered the same way, so a refused fix is as absent from the journal as a refused gate
-(`mcp/gate/server.py:733` `validate_fix(command)` on a line above `mcp/gate/server.py:184` `audit_invocation(`).
+(`mcp/gate/server.py:753` `validate_fix(command)` on a line above `mcp/gate/server.py:184` `audit_invocation(`).
 
 An authorisation refusal is the one exception: it journals one denied row, bound or not (`mcp/gate/server.py:13` `which journals a denied row, bound or not`).
 
@@ -487,8 +557,8 @@ Measured: three refusals in one self-test run left the journal at 10 lines, unch
 
 No tool edits or erases the journal; it is opened in append mode
 (`mcp/hashchain.py:252` `with open(path, "a+b") as handle:`), and the only
-read is bounded (`mcp/gate/server.py:756` `if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 200:`
-with `mcp/gate/server.py:757` `raise ValueError("limit must be an integer between 1 and 200")`).
+read is bounded (`mcp/gate/server.py:776` `if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 200:`
+with `mcp/gate/server.py:777` `raise ValueError("limit must be an integer between 1 and 200")`).
 
 ## Which exit codes did five of the seven check-mode gates produce?
 
@@ -512,9 +582,9 @@ that day rather than a number this gate reported. The four counts the gate now c
 table after a recorded run produces them.
 
 Three commands have no row. `fmt-fix` rewrites the tree, so it has never been run here
-(`mcp/gate/server.py:721` `def run_fix(`). `webcheck` and `webtest` entered the vocabulary after this
-capture (`agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],` and
-`agentic.config.json:100` `"argv": ["npm", "--prefix", "web", "run", "test"],`). A row for any of the
+(`mcp/gate/server.py:741` `def run_fix(`). `webcheck` and `webtest` entered the vocabulary after this
+capture (`agentic.config.json:102` `"argv": ["npm", "--prefix", "web", "run", "check"],` and
+`agentic.config.json:109` `"argv": ["npm", "--prefix", "web", "run", "test"],`). A row for any of the
 three would be a prediction rather than a capture.
 
 The `fmt` gate genuinely fails, and the failure is not this server's doing and not new: rustfmt over
@@ -531,7 +601,7 @@ Which script validates this server, and what does it assert?
 `mcp/gate/selftest.py` calls the running server over streamable HTTP and asserts every behaviour this
 document claims: the tool surface, the eight-command allowlist and the mode published for each, the
 three refusal shapes aimed at the check-mode names, refusal in both directions across the mode
-boundary, the clippy guard, the configured output summary and its absence on the seven commands
+boundary, the clippy guard, the configured output summary and its absence on the six commands
 without a rule, the test baseline predicate, the timeout clamp, real exit codes from the three cargo
 gates, the ANSI strip, and one journal line per executed invocation.
 
@@ -549,7 +619,7 @@ python3 mcp/gate/selftest.py --url http://localhost:8003/mcp
 Which line does it print, and which exit code does it use?
 
 Print one `SELFTEST_RESULT` line and exit `0` only when every check passed
-(`mcp/gate/selftest.py:571` `print(f"SELFTEST_RESULT passed={passed} total={total}", flush=True)`).
+(`mcp/gate/selftest.py:577` `print(f"SELFTEST_RESULT passed={passed} total={total}", flush=True)`).
 
 The last recorded run predates the write-mode checks: against the five-command surface it printed
 `SELFTEST_RESULT passed=27 total=27` and exited `0`. The rows naming `run_fix` and the rows naming
@@ -572,8 +642,8 @@ rather than as a measurement.
 | `fmt_gate_executes_and_reports`, `fmt_gate_writes_nothing` | The real `fmt` exit code and its diff report |
 | `fmt_summary_reported` | The `fmt` response carries an applied summary with all four declared counts (`mcp/gate/selftest.py:412` `"fmt_summary_reported",`) |
 | `fmt_summary_matches_an_independent_recount` | A recount of the returned output, written without the config's patterns, agrees with the reported counts (`mcp/gate/selftest.py:425` `"fmt_summary_matches_an_independent_recount",`) |
-| `no_summary_gate_records_none` | `clippy` and `test` report an unapplied summary with no counts, and `fmt` is the only summarised command (`mcp/gate/selftest.py:505` `"no_summary_gate_records_none",`) |
-| `journal_records_the_summary` | The journal row's `summary` equals the response's `summary`, key for key (`mcp/gate/selftest.py:544` `"journal_records_the_summary",`) |
+| `no_summary_gate_records_none` | `clippy` reports an unapplied summary with no counts, and `fmt` and `test` are the summarised commands (`mcp/gate/selftest.py:513` `"no_summary_gate_records_none",`) |
+| `journal_records_the_summary` | The journal row's `summary` equals the response's `summary`, key for key (`mcp/gate/selftest.py:550` `"journal_records_the_summary",`) |
 | `clippy_guard_applied`, `clippy_guard_satisfied`, `clippy_passed_requires_guard`, `clippy_marker_in_captured_output` | The guard touched the file, found the marker, and gates `passed` |
 | `baseline_predicate_rejects_a_failed_test`, `baseline_predicate_accepts_the_recorded_baseline` | A synthetic record of `{"passed": 158, "failed": 1}` reads `FAIL` and one of `{"passed": 159, "failed": 0}` reads `PASS` (`mcp/gate/selftest.py:126` `"baseline_predicate_rejects_a_failed_test",`) |
 | `test_gate_executes_and_reports`, `test_gate_totals` | The real `test` exit code, zero failures, and at least the recorded baseline of passes (`mcp/gate/selftest.py:78` `TEST_BASELINE_PASSED = 159`) |
@@ -597,22 +667,22 @@ its own recount of the `fmt` counts for the same reason.
 Why is there no `run_command`, no `--` passthrough, and no cwd argument?
 
 - Keep the execution surface a fixed vocabulary, so a call cannot widen its own access: the
-  `COMMANDS` table is the only argv source (`mcp/gate/gate_vocabulary.py:248` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
+  `COMMANDS` table is the only argv source (`mcp/gate/gate_vocabulary.py:266` `COMMANDS: dict[str, dict[str, Any]] = {name: _gate(name) for name in COMMAND_NAMES}`).
 - Split that vocabulary by declared mode and give each half its own tool, so a check surface cannot
-  reach a mutation (`mcp/gate/gate_vocabulary.py:252` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
+  reach a mutation (`mcp/gate/gate_vocabulary.py:270` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
 - Keep `shell` off and the argv a list, so a metacharacter in a caller value can never become a
-  command (`mcp/gate/server.py:596` `completed = subprocess.run(  # noqa: S603 - a fixed argv, never a caller-supplied string`).
+  command (`mcp/gate/server.py:616` `completed = subprocess.run(  # noqa: S603 - a fixed argv, never a caller-supplied string`).
 - Journal only executed commands, so the journal's line count is itself an audit fact
-  (`mcp/gate/server.py:700` `validate_gate(gate)` runs before the journal call).
+  (`mcp/gate/server.py:720` `validate_gate(gate)` runs before the journal call).
 - Record the tool and the mode on every line, so a mutation is legible in the journal without the
   config (`mcp/gate/server.py:213` `"tool": tool,`).
 - Touch each guarded gate's declared file and require its status line, so a cached run cannot be mistaken for
-  a clean one (`mcp/gate/server.py:618` `passed = exit_code == 0 and bool(guard["satisfied"])`).
+  a clean one (`mcp/gate/server.py:638` `passed = exit_code == 0 and bool(guard["satisfied"])`).
 - Strip ANSI before matching and before returning, so cargo's forced colour cannot break a guard or a
   caller's grep (`mcp/gate/server.py:81` `ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")`).
 - Declare the counting rule in the config rather than in the server, so a fork changes one table and
-  no code path (`agentic.config.json:58` `"summary": {`).
+  no code path (`agentic.config.json:67` `"summary": {`).
 - Count above the output clamp, so a role reading the response reaches numbers a clamped payload
-  would hide (`mcp/gate/server.py:617` `summary = compute_output_summary(command, raw_stdout, raw_stderr)`).
+  would hide (`mcp/gate/server.py:637` `summary = compute_output_summary(command, raw_stdout, raw_stderr)`).
 - Chain every journal line, so an edited, removed or truncated line fails verify against a kept anchor
   (`mcp/hashchain.py:277` `def verify_journal(`).

@@ -103,7 +103,7 @@ work and evaluates what comes back; it never writes production code and never ru
 3. Human checkpoint 1 — plan approval. The run stops here until a human approves or amends the plan.
 4. `implementer` writes the change, records its decisions in storage, and returns the entry ids.
 5. `tester` runs the gate commands and records the raw output as a storage entry.
-6. `reviewer` reads the `conformance` gate's report for the changed prose files (`agentic.config.json:79` `"argv": ["python3", "scripts/run-conformance-gate.py"],`). The tester runs that gate by name, so the verdict rests on the report rather than on prose.
+6. `reviewer` reads the `conformance` gate's report for the changed prose files (`agentic.config.json:88` `"argv": ["python3", "scripts/run-conformance-gate.py"],`). The tester runs that gate by name, so the verdict rests on the report rather than on prose.
 7. Human checkpoint 2 — release approval. The run stops here until a human approves the merge.
 8. `project-manager` closes the ticket with the delivered scope.
 

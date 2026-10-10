@@ -71,7 +71,7 @@ The retrieval server exposes one operation, `mcp__retrieval__retrieve`. A grant 
 Which grants repeat across roles, and does any repeat breach least privilege?
 
 - Hold `mcp__coursetools__web_search` on the Researcher alone, which is the whole reason the stretch role exists.
-- Hold `mcp__gate__run_gate` on the Tester alone, deny `mcp__coursetools__test_runner` to every role, and keep the gate server the one path that executes a command. Read that grant as reaching all seven check-mode names, `webcheck` and `webtest` included (`agentic.config.json:93` `"argv": ["npm", "--prefix", "web", "run", "check"],`). Authorisation is held per tool, not per gate name. The server authorises the bound `AGENT_ROLE`, or the declared role when unbound, against the map's grant before the membership check (`mcp/gate/server.py:699` `role = _authorize(calling_role, "run_gate", gate=gate)`). It validates the role per tool, so a name added to the config extends the surface only of the roles the map grants that tool.
+- Hold `mcp__gate__run_gate` on the Tester alone, deny `mcp__coursetools__test_runner` to every role, and keep the gate server the one path that executes a command. Read that grant as reaching all seven check-mode names, `webcheck` and `webtest` included (`agentic.config.json:102` `"argv": ["npm", "--prefix", "web", "run", "check"],`). Authorisation is held per tool, not per gate name. The server authorises the bound `AGENT_ROLE`, or the declared role when unbound, against the map's grant before the membership check (`mcp/gate/server.py:719` `role = _authorize(calling_role, "run_gate", gate=gate)`). It validates the role per tool, so a name added to the config extends the surface only of the roles the map grants that tool.
 - Hold `mcp__coursetools__task_tracker` on the Project Manager alone, because ticket state has one owner.
 - Hold `mcp__storage__update_entry` on the Implementer alone, which is the only role that revises a record it wrote.
 - Grant `mcp__storage__delete_entry` to no role, and keep record removal outside the gate.
@@ -103,7 +103,7 @@ Which recorded step no longer holds an MCP grant, and what runs it now?
 - Stop routing that step to a subagent, because the reviewer ran it by hand from the reads its own row grants (`docs/routing-and-tool-grant-map.md:19` `mcp__coursetools__codebase_search`) and the step now holds no tool of its own.
 - Read the decision of record in `docs/adr/ADR-001-doc-conformance-deterministic-conversion.md`, which fixes the contract the script holds.
 - Keep the marker machine-readable, so a check can read it: `docs/routing-and-tool-grant-map.json:88` `"mcp_access": []`.
-- Run that step inside the workflow through the `conformance` gate, which the server runs by name (`agentic.config.json:79` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
+- Run that step inside the workflow through the `conformance` gate, which the server runs by name (`agentic.config.json:88` `"argv": ["python3", "scripts/run-conformance-gate.py"],`).
 
 ## Operator tools
 

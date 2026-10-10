@@ -74,7 +74,31 @@ DEFAULT: dict[str, Any] = {
                         "EST_DIR) is baked in at compile time, so a stale binary fails a suite the source passes; the touched file forces that crate to rebuild"
                     ),
                 },
-                "summary": None,
+                "summary": {
+                    "reason": (
+                        "a failing cargo test run prints its per-suite results and the failing"
+                        " tests' names inside a payload no role can reach, and its exit code is the"
+                        " same for a failed assertion as for a compile error; reading them before"
+                        " the clamp puts both in the response and in the journal row"
+                    ),
+                    "streams": ["stdout", "stderr"],
+                    "strip_ansi": True,
+                    "counts": {
+                        "suites": {"mode": "count_matching_lines", "pattern": "^test result: "},
+                        "suite_results": {
+                            "mode": "collect_group_values",
+                            "pattern": "^test result: (?P<value>.+?)(?:; finished in .*)?$",
+                            "group": "value",
+                            "limit": 50,
+                        },
+                        "failed_tests": {
+                            "mode": "collect_group_values",
+                            "pattern": "^test (?P<value>\\S+) \\.\\.\\. FAILED$",
+                            "group": "value",
+                            "limit": 20,
+                        },
+                    },
+                },
                 "writes": False,
             },
             "clippy": {

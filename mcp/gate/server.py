@@ -56,7 +56,7 @@ _GATE_DIR = Path(__file__).resolve().parent
 if str(_GATE_DIR) not in sys.path:
     sys.path.insert(0, str(_GATE_DIR))
 from gate_vocabulary import (COMMANDS, FIX_COMMANDS, GATES, guard_marker_search,  # noqa: E402
-                             MEMORY_DIR, SUMMARY_PATTERNS, WORKSPACE, AUDIT_PATH, TOOLS_IMAGE, print_config_if_requested)
+                             MEMORY_DIR, SUMMARY_PATTERNS, SUMMARY_VALUE_MAX_CHARS, WORKSPACE, AUDIT_PATH, TOOLS_IMAGE, print_config_if_requested)
 
 # A supported entry point: it answers before the MCP and HTTP imports, so a host without fastmcp
 # installed can still read what this server consumes. It runs no gate and reads no journal.
@@ -510,6 +510,11 @@ def compute_output_summary(command: str, stdout: str, stderr: str) -> dict[str, 
     Returns ``applied`` False and no counts for a command declaring no rule, which is the ordinary
     case. Reads the rule and the pre-compiled patterns from ``gate_vocabulary``, never from the
     caller, so no caller-supplied string ever becomes a pattern.
+
+    A ``collect_group_values`` count also keeps the matched values under ``values``, a key present
+    only when the rule declares such a count, so every other summary keeps its exact shape. Items
+    are capped by the rule's ``limit`` and by ``SUMMARY_VALUE_MAX_CHARS``, so a run that fails every
+    test still journals a bounded row, and ``counts`` keeps the uncapped total.
     """
     rule = COMMANDS[command]["summary"]
     if rule is None:
@@ -528,6 +533,7 @@ def compute_output_summary(command: str, stdout: str, stderr: str) -> dict[str, 
     lines = text.splitlines()
 
     counts: dict[str, int] = {}
+    values: dict[str, dict[str, Any]] = {}
     for label, count_rule in rule["counts"].items():
         pattern = SUMMARY_PATTERNS[command][label]
         if count_rule["mode"] == "count_unique_groups":
@@ -539,12 +545,23 @@ def compute_output_summary(command: str, stdout: str, stderr: str) -> dict[str, 
                     if match is not None
                 }
             )
+        elif count_rule["mode"] == "collect_group_values":
+            group = count_rule["group"]
+            matches = [match for match in (pattern.search(line) for line in lines) if match is not None]
+            counts[label] = len(matches)
+            values[label] = {
+                "items": [
+                    (match.group(group) or "")[:SUMMARY_VALUE_MAX_CHARS]
+                    for match in matches[: count_rule["limit"]]
+                ],
+                "truncated": len(matches) > count_rule["limit"],
+            }
         else:
             counts[label] = sum(1 for line in lines if pattern.search(line))
 
     clamped = any(len(strip_ansi(captured[name])) > MAX_OUTPUT_CHARS for name in streams)
     tally = ", ".join(f"{label}={value}" for label, value in counts.items())
-    return {
+    summary: dict[str, Any] = {
         "applied": True,
         "counts": counts,
         "reason": rule["reason"],
@@ -556,6 +573,9 @@ def compute_output_summary(command: str, stdout: str, stderr: str) -> dict[str, 
         "input_chars": len(text),
         "input_truncated_by_the_clamp": clamped,
     }
+    if values:
+        summary["values"] = values
+    return summary
 
 
 # --- Execution ------------------------------------------------------------------------------

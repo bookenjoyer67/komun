@@ -996,3 +996,90 @@ def test_classify_change_still_answers_a_real_change_set() -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# Every cargo-shaped line in the fixtures below is synthetic: no real suite or test is named.
+B7_SYNTHETIC_TEST_RULE = {
+    "reason": "synthetic rule for the collect_group_values unit tests",
+    "streams": ["stdout", "stderr"],
+    "strip_ansi": True,
+    "counts": {
+        "suites": {"mode": "count_matching_lines", "pattern": "^test result: "},
+        "suite_results": {"mode": "collect_group_values", "group": "value", "limit": 50,
+                          "pattern": r"^test result: (?P<value>.+?)(?:; finished in .*)?$"},
+        "failed_tests": {"mode": "collect_group_values", "group": "value", "limit": 20,
+                         "pattern": r"^test (?P<value>\S+) \.\.\. FAILED$"},
+    },
+}
+
+
+def b7_summary(monkeypatch, stdout: str, stderr: str = "") -> dict:
+    gate = load_chain_server("b7_summary_gate_server", "mcp/gate/server.py")
+    vocabulary = sys.modules["gate_vocabulary"]
+    rule = vocabulary._summary({"summary": B7_SYNTHETIC_TEST_RULE}, {})
+    assert rule is not None
+    monkeypatch.setitem(gate.COMMANDS, "b7-synthetic", {"summary": rule})
+    monkeypatch.setitem(gate.SUMMARY_PATTERNS, "b7-synthetic",
+                        {label: re.compile(r["pattern"]) for label, r in rule["counts"].items()})
+    return gate.compute_output_summary("b7-synthetic", stdout, stderr)
+
+
+def test_b7_collect_zero_failed(monkeypatch) -> None:
+    out = ("running 2 tests\ntest synthetic::alpha ... ok\ntest synthetic::beta ... ok\n\n"
+           "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n")
+    summary = b7_summary(monkeypatch, out)
+    assert summary["counts"] == {"suites": 1, "suite_results": 1, "failed_tests": 0}
+    assert summary["values"]["failed_tests"] == {"items": [], "truncated": False}
+    assert summary["values"]["suite_results"]["items"] == [
+        "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"]
+
+
+def test_b7_collect_two_failed_names_both(monkeypatch) -> None:
+    out = ("test synthetic::gamma ... \x1b[31mFAILED\x1b[0m\ntest synthetic::delta ... FAILED\n\n"
+           "failures:\n    synthetic::gamma\n    synthetic::delta\n\n"
+           "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n")
+    summary = b7_summary(monkeypatch, out)
+    assert summary["counts"]["suites"] == 1
+    assert summary["counts"]["failed_tests"] == 2
+    assert summary["values"]["failed_tests"] == {
+        "items": ["synthetic::gamma", "synthetic::delta"], "truncated": False}
+
+
+def test_b7_collect_compile_error_reports_no_suite(monkeypatch) -> None:
+    summary = b7_summary(monkeypatch, "", "error[E0308]: mismatched types\nerror: could not compile `synthetic`\n")
+    assert summary["counts"] == {"suites": 0, "suite_results": 0, "failed_tests": 0}
+
+
+def test_b7_collect_caps_items_and_keeps_the_total(monkeypatch) -> None:
+    names = [f"synthetic::case_{index:02d}" for index in range(60)]
+    out = "".join(f"test {name} ... FAILED\n" for name in names)
+    out += "test synthetic::" + "x" * 300 + " ... FAILED\n"
+    summary = b7_summary(monkeypatch, out)
+    assert summary["counts"]["failed_tests"] == 61
+    assert summary["values"]["failed_tests"] == {"items": names[:20], "truncated": True}
+
+
+def test_b7_collect_value_is_cut_to_the_char_cap(monkeypatch) -> None:
+    summary = b7_summary(monkeypatch, "test synthetic::" + "y" * 300 + " ... FAILED\n")
+    assert len(summary["values"]["failed_tests"]["items"][0]) == 200
+
+
+def test_b7_limit_is_validated_whole_rule_or_nothing() -> None:
+    load_chain_server("b7_limit_gate_server", "mcp/gate/server.py")
+    vocabulary = sys.modules["gate_vocabulary"]
+    base = {"mode": "collect_group_values", "pattern": r"^(?P<value>\S+)$", "group": "value"}
+    for bad in (0, 51, True, "20", 2.0):
+        assert vocabulary._summary({"summary": {"counts": {"c": {**base, "limit": bad}}}}, {}) is None
+    assert vocabulary._summary({"summary": {"counts": {"c": {**base, "group": "absent"}}}}, {}) is None
+    assert vocabulary._summary({"summary": {"counts": {"c": base}}}, {})["counts"]["c"]["limit"] == 20
+
+
+def test_b7_fmt_and_no_rule_summaries_carry_no_values_key() -> None:
+    gate = load_chain_server("b7_fmt_gate_server", "mcp/gate/server.py")
+    fmt = gate.compute_output_summary("fmt", "Diff in /tmp/synthetic.rs:1:\n+a\n-b\n", "")
+    assert "values" not in fmt
+    assert list(fmt) == ["applied", "counts", "reason", "detail", "streams", "input_chars",
+                         "input_truncated_by_the_clamp"]
+    assert gate.compute_output_summary("policy", "", "") == {
+        "applied": False, "counts": None, "reason": None,
+        "detail": "no output summary rule applies to this gate"}

@@ -39,7 +39,7 @@ What contract does each server enforce at its boundary?
 - Take a gate name, and never a command line (`mcp/gate/server.py:7` `A caller names a command, never a command line`).
 - Resolve that name against an allow-list before anything runs (`mcp/gate/server.py:122` `if gate not in GATES:`; `mcp/gate/SCHEMA.md:120` `The refusal is raised before anything is executed`).
 - Read every argv from the config table alone (`mcp/gate/server.py:71` `The argv tuples are the only commands this process can ever run`).
-- Keep the shell off and append nothing caller-supplied (`mcp/gate/server.py:596` `a fixed argv, never a caller-supplied string`; `mcp/gate/server.py:598` `cwd=WORKSPACE,`).
+- Keep the shell off and append nothing caller-supplied (`mcp/gate/server.py:616` `a fixed argv, never a caller-supplied string`; `mcp/gate/server.py:618` `cwd=WORKSPACE,`).
 - Refuse a command string, an extra argument and a shell with one message (`mcp/gate/server.py:125` `it accepts no command string, no extra arguments and no`).
 - Split the vocabulary by declared mode, and give each half one tool (`mcp/gate/server.py:148` `if command not in FIX_COMMANDS:`).
 - Expose four operations and no shell on the gate (`mcp/gate/SCHEMA.md:9` `It exposes four named operations and no shell, no argv, and no working-directory control:`).

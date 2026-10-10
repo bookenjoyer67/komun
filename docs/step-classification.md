@@ -89,10 +89,10 @@ What moved the gate commands out of a role's hands?
   `158 passed, 0 failed, 0 ignored`).
 - Note the record that motivated the conversion: an inert grant blocked every gate in the first
   orchestrated run (`docs/iteration-log.md:383-384` `the course's deliberately inert stub`).
-- Run the two converted deterministic steps through the same vocabulary, as the `policy` and `conformance` gates (`mcp/gate/gate_vocabulary.py:230` `this repository's eight names: seven check-mode and one write-mode.`).
-- Read that vocabulary as eight commands in two modes: the seven check-mode names `test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck` and `webtest`, and one write-mode name, `fmt-fix` (`agentic.config.json:85` `"fmt-fix": {`).
-- Bind `fmt-fix` to `cargo fmt --all`, the one command on this surface that rewrites files (`agentic.config.json:86` `"argv": ["cargo", "fmt", "--all"],`).
-- Split the vocabulary on that mode, so the check surface and the write surface resolve against disjoint tables (`mcp/gate/gate_vocabulary.py:252` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
+- Run the two converted deterministic steps through the same vocabulary, as the `policy` and `conformance` gates (`mcp/gate/gate_vocabulary.py:248` `this repository's eight names: seven check-mode and one write-mode.`).
+- Read that vocabulary as eight commands in two modes: the seven check-mode names `test`, `clippy`, `fmt`, `policy`, `conformance`, `webcheck` and `webtest`, and one write-mode name, `fmt-fix` (`agentic.config.json:94` `"fmt-fix": {`).
+- Bind `fmt-fix` to `cargo fmt --all`, the one command on this surface that rewrites files (`agentic.config.json:95` `"argv": ["cargo", "fmt", "--all"],`).
+- Split the vocabulary on that mode, so the check surface and the write surface resolve against disjoint tables (`mcp/gate/gate_vocabulary.py:270` `FIX_COMMANDS: dict[str, dict[str, Any]] = {`).
 - **Next review:** 2026-11-30. The server is deterministic, and its selftest covers the refusal path.
 
 ## Step: change classification — already deterministic
