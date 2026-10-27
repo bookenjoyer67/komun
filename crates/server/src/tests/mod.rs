@@ -9,6 +9,7 @@ mod location_privacy;
 /// The marketplace foundation: `[market]` config, category scopes, market filters.
 #[cfg(test)]
 mod market;
+mod node_info;
 mod ops_admin;
 mod outbound_routes;
 mod resource_limits;
@@ -267,6 +268,30 @@ superadmin_public_keys = []
         let config: Config = toml::from_str(toml).expect("parse config");
         assert_eq!(config.server.port, 3000);
         assert_eq!(config.database.max_connections, 5);
+    }
+
+    #[test]
+    fn node_city_and_state_default_to_absent_and_parse_when_set() {
+        let empty: Config = toml::from_str("").expect("parse empty config");
+        assert_eq!(empty.node.location_city, None);
+        assert_eq!(empty.node.location_state, None);
+
+        let stale: Config = toml::from_str(
+            "[node]\nname = \"stl\"\nlocation_name = \"St. Louis, Missouri\"\n",
+        )
+        .expect("a config written before city and state existed must still load");
+        assert_eq!(stale.node.location_city, None);
+        assert_eq!(stale.node.location_state, None);
+        assert_eq!(
+            stale.node.location_name.as_deref(),
+            Some("St. Louis, Missouri")
+        );
+
+        let set: Config =
+            toml::from_str("[node]\nlocation_city = \"St. Louis\"\nlocation_state = \"MO\"\n")
+                .expect("parse config");
+        assert_eq!(set.node.location_city.as_deref(), Some("St. Louis"));
+        assert_eq!(set.node.location_state.as_deref(), Some("MO"));
     }
 
     // Pure: setting DATABASE_URL in-process would race the parallel test threads.

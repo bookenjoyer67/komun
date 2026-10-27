@@ -40,6 +40,8 @@ pub struct NodeConfig {
     pub description: String,
     pub public_url: Option<String>,
     pub location_name: Option<String>,
+    pub location_city: Option<String>,
+    pub location_state: Option<String>,
     pub location_lat: Option<f64>,
     pub location_lon: Option<f64>,
 }
@@ -249,6 +251,8 @@ impl Default for NodeConfig {
             description: "A community local listings server".into(),
             public_url: None,
             location_name: None,
+            location_city: None,
+            location_state: None,
             location_lat: None,
             location_lon: None,
         }

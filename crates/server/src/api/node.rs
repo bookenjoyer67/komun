@@ -15,9 +15,12 @@ struct NodeInfo {
     open_registration: bool,
 }
 
+/// Peers and the directory read `name`; `city` and `state` are additive.
 #[derive(Serialize)]
 struct NodeLocation {
     name: Option<String>,
+    city: Option<String>,
+    state: Option<String>,
     lat: Option<f64>,
     lon: Option<f64>,
 }
@@ -28,13 +31,29 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
+fn non_blank(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(String::from)
+}
+
 async fn get_node_info(State(state): State<AppState>) -> Json<NodeInfo> {
     let config = &state.config;
-    let location = if config.node.location_name.is_some() || config.node.location_lat.is_some() {
+    let node = &config.node;
+    let city = non_blank(node.location_city.as_deref());
+    let region = non_blank(node.location_state.as_deref());
+    let location = if node.location_name.is_some()
+        || node.location_lat.is_some()
+        || city.is_some()
+        || region.is_some()
+    {
         Some(NodeLocation {
-            name: config.node.location_name.clone(),
-            lat: config.node.location_lat,
-            lon: config.node.location_lon,
+            name: node.location_name.clone(),
+            city,
+            state: region,
+            lat: node.location_lat,
+            lon: node.location_lon,
         })
     } else {
         None

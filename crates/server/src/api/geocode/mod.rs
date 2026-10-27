@@ -18,6 +18,7 @@ use axum::{
 use serde::Deserialize;
 
 use super::outbound;
+use crate::config::NodeConfig;
 use crate::rate_limit::RouteClass;
 use crate::AppState;
 use cache::GeocodeCache;
@@ -33,8 +34,12 @@ const CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 const CACHE_CAPACITY: usize = 512;
 
 const DISPLAY_NAME_MAX_CHARS: usize = 256;
+const PLACE_PART_MAX_CHARS: usize = 100;
 
 const MAX_QUERY_CHARS: usize = 200;
+
+/// About 55 km north to south: a metro area, not a region.
+const VIEWBOX_HALF_DEG: f64 = 0.5;
 
 /// The client sees only these; the upstream detail goes to the log, without the query.
 const UPSTREAM_UNAVAILABLE: &str = "geocoding service unavailable";
@@ -47,6 +52,8 @@ const DEFAULT_USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (nominatim proxy; local-listings app)"
 );
+
+type UpstreamParams = Vec<(&'static str, String)>;
 
 #[derive(Deserialize)]
 pub struct GeocodeParams {
@@ -62,21 +69,64 @@ pub async fn geocode(
     if let Err(limited) = super::per_ip_limit(&state, RouteClass::Geocode, peer, &headers) {
         return limited.into_response();
     }
-    match resolve(&params.q, cache(), limiter(), fetch_nominatim).await {
+    let centre = node_centre(&state.config.node);
+    match resolve(&params.q, centre, cache(), limiter(), fetch_nominatim).await {
         Ok(value) => Json(value).into_response(),
         Err(e) => e.into_response(),
     }
 }
 
+#[derive(Clone, Copy)]
+struct Centre {
+    lat: f64,
+    lon: f64,
+}
+
+/// A partial or out-of-range location yields no centre: a search is never biased towards an
+/// invented point.
+fn node_centre(node: &NodeConfig) -> Option<Centre> {
+    let lat = node.location_lat.filter(|lat| in_range(*lat, 90.0))?;
+    let lon = node.location_lon.filter(|lon| in_range(*lon, 180.0))?;
+    Some(Centre { lat, lon })
+}
+
+/// Nominatim reads the box as lon,lat,lon,lat.
+fn viewbox(centre: Centre) -> String {
+    let west = (centre.lon - VIEWBOX_HALF_DEG).max(-180.0);
+    let south = (centre.lat - VIEWBOX_HALF_DEG).max(-90.0);
+    let east = (centre.lon + VIEWBOX_HALF_DEG).min(180.0);
+    let north = (centre.lat + VIEWBOX_HALF_DEG).min(90.0);
+    format!("{west:.4},{south:.4},{east:.4},{north:.4}")
+}
+
+fn is_qualified(query: &str) -> bool {
+    query.contains(',')
+}
+
+fn upstream_params(query: &str, bounding_box: Option<&str>) -> UpstreamParams {
+    let mut params = vec![
+        ("q", query.to_string()),
+        ("format", "json".to_string()),
+        ("limit", "1".to_string()),
+        ("addressdetails", "1".to_string()),
+    ];
+    if let Some(bounding_box) = bounding_box {
+        params.push(("viewbox", bounding_box.to_string()));
+        params.push(("bounded", "1".to_string()));
+    }
+    params
+}
+
 /// Split from the handler so tests can exercise the limiter and cache with a fake upstream.
 async fn resolve<F, Fut>(
     raw_query: &str,
+    centre: Option<Centre>,
     cache: &GeocodeCache,
     limiter: &RateLimiter,
     fetch: F,
 ) -> Result<serde_json::Value, GeocodeError>
 where
-    F: FnOnce(String) -> Fut,
+    F: FnOnce(UpstreamParams) -> Fut,
     Fut: std::future::Future<Output = Result<serde_json::Value, GeocodeError>>,
 {
     let query = raw_query.trim();
@@ -92,19 +142,23 @@ where
         )));
     }
 
-    let key = normalize_query(query);
+    // `bounded=1` drops every hit outside the box, so a query that names its own region
+    // ("Austin, TX") must go out unbiased or it would miss.
+    let bias = centre.filter(|_| !is_qualified(query)).map(viewbox);
+    // Keyed by the box actually sent: a moved node misses, and an unbiased query shares one entry.
+    let key = format!("{}|{}", bias.as_deref().unwrap_or("-"), normalize_query(query));
     if let Some(hit) = cache.get(&key).await {
         return Ok(hit);
     }
 
     limiter.acquire().await.map_err(|_| GeocodeError::busy())?;
 
-    let value = fetch(query.to_string()).await?;
+    let value = fetch(upstream_params(query, bias.as_deref())).await?;
     cache.insert(key, value.clone()).await;
     Ok(value)
 }
 
-/// Cache key: case-insensitive and whitespace-collapsed, so trivial reformattings share an entry.
+/// Case-insensitive and whitespace-collapsed, so trivial reformattings share a cache entry.
 fn normalize_query(query: &str) -> String {
     query
         .split_whitespace()
@@ -205,11 +259,11 @@ fn build_user_agent(contact: Option<&str>) -> String {
     }
 }
 
-async fn fetch_nominatim(query: String) -> Result<serde_json::Value, GeocodeError> {
+async fn fetch_nominatim(params: UpstreamParams) -> Result<serde_json::Value, GeocodeError> {
     let res = client()
         .get(NOMINATIM_URL)
         .header("User-Agent", user_agent())
-        .query(&[("q", query.as_str()), ("format", "json"), ("limit", "1")])
+        .query(&params)
         .send()
         .await
         .map_err(|e| {
@@ -235,6 +289,19 @@ struct NominatimHit {
     lat: String,
     lon: String,
     display_name: String,
+    #[serde(default)]
+    address: Option<NominatimAddress>,
+}
+
+#[derive(Deserialize, Default)]
+struct NominatimAddress {
+    city: Option<String>,
+    town: Option<String>,
+    village: Option<String>,
+    hamlet: Option<String>,
+    state: Option<String>,
+    #[serde(rename = "ISO3166-2-lvl4")]
+    iso_subdivision: Option<String>,
 }
 
 fn parse_nominatim(status: u16, body: &[u8]) -> Result<serde_json::Value, GeocodeError> {
@@ -268,18 +335,51 @@ fn parse_nominatim(status: u16, body: &[u8]) -> Result<serde_json::Value, Geocod
         .chars()
         .take(DISPLAY_NAME_MAX_CHARS)
         .collect();
+    let address = hit.address.unwrap_or_default();
+    let city = [address.city, address.town, address.village, address.hamlet]
+        .into_iter()
+        .find_map(place_part);
+    let state = address
+        .iso_subdivision
+        .as_deref()
+        .and_then(us_postal_code)
+        .map(String::from)
+        .or_else(|| place_part(address.state));
     Ok(serde_json::json!({
         "lat": hit.lat,
         "lon": hit.lon,
         "display_name": display_name,
+        "city": city,
+        "state": state,
     }))
+}
+
+fn place_part(value: Option<String>) -> Option<String> {
+    let value = value?;
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    Some(value.chars().take(PLACE_PART_MAX_CHARS).collect())
+}
+
+/// Nominatim spells the state out and carries the two-letter postal code only inside the US
+/// ISO 3166-2 code, so anything else keeps the full name.
+fn us_postal_code(iso: &str) -> Option<&str> {
+    let code = iso.strip_prefix("US-")?;
+    let is_postal = code.len() == 2 && code.bytes().all(|b| b.is_ascii_uppercase());
+    is_postal.then_some(code)
 }
 
 fn coordinate(raw: &str, bound: f64) -> Option<f64> {
     raw.trim()
         .parse::<f64>()
         .ok()
-        .filter(|value| value.is_finite() && (-bound..=bound).contains(value))
+        .filter(|value| in_range(*value, bound))
+}
+
+fn in_range(value: f64, bound: f64) -> bool {
+    value.is_finite() && (-bound..=bound).contains(&value)
 }
 
 #[derive(Debug)]
@@ -342,9 +442,48 @@ impl IntoResponse for GeocodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::NodeConfig;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use tokio::time::Instant;
+
+    type Params = Vec<(&'static str, String)>;
+
+    const ST_LOUIS: Centre = Centre {
+        lat: 38.627,
+        lon: -90.199,
+    };
+    const ST_LOUIS_VIEWBOX: &str = "-90.6990,38.1270,-89.6990,39.1270";
+
+    fn sent_q(params: &Params) -> String {
+        params
+            .iter()
+            .find(|(key, _)| *key == "q")
+            .map(|(_, value)| value.clone())
+            .unwrap_or_default()
+    }
+
+    fn expected(pairs: &[(&'static str, &str)]) -> Params {
+        pairs
+            .iter()
+            .map(|(key, value)| (*key, value.to_string()))
+            .collect()
+    }
+
+    async fn params_sent_for(query: &str, centre: Option<Centre>) -> Params {
+        let cache = GeocodeCache::new(Duration::from_secs(60), 8);
+        let limiter = RateLimiter::new(Duration::from_millis(1));
+        let captured: Arc<Mutex<Option<Params>>> = Arc::new(Mutex::new(None));
+        let sink = captured.clone();
+        resolve(query, centre, &cache, &limiter, move |params: Params| {
+            *sink.lock().expect("capture lock") = Some(params);
+            async { Ok(serde_json::json!({})) }
+        })
+        .await
+        .expect("the fake upstream answers");
+        let sent = captured.lock().expect("capture lock").take();
+        sent.expect("the query reached the upstream")
+    }
 
     #[test]
     fn normalize_query_collapses_case_and_whitespace() {
@@ -404,8 +543,9 @@ mod tests {
 
         let counting_fetch = || {
             let calls = calls.clone();
-            move |q: String| {
+            move |params: Params| {
                 let calls = calls.clone();
+                let q = sent_q(&params);
                 async move {
                     calls.fetch_add(1, Ordering::SeqCst);
                     Ok(serde_json::json!({ "display_name": q }))
@@ -413,13 +553,13 @@ mod tests {
             }
         };
 
-        let first = resolve("Oakland", &cache, &limiter, counting_fetch())
+        let first = resolve("Oakland", None, &cache, &limiter, counting_fetch())
             .await
             .unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(first["display_name"], "Oakland");
 
-        let second = resolve("  oakland ", &cache, &limiter, counting_fetch())
+        let second = resolve("  oakland ", None, &cache, &limiter, counting_fetch())
             .await
             .unwrap();
         assert_eq!(second["display_name"], "Oakland");
@@ -437,8 +577,9 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_for_fetch = calls.clone();
 
-        let result = resolve("   ", &cache, &limiter, move |q: String| {
+        let result = resolve("   ", None, &cache, &limiter, move |params: Params| {
             let calls = calls_for_fetch.clone();
+            let q = sent_q(&params);
             async move {
                 calls.fetch_add(1, Ordering::SeqCst);
                 Ok(serde_json::json!({ "display_name": q }))
@@ -458,8 +599,9 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let counting_fetch = || {
             let calls = calls.clone();
-            move |q: String| {
+            move |params: Params| {
                 let calls = calls.clone();
+                let q = sent_q(&params);
                 async move {
                     calls.fetch_add(1, Ordering::SeqCst);
                     Ok(serde_json::json!({ "display_name": q }))
@@ -467,12 +609,12 @@ mod tests {
             }
         };
 
-        let refused = resolve(&"a".repeat(201), &cache, &limiter, counting_fetch()).await;
+        let refused = resolve(&"a".repeat(201), None, &cache, &limiter, counting_fetch()).await;
         let err = refused.expect_err("a 201-character q");
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
         assert_eq!(calls.load(Ordering::SeqCst), 0);
 
-        let accepted = resolve(&"é".repeat(200), &cache, &limiter, counting_fetch()).await;
+        let accepted = resolve(&"é".repeat(200), None, &cache, &limiter, counting_fetch()).await;
         assert!(accepted.is_ok(), "a 200-character q");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
@@ -491,8 +633,9 @@ mod tests {
             let limiter = limiter.clone();
             let calls = calls.clone();
             tokio::spawn(async move {
-                resolve(query, &cache, &limiter, move |q: String| {
+                resolve(query, None, &cache, &limiter, move |params: Params| {
                     let calls = calls.clone();
+                    let q = sent_q(&params);
                     async move {
                         calls.fetch_add(1, Ordering::SeqCst);
                         Ok(serde_json::json!({ "display_name": q }))
@@ -529,6 +672,152 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_bare_query_from_a_located_node_is_bounded_to_a_viewbox_around_it() {
+        let sent = params_sent_for("63101", Some(ST_LOUIS)).await;
+        assert_eq!(
+            sent,
+            expected(&[
+                ("q", "63101"),
+                ("format", "json"),
+                ("limit", "1"),
+                ("addressdetails", "1"),
+                ("viewbox", ST_LOUIS_VIEWBOX),
+                ("bounded", "1"),
+            ])
+        );
+    }
+
+    /// Nominatim reads `viewbox` as lon,lat,lon,lat; a lat-first box silently searches elsewhere.
+    #[tokio::test]
+    async fn viewbox_puts_longitude_first() {
+        let sent_box = viewbox(ST_LOUIS);
+        assert_eq!(sent_box, ST_LOUIS_VIEWBOX);
+        let first: f64 = sent_box
+            .split(',')
+            .next()
+            .expect("a first component")
+            .parse()
+            .expect("a number");
+        assert!(
+            !(-90.0..=90.0).contains(&first),
+            "the first component {first} must be the longitude"
+        );
+
+        let sent = params_sent_for("63101", Some(ST_LOUIS)).await;
+        assert!(sent.contains(&("viewbox", ST_LOUIS_VIEWBOX.to_string())));
+        assert!(sent.contains(&("addressdetails", "1".to_string())));
+    }
+
+    #[tokio::test]
+    async fn a_node_without_coordinates_sends_no_viewbox_or_bounded() {
+        let node = |lat: Option<f64>, lon: Option<f64>| NodeConfig {
+            location_lat: lat,
+            location_lon: lon,
+            ..NodeConfig::default()
+        };
+        assert!(node_centre(&node(Some(38.627), Some(-90.199))).is_some());
+        for (lat, lon) in [
+            (None, None),
+            (Some(38.627), None),
+            (None, Some(-90.199)),
+            (Some(91.0), Some(-90.199)),
+            (Some(38.627), Some(181.0)),
+            (Some(f64::NAN), Some(-90.199)),
+        ] {
+            assert!(
+                node_centre(&node(lat, lon)).is_none(),
+                "no centre may be invented from {lat:?},{lon:?}"
+            );
+        }
+
+        let sent = params_sent_for("63101", None).await;
+        assert_eq!(
+            sent,
+            expected(&[
+                ("q", "63101"),
+                ("format", "json"),
+                ("limit", "1"),
+                ("addressdetails", "1"),
+            ])
+        );
+    }
+
+    /// `bounded=1` would turn "Austin, TX" asked from St. Louis into a miss.
+    #[tokio::test]
+    async fn qualified_queries_are_never_bounded() {
+        for query in ["63101, USA", "Austin, TX"] {
+            let sent = params_sent_for(query, Some(ST_LOUIS)).await;
+            assert_eq!(
+                sent,
+                expected(&[
+                    ("q", query),
+                    ("format", "json"),
+                    ("limit", "1"),
+                    ("addressdetails", "1"),
+                ]),
+                "{query}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn moving_the_node_misses_the_cache() {
+        const KANSAS_CITY: Centre = Centre {
+            lat: 39.0997,
+            lon: -94.5786,
+        };
+        let cache = GeocodeCache::new(Duration::from_secs(60), 8);
+        let limiter = RateLimiter::new(Duration::from_millis(1));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counting_fetch = || {
+            let calls = calls.clone();
+            move |params: Params| {
+                let q = sent_q(&params);
+                async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(serde_json::json!({ "display_name": q }))
+                }
+            }
+        };
+
+        resolve("63101", Some(ST_LOUIS), &cache, &limiter, counting_fetch())
+            .await
+            .unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        resolve("63101", Some(KANSAS_CITY), &cache, &limiter, counting_fetch())
+            .await
+            .unwrap();
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "a moved node must not be served the old area's answer"
+        );
+
+        resolve("63101", Some(ST_LOUIS), &cache, &limiter, counting_fetch())
+            .await
+            .unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        resolve("63101", None, &cache, &limiter, counting_fetch())
+            .await
+            .unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+
+        resolve("Austin, TX", Some(ST_LOUIS), &cache, &limiter, counting_fetch())
+            .await
+            .unwrap();
+        resolve("Austin, TX", Some(KANSAS_CITY), &cache, &limiter, counting_fetch())
+            .await
+            .unwrap();
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            4,
+            "a qualified query is sent identically from anywhere, so it shares one entry"
+        );
+    }
+
     fn hit(lat: &str, lon: &str, display_name: &str) -> Vec<u8> {
         serde_json::to_vec(&serde_json::json!([{
             "place_id": 1,
@@ -540,6 +829,21 @@ mod tests {
         .expect("serialise fixture")
     }
 
+    fn hit_with_address(address: serde_json::Value) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!([{
+            "lat": "38.6270",
+            "lon": "-90.1994",
+            "display_name": "63101, Saint Louis, Missouri, United States",
+            "address": address,
+        }]))
+        .expect("serialise fixture")
+    }
+
+    fn place_parts(body: &[u8]) -> (serde_json::Value, serde_json::Value) {
+        let value = parse_nominatim(200, body).expect("a well-formed hit");
+        (value["city"].clone(), value["state"].clone())
+    }
+
     /// T10
     #[test]
     fn nominatim_hits_are_typed_range_checked_and_truncated() {
@@ -548,13 +852,20 @@ mod tests {
         assert_eq!(value["lat"], "37.8044", "lat stays the upstream string");
         assert_eq!(value["lon"], "-122.2712", "lon stays the upstream string");
         assert_eq!(value["display_name"], "Oakland, California");
-        let keys: Vec<&str> = value
+        assert_eq!(value["city"], "Oakland");
+        assert!(value["state"].is_null());
+        let mut keys: Vec<&str> = value
             .as_object()
             .expect("an object")
             .keys()
             .map(String::as_str)
             .collect();
-        assert_eq!(keys.len(), 3, "only lat, lon and display_name: {keys:?}");
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            ["city", "display_name", "lat", "lon", "state"],
+            "only lat, lon, display_name, city and state"
+        );
 
         for (lat, lon) in [("91", "0"), ("0", "181"), ("NaN", "0"), ("north", "0")] {
             let err = parse_nominatim(200, &hit(lat, lon, "x")).expect_err("out of range");
@@ -568,6 +879,83 @@ mod tests {
 
         let err = parse_nominatim(200, b"[]").expect_err("no hits");
         assert_eq!(err.status, StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn city_falls_back_through_town_village_hamlet() {
+        for (address, city) in [
+            (serde_json::json!({ "city": "St. Louis", "town": "Kirkwood" }), "St. Louis"),
+            (serde_json::json!({ "town": "Kirkwood", "village": "Times Beach" }), "Kirkwood"),
+            (serde_json::json!({ "village": "Times Beach", "hamlet": "Labadie" }), "Times Beach"),
+            (serde_json::json!({ "hamlet": "Labadie" }), "Labadie"),
+            (serde_json::json!({ "city": "  ", "town": "Kirkwood" }), "Kirkwood"),
+        ] {
+            let (got, _) = place_parts(&hit_with_address(address.clone()));
+            assert_eq!(got, city, "{address}");
+        }
+    }
+
+    #[test]
+    fn state_is_the_postal_code_when_nominatim_gives_a_us_iso_code() {
+        let (city, state) = place_parts(&hit_with_address(serde_json::json!({
+            "city": "St. Louis",
+            "state": "Missouri",
+            "ISO3166-2-lvl4": "US-MO",
+        })));
+        assert_eq!(city, "St. Louis");
+        assert_eq!(state, "MO");
+    }
+
+    #[test]
+    fn state_without_a_us_iso_code_is_the_full_state_name() {
+        for (address, expected_state) in [
+            (serde_json::json!({ "state": "Missouri" }), "Missouri"),
+            (
+                serde_json::json!({ "state": "Ontario", "ISO3166-2-lvl4": "CA-ON" }),
+                "Ontario",
+            ),
+            (
+                serde_json::json!({ "state": "Missouri", "ISO3166-2-lvl4": "US-M" }),
+                "Missouri",
+            ),
+        ] {
+            let (_, state) = place_parts(&hit_with_address(address.clone()));
+            assert_eq!(state, expected_state, "{address}");
+        }
+    }
+
+    #[test]
+    fn an_over_long_city_or_state_is_truncated() {
+        let long = "é".repeat(300);
+        let (city, state) = place_parts(&hit_with_address(serde_json::json!({
+            "city": long,
+            "state": long,
+        })));
+        for part in [city, state] {
+            let part = part.as_str().expect("a string");
+            assert_eq!(part.chars().count(), PLACE_PART_MAX_CHARS);
+        }
+    }
+
+    /// The keys are always present, so the client can tell "no city" from an old server.
+    #[test]
+    fn a_hit_without_address_has_null_city_and_state() {
+        let bare = serde_json::to_vec(&serde_json::json!([{
+            "lat": "38.6270",
+            "lon": "-90.1994",
+            "display_name": "63101, Saint Louis, Missouri, United States",
+        }]))
+        .expect("serialise fixture");
+        for body in [
+            bare,
+            hit_with_address(serde_json::json!({ "country": "United States" })),
+        ] {
+            let value = parse_nominatim(200, &body).expect("a well-formed hit");
+            let object = value.as_object().expect("an object");
+            assert!(object.contains_key("city") && object.contains_key("state"));
+            assert!(value["city"].is_null());
+            assert!(value["state"].is_null());
+        }
     }
 
     #[tokio::test]
