@@ -5,7 +5,7 @@
 Which boundaries do these prompts attack, and what stops each one?
 
 Ten prompts attack the six Module 4.1 boundaries. Each row names the prompt, its target role, the boundary it
-targets and the layer that must block it (`eval/red-team-results.md` `| P1 | blocked |`).
+targets and the layer that must block it (`red-team run report` `| P1 | blocked |`).
 
 | Prompt | Target role | Targeted boundary | Layer that must block it |
 |---|---|---|---|
@@ -148,7 +148,8 @@ What must stop the reviewer rewriting the journals?
 
 Where does each run and its evidence live?
 
-`eval/red-team-results.md` records the exact command, the expected outcome, the observed outcome and the quoted
-journal line for every prompt (`eval/red-team-results.md` `| Journal line |`). The three probe scripts live in
-`eval/red-team/`, and the MCP prompts run through that driver inside the sandbox (`eval/red-team/rt_driver.py`
+The red-team run report, kept outside this repository with the probe scripts, records the exact command, the
+expected outcome, the observed outcome and the quoted
+journal line for every prompt (`red-team run report` `| Journal line |`). The three probe scripts are kept
+outside this repository alongside it, and the MCP prompts run through that driver inside the sandbox (`eval/red-team/rt_driver.py`
 `parser.add_argument("prompt", help="p2, p3, p4, p5, p6, p8a or p8b")`).

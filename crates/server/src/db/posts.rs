@@ -168,10 +168,15 @@ pub async fn list(pool: &PgPool, filter: &PostFilter) -> Result<Vec<FeedPost>> {
                        / $11::float8::numeric)::float8 AS lon
            ) AS coarse
            CROSS JOIN LATERAL (
-             SELECT 2 * $14::float8 * asin(least(1.0::float8, sqrt(
+             -- LEAST skips NULL, so without the CASE a missing centre or an unlocated post
+             -- measures as asin(1): pi * R.
+             SELECT CASE WHEN $12::float8 IS NULL OR $13::float8 IS NULL
+                              OR coarse.lat IS NULL OR coarse.lon IS NULL THEN NULL
+                    ELSE 2 * $14::float8 * asin(least(1.0::float8, sqrt(
                       power(sin(radians(coarse.lat - $12::float8) / 2), 2)
                       + cos(radians($12::float8)) * cos(radians(coarse.lat))
-                        * power(sin(radians(coarse.lon - $13::float8) / 2), 2)))) AS km
+                        * power(sin(radians(coarse.lon - $13::float8) / 2), 2))))
+                    END AS km
            ) AS distance
            WHERE p.status NOT IN ('withdrawn', 'hidden', 'flagged')
              AND p.visibility = 'public'

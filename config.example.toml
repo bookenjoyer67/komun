@@ -8,8 +8,8 @@ bind_address = "0.0.0.0"
 port = 3000
 
 [database]
-# PostgreSQL connection string.
-url = "postgres://komun:komun@localhost:5432/komun"
+# PostgreSQL connection string. Required: replace change-me with the database password.
+url = "postgres://komun:change-me@localhost:5432/komun"
 # Maximum size of the connection pool.
 max_connections = 20
 

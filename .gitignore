@@ -37,3 +37,13 @@ __pycache__/
 
 # Claude Code's per-machine settings file; the shared .claude/settings.json is committed.
 .claude/settings.local.json
+
+# The red team's run output and its working probes. This repository is public: the prompt set
+# (eval/red-team-prompts.md) is the threat model and stays committed, but the raw evidence — exact
+# commands, observed outputs, the grant-widening and journal-tamper scripts — is run output, and one
+# `git add -A` must not be able to publish a working exploit against the harness. The scheduled pass
+# that produces this evidence lives outside the repo (~/.hermes/profiles/dev/redteam/).
+eval/red-team-results.md
+eval/red-team/rt_grant_widen.py
+eval/red-team/rt_grant_widen_files.py
+eval/red-team/rt_journal_tamper.py

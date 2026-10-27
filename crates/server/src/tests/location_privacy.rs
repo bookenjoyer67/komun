@@ -252,3 +252,94 @@ async fn sql_coarsening_rounds_ties_as_coarsen_coordinate_does() {
         );
     }
 }
+
+/// Postgres `LEAST` skips a NULL argument, so an unguarded haversine measures a missing centre as
+/// `asin(1)`: every located post half the planet away.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn a_feed_without_a_centre_reports_no_distance() {
+    let pool = live_pool().await;
+    let author = seed_user(&pool).await;
+    let (id, title) = seed_legacy_post(&pool, author, 38.6, -90.2).await;
+
+    let filter = db::posts::PostFilter {
+        q: Some(title.clone()),
+        ..Default::default()
+    };
+    let item = db::posts::list(&pool, &filter)
+        .await
+        .expect("list posts")
+        .into_iter()
+        .find(|item| item.post.id == id)
+        .expect("the seeded post is in the public list");
+    assert_eq!(item.distance_km, None, "no centre, no distance");
+
+    assert_eq!(
+        listed_distance(&pool, id, &title, (38.6, -90.2)).await,
+        Some(0.0),
+        "a centre still yields real km"
+    );
+}
+
+/// An unlocated post's cell is NULL, and `LEAST` skips that NULL as it skips a missing centre: an
+/// unguarded haversine puts the post half the planet from any centre.
+#[tokio::test]
+#[ignore = "requires KOMUN_TEST_DATABASE_URL (live Postgres); run with --ignored"]
+async fn an_unlocated_post_has_no_distance_from_a_centre() {
+    let pool = live_pool().await;
+    let author = seed_user(&pool).await;
+    let tag = format!("r13-unlocated-{}", Uuid::now_v7());
+    let mut conn = pool.acquire().await.expect("a test connection");
+    // Created first, so a recency order alone would list it second.
+    let located = db::posts::create(&mut conn, author, new_post(&format!("{tag}-located")))
+        .await
+        .expect("create located post");
+    let unlocated = db::posts::create(
+        &mut conn,
+        author,
+        CreatePost {
+            location_lat: None,
+            location_lon: None,
+            ..new_post(&tag)
+        },
+    )
+    .await
+    .expect("create unlocated post");
+    let near = (COARSE_LAT, COARSE_LON);
+
+    assert_eq!(
+        listed_distance(&pool, unlocated.id, &unlocated.title, near).await,
+        None,
+        "no location, no distance"
+    );
+
+    let ids = |items: Vec<db::posts::FeedPost>| -> Vec<Uuid> {
+        items.into_iter().map(|item| item.post.id).collect()
+    };
+
+    let within = db::posts::PostFilter {
+        q: Some(tag.clone()),
+        near: Some(near),
+        radius_km: Some(db::posts::MAX_RADIUS_KM),
+        ..Default::default()
+    };
+    assert_eq!(
+        ids(db::posts::list(&pool, &within).await.expect("list posts")),
+        vec![located.id],
+        "a radius excludes an unlocated post"
+    );
+
+    let nearest_first = db::posts::PostFilter {
+        q: Some(tag),
+        near: Some(near),
+        sort: db::posts::FeedSort::Distance,
+        ..Default::default()
+    };
+    assert_eq!(
+        ids(db::posts::list(&pool, &nearest_first)
+            .await
+            .expect("list posts")),
+        vec![located.id, unlocated.id],
+        "the distance order puts an unlocated post last"
+    );
+}

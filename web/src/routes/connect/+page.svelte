@@ -41,6 +41,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Connect — Komun</title>
+</svelte:head>
+
 <div class="container">
 	<div class="connect-page">
 		<h1>komun</h1>

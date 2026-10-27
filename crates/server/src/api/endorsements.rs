@@ -101,6 +101,24 @@ async fn list_endorsements(
     State(state): State<AppState>,
     Path(user_id): Path<uuid::Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // The profile answers 404 for an unknown id, so this list must too: an empty list and a
+    // missing user are different facts.
+    if !crate::db::users::exists(&state.pool, user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("user lookup failed: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal error"})),
+            )
+        })?
+    {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "user not found"})),
+        ));
+    }
+
     let list = endorsements::list_for_user(&state.pool, user_id)
         .await
         .map_err(|e| {

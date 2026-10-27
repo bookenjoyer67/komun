@@ -236,7 +236,7 @@ impl Default for ServerConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            url: "postgres://komun:komun@localhost:5432/komun".into(),
+            url: String::new(),
             max_connections: 20,
         }
     }
@@ -289,9 +289,22 @@ impl Config {
         };
 
         config.apply_env_overrides();
+        config.validate_database()?;
         config.validate_registration()?;
         config.validate_market()?;
         Ok(config)
+    }
+
+    /// There is no built-in database URL: any compiled-in default would carry a credential, so an
+    /// unset URL is a startup failure that names where to set it.
+    pub fn validate_database(&self) -> anyhow::Result<()> {
+        if self.database.url.trim().is_empty() {
+            return Err(anyhow::anyhow!(
+                "[database] url is not set: set it in config.toml or in the DATABASE_URL \
+                 environment variable"
+            ));
+        }
+        Ok(())
     }
 
     /// Startup fails loudly when verification is demanded but unsendable.

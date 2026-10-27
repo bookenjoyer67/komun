@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 komun-core = { path = "../core" }
-axum = { version = "0.8", features = ["ws", "multipart"] }
+axum = { version = "0.8", features = ["multipart"] }
 axum-extra = { version = "0.10", features = ["typed-header"] }
 tokio = { workspace = true }
 tower = { version = "0.5", features = ["util"] }

@@ -195,6 +195,9 @@ in the order shown and let each one finish before typing the next.
 
 ### M3. Probe seven, the implementer self-grant
 
+The probe is not in this repository — it is a working exploit, kept outside it with the rest of the
+red-team evidence. The command that produced the recording was:
+
 ```
 ./scripts/run-agent.sh implementer bash -c 'python3 /workspace/eval/red-team/rt_grant_widen_files.py'
 ```
@@ -217,6 +220,9 @@ BLOCKED /workspace/docs/routing-and-tool-grant-map.json -> OSError(30, 'Read-onl
 ```
 
 ### M4. Probe ten, the reviewer rewriting the journals
+
+The probe is not in this repository — it is a working exploit, kept outside it with the rest of the
+red-team evidence. The command that produced the recording was:
 
 ```
 ./scripts/run-agent.sh reviewer bash -c 'python3 /workspace/eval/red-team/rt_journal_tamper.py'
@@ -367,7 +373,7 @@ Do not adjust the expected text. Read what the server prints.
 
 Do not run the driver's `p2`, `p3`, `p4`, `p6` or `p8b` prompts for the video. They are refused or
 withheld as designed, but p2, p3, p6 and p8b each append a journal line, which moves the invariant in
-M6. Their recorded output is already quoted in `eval/red-team-results.md`. [UNVERIFIED] in this
+M6. Their recorded output is quoted in the red-team run report, which is kept outside this repository. [UNVERIFIED] in this
 session: those five prompts were deliberately not executed, because executing them writes to
 `.memory`. Settle it, if the presenter wants them live, by running the full
 `bash /workspace/scripts/start-mcp-servers.sh` and then accepting that the journals grow, and record
@@ -551,7 +557,7 @@ The capture is described in full in `capture.md`, beside this file. Two things m
 | `npm run check` at 0 and 0 | [UNVERIFIED] today | Run it in the container. |
 | `npx vitest run` at 82 in 7 files | [UNVERIFIED] today | Run it in the container. |
 | `./console/open.sh` interactive launch | [UNVERIFIED] in this session | Run it in a terminal the presenter owns. |
-| MCP prompts p2, p3, p4, p6, p8b run live | [UNVERIFIED] in this session | Start `/workspace/scripts/start-mcp-servers.sh` and run them, accepting that the journals grow. Recorded output is already in `eval/red-team-results.md`. |
+| MCP prompts p2, p3, p4, p6, p8b run live | [UNVERIFIED] in this session | Start `/workspace/scripts/start-mcp-servers.sh` and run them, accepting that the journals grow. Recorded output is in the red-team run report, kept outside this repository. |
 | `bash /workspace/scripts/start-mcp-servers.sh` | [UNVERIFIED] in this session | Run it in the container. It starts the storage and retrieval servers and creates `.memory/reference/`, so it changes `.memory` state. |
 | Building `agent-sandbox:komun-m3` | [UNVERIFIED] in this session | The image is already present on this host, so the build was not re-run. Settle it with `docker build -f sandbox/Dockerfile.m3 -t agent-sandbox:komun-m3 .`. |
 | The four-run end to end regression | Cannot be re-run cheaply | It needs four full agentic runs. Its evidence is on screen from `docs/calibration-log.md` and the gate journal. |

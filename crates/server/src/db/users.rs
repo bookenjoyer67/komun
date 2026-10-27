@@ -25,6 +25,15 @@ pub struct UserProfileRow {
     pub profile_json: serde_json::Value,
 }
 
+/// Whether a user row exists. A sub-resource answers 404 for an unknown id, so an empty list and
+/// a missing user stay different facts.
+pub async fn exists(pool: &PgPool, user_id: Uuid) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+}
+
 pub async fn get_profile(
     pool: &PgPool,
     user_id: Uuid,

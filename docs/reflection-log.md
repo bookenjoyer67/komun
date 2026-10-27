@@ -12,7 +12,7 @@ Which files feed the entries below?
 - Draw on `docs/calibration-log.md` for the near-miss patterns (`docs/calibration-log.md:18` `Ten patterns follow, each named and each cited to the line that evidences it`).
 - Draw on `docs/memory-architecture.md` for the memory layers and their enforcement (`docs/memory-architecture.md:157` `## Enforcement`).
 - Draw on the conversion ADR for the deterministic replacement (`docs/adr/ADR-001-doc-conformance-deterministic-conversion.md:1` `# ADR-001: Convert the prose and citation conformance check from agent to deterministic code`).
-- Draw on `eval/red-team-results.md` for the policy-bypass probes (`eval/red-team-results.md:7` `Eight prompts were blocked on their first run.`).
+- Draw on the red-team run report (kept outside this repository) for the policy-bypass probes (`red-team run report:7` `Eight prompts were blocked on their first run.`).
 - Draw on the live `.memory/` layer for scope and index (`.memory/SCOPE.md:3` `Project: Komun`).
 - Read the citation rule before any entry (`docs/DOC-STYLE.md:40` `A bare location is a v1 form and fails R2 in v2`).
 
@@ -115,7 +115,7 @@ Which records was this log assembled from, and what does it add?
 The assembly was retrospective: the runs and drills happened first, and this file quotes them after the fact.
 
 - State that this log was assembled after the runs it describes, not during them.
-- Name the sources: `docs/iteration-log.md`, `docs/calibration-log.md`, `docs/memory-architecture.md`, the ADR set under `docs/adr/`, `eval/red-team-results.md` and the live `.memory/` layer.
+- Name the sources: `docs/iteration-log.md`, `docs/calibration-log.md`, `docs/memory-architecture.md`, the ADR set under `docs/adr/`, the red-team run report (kept outside this repository) and the live `.memory/` layer.
 - State that every entry quotes its source at the cited line rather than paraphrasing it.
 - State that this log introduces no claim those records do not already carry.
 - State that any decision whose reasoning was not recorded at decision time is marked as such, not composed.

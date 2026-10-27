@@ -2,6 +2,7 @@ mod bundle_cleanup;
 mod expiry;
 mod health;
 mod registration;
+pub(crate) mod saved_search_digest;
 
 use crate::AppState;
 
@@ -26,5 +27,10 @@ pub fn spawn_background_tasks(state: AppState) {
     {
         let s = state.clone();
         tokio::spawn(bundle_cleanup::user_cleanup_loop(s));
+    }
+
+    {
+        let s = state.clone();
+        tokio::spawn(saved_search_digest::digest_loop(s));
     }
 }

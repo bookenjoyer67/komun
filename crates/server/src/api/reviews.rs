@@ -105,6 +105,14 @@ async fn list_reviews(
     Path(user_id): Path<Uuid>,
     Query(page): Query<ReviewPage>,
 ) -> Result<Json<Vec<ReviewView>>, StatusError> {
+    // An unknown id is a 404 for the profile, so it must be one here too; otherwise an empty list
+    // and a missing user look the same.
+    if !crate::db::users::exists(&state.pool, user_id).await? {
+        return Err(StatusError::with_status(
+            StatusCode::NOT_FOUND,
+            "user not found",
+        ));
+    }
     let (limit, offset) = validate_page(&page).map_err(bad_request)?;
     let reviews = crate::db::reviews::list_for_user(&state.pool, user_id, limit, offset).await?;
     Ok(Json(reviews))

@@ -4,6 +4,8 @@
 	import { isConnected, getActiveServer } from '$lib/stores/server';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
+	import { closedLabel } from '$lib/api/market';
+	import { categoryLabel } from '$lib/api/categories';
 	import RespondModal from '$lib/components/RespondModal.svelte';
 	import type { PostLike } from '$lib/api/types';
 
@@ -88,9 +90,13 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Aid — Komun</title>
+</svelte:head>
+
 <div class="container">
 	<header class="page-header">
-		<h1>Local Listings</h1>
+		<h1>Aid</h1>
 		<a href="/aid/new" class="btn btn-primary">Post</a>
 	</header>
 
@@ -118,10 +124,11 @@
 				<li class="post-card">
 					<div class="post-meta">
 						<span class="kind kind-{post.kind}">{kindLabels[post.kind]}</span>
-						<span class="category">{post.category}</span>
+						<span class="category">{categoryLabel(post)}</span>
 						{#if post.urgency}
 							<span class="urgency" style="color: {urgencyColors[post.urgency]}">{post.urgency}</span>
 						{/if}
+						<a class="permalink" href="/p/{post.id}" title="Open this post" aria-label="Open this post">🔗</a>
 					</div>
 					{#if editingId === post.id}
 						<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
@@ -154,6 +161,8 @@
 						{/if}
 						{#if post.status === PAUSED_STATUS}
 							<span class="paused-note">{PAUSED_LABEL}</span>
+						{:else if post.status === 'fulfilled'}
+							<span class="fulfilled-badge">{closedLabel(post)}</span>
 						{/if}
 						{#if post.author_id !== myUserId}
 							{#if post.status === 'active'}
@@ -163,9 +172,7 @@
 									<button class="respond-btn" onclick={() => respondingTo = post}>Request this</button>
 								{/if}
 							{/if}
-						{:else if post.status === 'fulfilled'}
-							<span class="fulfilled-badge">Fulfilled</span>
-						{:else}
+						{:else if post.status !== 'fulfilled'}
 							<div class="author-actions">
 								<button class="action-btn fulfill" onclick={() => fulfillPost(post.id)}>Fulfill</button>
 								<button class="action-btn edit" onclick={() => startEdit(post)}>Edit</button>
@@ -267,6 +274,7 @@
 	.kind-resource { background: var(--kind-resource-soft); color: var(--kind-resource); }
 
 	.category { color: var(--text-muted); text-transform: capitalize; }
+	.permalink { margin-left: auto; text-decoration: none; line-height: 1; }
 	.urgency { font-weight: 600; text-transform: uppercase; }
 
 	h3 { font-size: 1.05rem; margin-bottom: 0.3rem; }
@@ -302,7 +310,7 @@
 	.action-btn.fulfill { background: var(--success-softer); color: var(--success); border-color: var(--success); }
 	.action-btn.edit { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
 	.action-btn.delete { background: var(--critical-softer); color: var(--critical); border-color: var(--critical); }
-	.fulfilled-badge { font-size: 0.75rem; color: var(--success); font-weight: 600; margin-left: auto; }
+	.fulfilled-badge { font-size: var(--text-xs); color: var(--success); font-weight: 600; margin-left: auto; }
 
 	.edit-form { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem; }
 	.edit-form input, .edit-form textarea { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; color: var(--text); font-size: 0.9rem; }

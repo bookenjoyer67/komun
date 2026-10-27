@@ -10,6 +10,9 @@ export interface PostLike {
 	id: string;
 	kind: PostKind;
 	category: string;
+	/** The taxonomy's human label for `category`, from the server's join; null or absent when
+	 *  the taxonomy has no row for the slug. */
+	category_label?: string | null;
 	title: string;
 	body?: string;
 	location_name?: string;

@@ -1,5 +1,4 @@
-//! Harness pieces shared by the ops and admin tests, including the `#[cfg(test)]` module in
-//! `repl.rs`, which is why they are `pub(crate)`.
+//! Harness pieces shared by the ops and admin tests.
 //!
 //! Live tests read `KOMUN_TEST_DATABASE_URL`, run on the host only, and never print the URL.
 
@@ -54,7 +53,6 @@ pub(crate) fn app(state: AppState) -> Router {
 
 pub(crate) struct LiveHarness {
     pub(crate) pool: PgPool,
-    pub(crate) state: AppState,
     pub(crate) app: Router,
 }
 
@@ -73,14 +71,12 @@ pub(crate) async fn live_harness() -> LiveHarness {
         .await
         .expect("apply migrations to the test database");
 
-    let state = state_with(pool.clone(), "");
-    let app = app(state.clone());
-    LiveHarness { pool, state, app }
+    let app = app(state_with(pool.clone(), ""));
+    LiveHarness { pool, app }
 }
 
 pub(crate) struct TestUser {
     pub(crate) id: Uuid,
-    pub(crate) email: String,
     pub(crate) bearer: String,
 }
 
@@ -109,7 +105,6 @@ pub(crate) async fn seed_user(pool: &PgPool, role: &str, display_name: &str) -> 
         .expect("create test session");
     TestUser {
         id,
-        email,
         bearer: token.raw,
     }
 }
@@ -154,14 +149,13 @@ pub(crate) fn error_of(body: &Value) -> &str {
 pub(crate) struct AuditRow {
     pub(crate) actor_id: Option<Uuid>,
     pub(crate) subject_id: Option<Uuid>,
-    pub(crate) detail: Option<Value>,
 }
 
 /// Rows for `action` that name `who` as actor or subject; fresh ids keep counts exact on a shared
 /// database.
 pub(crate) async fn audit_rows(pool: &PgPool, action: &str, who: Uuid) -> Vec<AuditRow> {
     sqlx::query_as::<_, AuditRow>(
-        "SELECT actor_id, subject_id, detail FROM audit_events
+        "SELECT actor_id, subject_id FROM audit_events
          WHERE action = $1 AND (actor_id = $2 OR subject_id = $2)",
     )
     .bind(action)

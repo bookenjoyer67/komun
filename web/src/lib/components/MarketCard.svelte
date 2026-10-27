@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		closedLabel,
 		conditionLabel,
 		formatPrice,
 		MARKET_KIND_LABELS,
@@ -16,6 +17,7 @@
 	let category = $derived(post.category_label || post.category);
 	let price = $derived(formatPrice(post.price_cents, post.currency, post.price_negotiable));
 	let condition = $derived(conditionLabel(post.item_condition));
+	let closed = $derived(closedLabel(post));
 </script>
 
 <article class="market-card" data-kind={post.kind} data-empty-price={post.price_cents == null}>
@@ -23,6 +25,9 @@
 		<span class="kind kind-{post.kind}">{kindLabel}</span>
 		{#if category}
 			<span class="category">{category}</span>
+		{/if}
+		{#if closed}
+			<span class="closed-badge">{closed}</span>
 		{/if}
 		<a class="permalink" href="/p/{post.id}" title="Open this post" aria-label="Open this post">🔗</a>
 	</div>
@@ -88,6 +93,12 @@
 		color: var(--text-muted);
 		text-transform: capitalize;
 		font-size: 0.7rem;
+	}
+
+	.closed-badge {
+		color: var(--text-muted);
+		font-size: var(--text-xs);
+		font-weight: 600;
 	}
 
 	.permalink {

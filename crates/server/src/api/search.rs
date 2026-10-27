@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use super::categories::bad_request;
+use super::posts::check_search_term;
 use super::StatusError;
 use crate::db::posts::contains_pattern;
 use crate::AppState;
@@ -49,7 +51,6 @@ struct SearchResult {
 struct UserSearchResult {
     id: Uuid,
     display_name: String,
-    role: String,
     endorsement_count: Option<i64>,
 }
 
@@ -62,6 +63,7 @@ async fn search(
     if query.is_empty() {
         return Ok(Json(vec![]));
     }
+    check_search_term(query).map_err(bad_request)?;
 
     let results = sqlx::query_as::<_, SearchResult>(
         r#"SELECT p.id, p.kind, p.category, p.title, p.body,
@@ -93,10 +95,11 @@ async fn search_users(
     if query.is_empty() {
         return Ok(Json(vec![]));
     }
+    check_search_term(query).map_err(bad_request)?;
 
     let pattern = contains_pattern(query);
     let results = sqlx::query_as::<_, UserSearchResult>(
-        r#"SELECT u.id, u.display_name, u.role,
+        r#"SELECT u.id, u.display_name,
            (SELECT COUNT(*) FROM endorsements WHERE endorsee_id = u.id) AS endorsement_count
            FROM users u
            WHERE u.display_name ILIKE $1 ESCAPE '\'
